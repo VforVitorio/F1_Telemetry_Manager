@@ -1,0 +1,19 @@
+[project]
+
+name = "f1-telemetry-manager"
+
+version = "0.1.0"
+
+description = "F1 telemetry Dashboard"
+
+readme = "README.md"
+authors = [
+    {name = "Víctor Vega Sobral", email = "victorvegasobral@yahoo.com"},
+    {name = "Santiago Souto Ortega", email = "soutoortegasantiago@gmail.com"}
+
+]
+
+requires-python = ">=3.11"
+dependencies = [
+    "fastf1",
+]
