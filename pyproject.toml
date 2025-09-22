@@ -8,8 +8,8 @@ description = "F1 telemetry Dashboard"
 
 readme = "README.md"
 authors = [
-    {name = "Víctor Vega Sobral", email = "victorvegasobral@yahoo.com"},
-    {name = "Santiago Souto Ortega", email = "soutoortegasantiago@gmail.com"}
+    {name = "Víctor Vega Sobral", email = "https://www.linkedin.com/in/victorvegasobral/"},
+    {name = "Santiago Souto Ortega", email = "https://www.linkedin.com/in/santiagosoutoortega/"}
 
 ]
 
