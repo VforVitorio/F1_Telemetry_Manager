@@ -136,7 +136,7 @@ The system follows a **layered architecture** with feature-based organization:
 
 **System Flow Diagram**
 
-<img src="docs/img/system_flow_diagram.png" alt="F1 Telemetry Manager Flow Diagram" width="800"/>
+<img src="docs/img/app_diagram.png" alt="F1 Telemetry Manager Flow Diagram" width="800"/>
 
 _Complete user flow showing authentication, dashboard navigation, telemetry analysis, AI interaction, and admin capabilities_
 
