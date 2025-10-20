@@ -148,18 +148,39 @@ _Complete user flow showing authentication, dashboard navigation, telemetry anal
 
 ### Prerequisites
 
-- Python 3.10+
-- Node.js (for development tools)
-- LM Studio (for local AI features)
+- Docker & Docker Compose
+- LM Studio (optional, for AI features)
 - Supabase account
 
-### Installation
+### Quick Start with Docker
 
 ```bash
 # Clone the repository
 git clone https://github.com/yourusername/F1_Telemetry_Manager.git
 cd F1_Telemetry_Manager
 
+# Set up environment variables
+cp .env.example .env
+# Edit .env with your Supabase credentials
+
+# Start all services
+docker-compose up -d
+
+# View logs
+docker-compose logs -f
+
+# Stop services
+docker-compose down
+```
+
+**Access points:**
+- Frontend: http://localhost:8501
+- Backend API: http://localhost:8000
+- API Documentation: http://localhost:8000/docs
+
+### Manual Installation (without Docker)
+
+```bash
 # Install frontend dependencies
 cd frontend
 pip install -r requirements.txt
@@ -170,33 +191,28 @@ pip install -r requirements.txt
 
 # Set up environment variables
 cp .env.example .env
-# Edit .env with your Supabase credentials and API keys
+# Edit .env with your Supabase credentials
 ```
 
-### Running the Application
+**Running manually:**
 
-**Terminal 1 - Backend (FastAPI):**
-
+Terminal 1 - Backend:
 ```bash
 cd backend
 uvicorn main:app --reload --port 8000
 ```
 
-**Terminal 2 - Frontend (Streamlit):**
-
+Terminal 2 - Frontend:
 ```bash
 cd frontend
 streamlit run app/main.py
 ```
 
-**Terminal 3 - LM Studio (optional for AI features):**
-
+Terminal 3 - LM Studio (optional):
 ```bash
 # Start LM Studio on http://localhost:1234
 # Load your preferred LLM model
 ```
-
-Access the application at `http://localhost:8501`
 
 ---
 
