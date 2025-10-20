@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: f1_backend
+    ports:
+      - "8000:8000"
+    environment:
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_KEY=${SUPABASE_KEY}
+      - SECRET_KEY=${SECRET_KEY}
+      - ALGORITHM=${ALGORITHM}
+      - ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES}
+    env_file:
+      - .env
+    volumes:
+      - ./backend:/app
+      - backend_cache:/root/.cache
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    networks:
+      - f1_network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: f1_frontend
+    ports:
+      - "8501:8501"
+    environment:
+      - BACKEND_URL=http://backend:8000
+    volumes:
+      - ./frontend:/app
+      - frontend_cache:/root/.cache
+    command: streamlit run app/main.py --server.port 8501 --server.address 0.0.0.0
+    depends_on:
+      - backend
+    networks:
+      - f1_network
+
+networks:
+  f1_network:
+    driver: bridge
+
+volumes:
+  backend_cache:
+  frontend_cache:
