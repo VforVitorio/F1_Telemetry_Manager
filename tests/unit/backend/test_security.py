@@ -1,70 +1,67 @@
-import unittest
-from datetime import timedelta
-from core.security import (
-    verify_password,
-    get_password_hash,
-    create_access_token,
-    decode_access_token
-)
+import pytest
+from unittest.mock import Mock, patch
+from fastapi import HTTPException
+from backend.core.security import get_supabase_client, get_current_user
+from fastapi.security import HTTPAuthorizationCredentials
 
+def test_get_supabase_client_singleton():
+    """Verifica que el cliente sea singleton"""
+    client1 = get_supabase_client()
+    client2 = get_supabase_client()
+    assert client1 is client2
 
-class TestSecurity(unittest.TestCase):
-    """Test security module functions"""
+@pytest.mark.asyncio
+async def test_get_current_user_valid_token():
+    """Test con token válido"""
+    with patch('backend.core.security.get_supabase_client') as mock:
+        supabase_mock = Mock()
+        user_mock = Mock()
+        user_mock.user.id = "test-id"
+        user_mock.user.email = "test@example.com"
+        
+        supabase_mock.auth.get_user.return_value = user_mock
+        mock.return_value = supabase_mock
+        
+        credentials = HTTPAuthorizationCredentials(
+            scheme="Bearer",
+            credentials="valid-token"
+        )
+        
+        result = await get_current_user(credentials)
+        assert result == user_mock
 
-    def test_password_hashing(self):
-        """Test password hash and verification"""
-        password = "test_password_123"
-        hashed = get_password_hash(password)
+@pytest.mark.asyncio
+async def test_get_current_user_invalid_token():
+    """Test con token inválido"""
+    with patch('backend.core.security.get_supabase_client') as mock:
+        supabase_mock = Mock()
+        supabase_mock.auth.get_user.side_effect = Exception("Invalid token")
+        mock.return_value = supabase_mock
+        
+        credentials = HTTPAuthorizationCredentials(
+            scheme="Bearer",
+            credentials="invalid-token"
+        )
+        
+        with pytest.raises(HTTPException) as exc:
+            await get_current_user(credentials)
+        
+        assert exc.value.status_code == 401
 
-        # Hash should not equal plain password
-        self.assertNotEqual(password, hashed)
-
-        # Verification should work
-        self.assertTrue(verify_password(password, hashed))
-
-        # Wrong password should fail
-        self.assertFalse(verify_password("wrong_password", hashed))
-
-    def test_token_creation_and_decode(self):
-        """Test JWT token creation and decoding"""
-        data = {"sub": "test_user", "role": "user"}
-        token = create_access_token(data)
-
-        # Token should be created
-        self.assertIsNotNone(token)
-        self.assertIsInstance(token, str)
-
-        # Decode should return original data
-        decoded = decode_access_token(token)
-        self.assertEqual(decoded["sub"], "test_user")
-        self.assertEqual(decoded["role"], "user")
-        self.assertIn("exp", decoded)
-
-    def test_token_with_custom_expiry(self):
-        """Test token with custom expiration"""
-        data = {"sub": "test_user"}
-        token = create_access_token(data, expires_delta=timedelta(minutes=5))
-
-        decoded = decode_access_token(token)
-        self.assertIsNotNone(decoded)
-        self.assertEqual(decoded["sub"], "test_user")
-
-    def test_invalid_token(self):
-        """Test decoding invalid token"""
-        invalid_token = "invalid.token.string"
-        decoded = decode_access_token(invalid_token)
-
-        self.assertIsNone(decoded)
-
-    def test_expired_token(self):
-        """Test decoding expired token"""
-        data = {"sub": "test_user"}
-        # Create token that expires immediately
-        token = create_access_token(data, expires_delta=timedelta(seconds=-1))
-
-        decoded = decode_access_token(token)
-        self.assertIsNone(decoded)
-
-
-if __name__ == "__main__":
-    unittest.main()
+@pytest.mark.asyncio
+async def test_get_current_user_no_user():
+    """Test cuando no retorna usuario"""
+    with patch('backend.core.security.get_supabase_client') as mock:
+        supabase_mock = Mock()
+        supabase_mock.auth.get_user.return_value = None
+        mock.return_value = supabase_mock
+        
+        credentials = HTTPAuthorizationCredentials(
+            scheme="Bearer",
+            credentials="token"
+        )
+        
+        with pytest.raises(HTTPException) as exc:
+            await get_current_user(credentials)
+        
+        assert exc.value.status_code == 401
