@@ -174,6 +174,7 @@ docker-compose down
 ```
 
 **Access points:**
+
 - Frontend: http://localhost:8501
 - Backend API: http://localhost:8000
 - API Documentation: http://localhost:8000/docs
@@ -197,22 +198,37 @@ cp .env.example .env
 **Running manually:**
 
 Terminal 1 - Backend:
+
 ```bash
 cd backend
 uvicorn main:app --reload --port 8000
 ```
 
 Terminal 2 - Frontend:
+
 ```bash
 cd frontend
 streamlit run app/main.py
 ```
 
 Terminal 3 - LM Studio (optional):
+
 ```bash
 # Start LM Studio on http://localhost:1234
 # Load your preferred LLM model
 ```
+
+---
+
+### Generate Secret Key
+
+Before running the application, generate a secure SECRET_KEY:
+
+```bash
+python backend/utils/generate_secret.py
+```
+
+Copy the output to your `.env` file.
 
 ---
 
