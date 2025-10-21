@@ -15,6 +15,18 @@ authors = [
 
 requires-python = ">=3.11"
 dependencies = [
-    "fastf1",
+    "fastapi",
+    "uvicorn[standard]",
     "supabase",
+    "python-dotenv",
+    "pydantic[email]",
+    "fastf1"
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.0.0",
+    "httpx>=0.24.0"
 ]

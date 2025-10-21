@@ -1,10 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from core.config import FRONTEND_URL
-
-
-# FRONTEND_URL is taken from backend/core/config.py
-# with this we could either run it with Docker or without it
+from backend.core.config import FRONTEND_URL
+from backend.api.v1.endpoints import auth
 
 app = FastAPI(title="F1 Telemetry API")
 
@@ -16,6 +13,8 @@ app.add_middleware(
     allow_headers=["*"]
 )
 
+# Añade el router de autenticación
+app.include_router(auth.router, prefix="/api/v1")
 
 @app.get("/")
 def root():
