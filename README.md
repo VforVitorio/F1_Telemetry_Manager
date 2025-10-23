@@ -200,8 +200,8 @@ cp .env.example .env
 Terminal 1 - Backend:
 
 ```bash
-cd backend
-uvicorn main:app --reload --port 8000
+
+uvicorn backend.main:app --reload --port 8000
 ```
 
 Terminal 2 - Frontend:
