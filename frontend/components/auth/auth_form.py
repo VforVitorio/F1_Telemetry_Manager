@@ -1,7 +1,6 @@
 # frontend/components/auth/auth_form.py
 import time
 import streamlit as st
-import streamlit_shadcn_ui as ui
 
 
 def render_auth_form():
@@ -16,12 +15,7 @@ def render_auth_form():
         st.markdown("<div class='auth-container'>", unsafe_allow_html=True)
 
         # Header
-        st.markdown("### 🏎️ F1 Telemetry Manager")
-        ui.badges(
-            badge_list=[("Secure", "default"), ("Fast", "secondary")],
-            class_name="flex gap-2",
-            key="auth_badges"
-        )
+        st.markdown("<h1 style='text-align: center;'>🏎️ F1 Telemetry Manager</h1>", unsafe_allow_html=True)
         st.markdown("---")
 
         # Custom animated tabs - centered
@@ -30,12 +24,12 @@ def render_auth_form():
             tab_cols = st.columns(2)
             with tab_cols[0]:
                 if st.button("🏁 Login", use_container_width=True,
-                           type="primary" if st.session_state.active_tab == 'Login' else "secondary"):
+                             type="primary" if st.session_state.active_tab == 'Login' else "secondary"):
                     st.session_state.active_tab = 'Login'
                     st.rerun()
             with tab_cols[1]:
                 if st.button("✨ Register", use_container_width=True,
-                           type="primary" if st.session_state.active_tab == 'Register' else "secondary"):
+                             type="primary" if st.session_state.active_tab == 'Register' else "secondary"):
                     st.session_state.active_tab = 'Register'
                     st.rerun()
 
