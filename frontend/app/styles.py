@@ -73,9 +73,42 @@ GLOBAL_CSS = f"""
         opacity: 0.9;
         box-shadow: 0 4px 12px rgba(167, 139, 250, 0.3);
     }}
-    
+
+    /* Tab buttons styling - secondary buttons are inactive tabs */
+    .stButton > button[kind="secondary"] {{
+        background-color: {Color.ACCENT} !important;
+        color: {TextColor.AGAINST_ACCENT} !important;
+        opacity: 0.7;
+        font-size: 1.1rem !important;
+        padding: 0.75rem 1.5rem !important;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+        border: none !important;
+    }}
+
+    .stButton > button[kind="secondary"]:hover {{
+        opacity: 0.85 !important;
+        transform: translateY(-1px) !important;
+        box-shadow: 0 4px 12px rgba(167, 139, 250, 0.4) !important;
+    }}
+
+    /* Primary buttons are active tabs */
+    .stButton > button[kind="primary"] {{
+        background-color: {StatusColor.INFO} !important;
+        color: {TextColor.AGAINST_ACCENT} !important;
+        font-size: 1.1rem !important;
+        padding: 0.75rem 1.5rem !important;
+        transform: translateY(-2px) !important;
+        box-shadow: 0 6px 16px rgba(59, 130, 246, 0.5) !important;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+        border: none !important;
+    }}
+
+    .stButton > button[kind="primary"]:hover {{
+        box-shadow: 0 8px 20px rgba(59, 130, 246, 0.6) !important;
+    }}
+
     .auth-container {{
-        max-width: 400px;
+        max-width: 500px;
         margin: 0 auto;
         padding: 2rem;
         background: {Color.CONTENT_BG};
