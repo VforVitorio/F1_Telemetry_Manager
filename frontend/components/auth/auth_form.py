@@ -83,6 +83,7 @@ def render_login_tab():
                     st.success("✅ Login successful!")
                     st.session_state['authenticated'] = True
                     st.session_state['email'] = email
+                    st.rerun()
             else:
                 st.error("❌ Please fill all fields")
 
