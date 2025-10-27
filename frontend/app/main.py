@@ -10,6 +10,7 @@ import streamlit as st
 # Project imports (now work because setup_path configured sys.path)
 from components.auth.auth_form import render_auth_form
 from config import BACKEND_URL
+from styles import GLOBAL_CSS
 
 st.set_page_config(
     page_title="F1 Telemetry Manager",
@@ -17,21 +18,8 @@ st.set_page_config(
     layout="wide"
 )
 
-# Custom CSS
-st.markdown("""
-    <style>
-    .stButton button {
-        background-color: #E10600;
-        color: white;
-        font-weight: 600;
-        border-radius: 8px;
-        border: none;
-    }
-    .stButton button:hover {
-        background-color: #b00500;
-    }
-    </style>
-""", unsafe_allow_html=True)
+# Apply global styles
+st.markdown(GLOBAL_CSS, unsafe_allow_html=True)
 
 if 'authenticated' not in st.session_state:
     st.session_state['authenticated'] = False
