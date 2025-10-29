@@ -1,95 +1,74 @@
 """
-Navbar component - Fixed top navigation bar with logout button.
+Navbar component - Fixed top navigation bar with logout button using hydralit_components.
 """
 
 import streamlit as st
-import streamlit.components.v1 as components
+import hydralit_components as hc
 
 
 def render_navbar():
     """
-    Renders a fixed navigation bar at the top with logout button.
-    The navbar stays visible when scrolling.
+    Renders a fixed navigation bar at the top with logout button using hydralit_components.
+    The navbar stays pinned to the top when scrolling.
+    Returns the selected menu item or logout action.
     """
-    # HTML/CSS/JS for fixed navbar with functional logout button
-    navbar_html = """
-        <style>
-        /* Fixed navbar at the top */
-        .fixed-navbar {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 60px;
-            background: linear-gradient(135deg, #121127 0%, #1e1b4b 100%);
-            border-bottom: 2px solid #a78bfa;
-            display: flex;
-            justify-content: flex-end;
-            align-items: center;
-            padding: 0 2rem;
-            z-index: 9999;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
-        }
-        
-        /* Logout button styling */
-        .logout-btn {
-            background-color: #a78bfa;
-            color: white;
-            border: none;
-            padding: 0.5rem 1.5rem;
-            border-radius: 8px;
-            cursor: pointer;
-            font-weight: 600;
-            transition: all 0.3s;
-            font-size: 1rem;
-            font-family: 'Inter', sans-serif;
-        }
-        
-        .logout-btn:hover {
-            opacity: 0.9;
-            box-shadow: 0 4px 12px rgba(167, 139, 250, 0.3);
-            transform: translateY(-1px);
-        }
-        
-        .logout-btn:active {
-            transform: translateY(0);
-        }
-        </style>
-        
-        <div class="fixed-navbar">
-            <button class="logout-btn" onclick="handleLogout()">🚪 Logout</button>
-        </div>
-        
-        <script>
-        function handleLogout() {
-            // Trigger Streamlit button click by simulating click on hidden button
-            const streamlitButtons = window.parent.document.querySelectorAll('button[kind="secondary"]');
-            const logoutButton = Array.from(streamlitButtons).find(btn => btn.innerText.includes('HIDDEN_LOGOUT'));
-            if (logoutButton) {
-                logoutButton.click();
-            }
-        }
-        </script>
-    """
+    # Theme customization matching styles.py color scheme
+    override_theme = {
+        'txc_inactive': '#d1d5db',      # TextColor.SECONDARY (Light gray for inactive)
+        'menu_background': '#121127',    # Color.PRIMARY_BG (Dark blue-black)
+        'txc_active': '#ffffff',         # TextColor.PRIMARY (White for active)
+        'option_active': '#1e1b4b',      # Color.SECONDARY_BG (Dark indigo for hover)
+        'txc_hover': '#a78bfa'           # Color.ACCENT (Purple for hover text)
+    }
 
-    # Render HTML navbar
-    components.html(navbar_html, height=0)
-
-    # Add padding to main content to avoid navbar overlap
+    # Additional CSS to ensure navbar stays fixed at top
     st.markdown("""
         <style>
-        /* Add padding to content to avoid navbar overlap */
+        /* Force navbar container to be fixed at top */
+        iframe[title="hydralit_components.NAV_BAR.nav_bar"] {
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            right: 0 !important;
+            z-index: 999999 !important;
+            width: 100% !important;
+        }
+
+        /* Add padding to main content to prevent navbar overlap */
         .main .block-container {
             padding-top: 80px !important;
+        }
+
+        /* Ensure the navbar component iframe has proper height */
+        div[data-testid="stVerticalBlock"] > div:has(iframe[title="hydralit_components.NAV_BAR.nav_bar"]) {
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            right: 0 !important;
+            z-index: 999999 !important;
+            width: 100% !important;
         }
         </style>
     """, unsafe_allow_html=True)
 
-    # Hidden Streamlit button for logout functionality
-    if st.button("HIDDEN_LOGOUT", key="hidden_logout_btn", type="secondary"):
+    # Render navbar with hydralit_components (no menu items, just Home and Logout)
+    menu_id = hc.nav_bar(
+        menu_definition=[],  # Empty menu - only Home and Logout buttons
+        override_theme=override_theme,
+        home_name='Home',
+        login_name='Logout',  # This creates the logout button
+        sticky_nav=True,  # Makes navbar sticky
+        sticky_mode='pinned',  # Pinned mode (no jumping)
+        hide_streamlit_markers=False
+    )
+
+    # Handle logout action
+    if menu_id == 'Logout':
         st.session_state['authenticated'] = False
         st.session_state['welcome_shown'] = False
         st.rerun()
+
+    return menu_id
 
 
 def show_welcome_toast(username):
