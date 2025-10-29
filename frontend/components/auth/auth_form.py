@@ -12,10 +12,9 @@ def render_auth_form():
         st.session_state.active_tab = 'Login'
 
     with st.container():
-        st.markdown("<div class='auth-container'>", unsafe_allow_html=True)
-
         # Header
-        st.markdown("<h1 style='text-align: center;'>🏎️ F1 Telemetry Manager</h1>", unsafe_allow_html=True)
+        st.markdown(
+            "<h1 style='text-align: center;'>🏎️ F1 Telemetry Manager</h1>", unsafe_allow_html=True)
         st.markdown("---")
 
         # Custom animated tabs - centered
