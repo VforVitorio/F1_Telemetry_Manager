@@ -14,6 +14,7 @@ import plotly.graph_objects as go
 
 # Project imports
 from app.styles import GLOBAL_CSS
+from components.telemetry.circuit_analysis import render_circuit_analysis_section
 # TODO: Import telemetry service when backend is ready
 # from services.telemetry_service import fetch_available_years, fetch_gps, fetch_sessions, fetch_drivers, fetch_lap_data
 
@@ -208,3 +209,4 @@ def render_dashboard():
     selected_year, selected_gp, selected_session, selected_drivers, color_palette = render_data_selectors()
     render_lap_graph(selected_drivers, color_palette)
     render_control_buttons()
+    render_circuit_analysis_section()
