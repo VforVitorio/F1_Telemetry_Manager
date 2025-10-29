@@ -47,7 +47,7 @@ def render_header():
     """
     Display page header.
     """
-    st.markdown("<h1 style='text-align: center;'>LAP CHART</h1>",
+    st.markdown("<h1 style='text-align: center;'>F1 TELEMETRY MANAGER</h1>",
                 unsafe_allow_html=True)
     st.markdown("---")
 
@@ -123,7 +123,7 @@ def render_lap_graph(selected_drivers, color_palette):
         selected_drivers (list): List of selected driver identifiers
         color_palette (list): List of colors for each driver
     """
-    st.subheader("Laps Graphs")
+    st.markdown("<h2 style='text-align: center;'>LAP CHART</h2>", unsafe_allow_html=True)
 
     # TODO: Fetch real lap data from backend
     # lap_data = fetch_lap_data(selected_year, selected_gp, selected_session, selected_drivers)
