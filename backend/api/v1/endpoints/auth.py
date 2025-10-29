@@ -5,14 +5,17 @@ from supabase import Client
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
+
 class SignUpRequest(BaseModel):
     email: EmailStr
     password: str
     full_name: str = None
 
+
 class SignInRequest(BaseModel):
     email: EmailStr
     password: str
+
 
 @router.post("/signup")
 async def signup(req: SignUpRequest, supabase: Client = Depends(get_supabase_client)):
@@ -22,9 +25,10 @@ async def signup(req: SignUpRequest, supabase: Client = Depends(get_supabase_cli
             "password": req.password,
             "options": {"data": {"full_name": req.full_name}}
         })
-        return {"message": "Usuario creado", "user_id": str(response.user.id)}
+        return {"message": "User created", "user_id": str(response.user.id)}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
 
 @router.post("/signin")
 async def signin(req: SignInRequest, supabase: Client = Depends(get_supabase_client)):
@@ -38,17 +42,20 @@ async def signin(req: SignInRequest, supabase: Client = Depends(get_supabase_cli
             "token_type": "bearer"
         }
     except Exception as e:
-        raise HTTPException(status_code=401, detail="Credenciales inválidas")
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+
 
 @router.get("/me")
 async def get_profile(
     current_user=Depends(get_current_user),
     supabase: Client = Depends(get_supabase_client)
 ):
-    response = supabase.table('profiles').select("*").eq('id', current_user.user.id).execute()
+    response = supabase.table('profiles').select(
+        "*").eq('id', current_user.user.id).execute()
     if not response.data:
-        raise HTTPException(status_code=404, detail="Perfil no encontrado")
+        raise HTTPException(status_code=404, detail="Profile not found")
     return response.data[0]
+
 
 @router.post("/signout")
 async def signout(
@@ -56,4 +63,4 @@ async def signout(
     supabase: Client = Depends(get_supabase_client)
 ):
     supabase.auth.sign_out()
-    return {"message": "Sesión cerrada"}
+    return {"message": "Session closed"}

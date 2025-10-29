@@ -8,6 +8,7 @@
 [![Python](https://img.shields.io/badge/Python-3.10+-green.svg)](https://www.python.org/)
 [![Streamlit](https://img.shields.io/badge/Streamlit-1.31+-red.svg)](https://streamlit.io/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.109+-teal.svg)](https://fastapi.tiangolo.com/)
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/VforVitorio/F1_Telemetry_Manager)
 
 [Features](#-features) •
 [Architecture](#%EF%B8%8F-architecture) •
@@ -200,8 +201,8 @@ cp .env.example .env
 Terminal 1 - Backend:
 
 ```bash
-cd backend
-uvicorn main:app --reload --port 8000
+
+uvicorn backend.main:app --reload --port 8000
 ```
 
 Terminal 2 - Frontend:

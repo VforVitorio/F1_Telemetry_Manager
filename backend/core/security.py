@@ -6,9 +6,11 @@ from . import config
 
 security = HTTPBearer()
 
+
 @lru_cache()
 def get_supabase_client() -> Client:
     return create_client(config.SUPABASE_URL, config.SUPABASE_KEY)
+
 
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
     try:
@@ -18,4 +20,5 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
         return user
     except:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token inválido")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")

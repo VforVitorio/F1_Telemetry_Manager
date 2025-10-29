@@ -13,8 +13,9 @@ app.add_middleware(
     allow_headers=["*"]
 )
 
-# Añade el router de autenticación
+# Add authentication router
 app.include_router(auth.router, prefix="/api/v1")
+
 
 @app.get("/")
 def root():
