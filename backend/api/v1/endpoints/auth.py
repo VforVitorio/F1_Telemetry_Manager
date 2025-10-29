@@ -1,21 +1,9 @@
 from fastapi import APIRouter, HTTPException, status, Depends
-from pydantic import BaseModel, EmailStr
 from backend.core.security import get_supabase_client, get_current_user
 from supabase import Client
+from backend.models.models import SignInRequest, SignUpRequest
 
 router = APIRouter(prefix="/auth", tags=["auth"])
-
-
-class SignUpRequest(BaseModel):
-    email: EmailStr
-    password: str
-    full_name: str = None
-
-
-class SignInRequest(BaseModel):
-    email: EmailStr
-    password: str
-
 
 @router.post("/signup")
 async def signup(req: SignUpRequest, supabase: Client = Depends(get_supabase_client)):
