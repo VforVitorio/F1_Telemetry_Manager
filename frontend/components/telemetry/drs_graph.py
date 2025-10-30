@@ -41,13 +41,12 @@ import plotly.graph_objects as go
 import pandas as pd
 import numpy as np
 from app.styles import Color, TextColor, Font, FontSize
-from components.common.loading import render_loading_spinner
 
 
 def _render_section_title() -> None:
     """Renders the section title"""
     st.markdown(
-        "<h3 style='text-align: center;'>7: DRS</h3>",
+        "<h3 style='text-align: center;'>DRS</h3>",
         unsafe_allow_html=True
     )
 
@@ -77,11 +76,9 @@ def render_drs_graph(telemetry_data, selected_drivers, color_palette):
     # Example: telemetry_data = session.laps.pick_driver(driver).get_telemetry()
     # The telemetry data should include: Distance, DRS columns
     # DRS values from FastF1: 0-7 = closed, 8-14 = open (binarized to 0/1)
-
-    # Show loading spinner if no data is available
+    # Use mock data if no real data is available
     if telemetry_data is None or telemetry_data.empty:
-        render_loading_spinner()
-        return
+        telemetry_data = _generate_mock_drs_data(selected_drivers)
 
     processed_data = _process_drs_data(telemetry_data)
     fig = _create_drs_figure(processed_data, selected_drivers, color_palette)
@@ -133,3 +130,41 @@ def _create_drs_figure(telemetry_data, selected_drivers, color_palette):
     )
 
     return fig
+
+
+def _generate_mock_drs_data(selected_drivers):
+    """
+    Generates mock DRS data for visualization testing.
+    Simulates realistic F1 DRS patterns with specific DRS zones on straights.
+    Returns raw FastF1-style values (0-14) that will be processed by _process_drs_data.
+    """
+    # Simulate a ~5km circuit with 100 data points
+    distance = np.linspace(0, 5000, 100)
+    mock_data = []
+
+    for driver in selected_drivers:
+        # Initialize DRS as closed (values 0-7)
+        drs = np.full(len(distance), 3)  # Use middle value for closed (3)
+
+        # Add DRS zones on typical straight sections
+        # DRS zones are typically on main straights
+        drs_zones = [
+            (1000, 1800),  # First DRS zone
+            (3200, 4000),  # Second DRS zone
+        ]
+
+        for zone_start, zone_end in drs_zones:
+            # DRS is open (values 8-14) in these zones
+            zone_mask = (distance >= zone_start) & (distance <= zone_end)
+            drs[zone_mask] = 12  # Use middle value for open (12)
+
+        # Create DataFrame for this driver
+        driver_df = pd.DataFrame({
+            'driver': driver,
+            'distance': distance,
+            'drs': drs
+        })
+
+        mock_data.append(driver_df)
+
+    return pd.concat(mock_data, ignore_index=True)
