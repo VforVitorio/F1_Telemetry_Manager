@@ -66,7 +66,7 @@ def render_delta_graph(telemetry_data, selected_drivers, color_palette):
 def _render_section_title() -> None:
     """Renders the section title"""
     st.markdown(
-        "<h3 style='text-align: center;'>DELTA(s)</h3>",
+        "<h3 style='text-align: center;'>DELTA (s)</h3>",
         unsafe_allow_html=True
     )
 
