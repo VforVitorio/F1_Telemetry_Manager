@@ -29,4 +29,8 @@ Private functions:
     - _render_section_title() -> None
     - _process_drs_data(data) -> pd.DataFrame
     - _create_drs_figure(data, drivers, colors) -> go.Figure
+
+TODO: Backend integration
+    - FastF1 method: session.laps.pick_driver(driver).get_telemetry()
+    - Required column: 'DRS' (0-7=closed, 8-14=open, binarize to 0/1)
 """

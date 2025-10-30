@@ -13,7 +13,7 @@ import streamlit as st
 import plotly.graph_objects as go
 
 # Project imports
-from app.styles import GLOBAL_CSS, Color, TextColor
+from app.styles import Color, TextColor
 from components.telemetry.circuit_analysis import render_circuit_analysis_section
 from components.telemetry.speed_graph import render_speed_graph
 from components.telemetry.delta_graph import render_delta_graph

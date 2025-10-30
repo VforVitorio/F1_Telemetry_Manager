@@ -32,7 +32,7 @@ import streamlit as st
 import plotly.graph_objects as go
 import pandas as pd
 import numpy as np
-from app.styles import Color, TextColor, Font, FontSize
+from app.styles import Color, TextColor
 from components.common.loading import render_loading_spinner
 
 # TODO: When integrating backend, use fastf1.utils.delta_time() for accurate delta calculation
@@ -49,6 +49,10 @@ def render_delta_graph(telemetry_data, selected_drivers, color_palette):
 
     _render_section_title()
 
+    # TODO: Replace with FastF1 backend call
+    # Example: telemetry_data = session.laps.pick_driver(driver).get_telemetry()
+    # The telemetry data should include: Distance, Time columns
+    # For accurate delta calculation, use: fastf1.utils.delta_time(reference_lap, compare_lap)
     # Show loading spinner if no data is available
     if telemetry_data is None or telemetry_data.empty:
         render_loading_spinner()

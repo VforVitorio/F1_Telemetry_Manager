@@ -25,4 +25,8 @@ Public function:
 Private functions:
     - _render_section_title() -> None
     - _create_rpm_figure(data, drivers, colors) -> go.Figure
+
+TODO: Backend integration
+    - FastF1 method: session.laps.pick_driver(driver).get_telemetry()
+    - Required column: 'RPM' (revolutions per minute)
 """
