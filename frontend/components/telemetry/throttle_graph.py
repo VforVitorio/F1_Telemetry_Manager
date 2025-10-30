@@ -60,6 +60,11 @@ def render_throttle_graph(telemetry_data, selected_drivers, color_palette):
 
     _render_section_title()
 
+    # TODO: Replace with FastF1 backend call
+    # Example: telemetry_data = session.laps.pick_driver(driver).get_telemetry()
+    # The telemetry data should include: Distance, Throttle columns
+    # Throttle is a percentage value (0-100%)
+
     # Show loading spinner if no data is available
     if telemetry_data is None or telemetry_data.empty:
         render_loading_spinner()
@@ -78,16 +83,20 @@ def _create_throttle_figure(telemetry_data, selected_drivers, color_palette):
 
     # Add line trace with filled area for each driver
     for idx, driver in enumerate(selected_drivers):
+        # Filter telemetry data for the current driver
         driver_data = telemetry_data[telemetry_data["driver"] == driver]
 
         if not driver_data.empty:
+            # Create filled area chart showing throttle application
+            # Fill from 0 to throttle value to visualize full/partial throttle zones
             fig.add_trace(
                 go.Scatter(
-                    x=driver_data["distance"],
-                    y=driver_data["throttle"],
+                    x=driver_data["distance"],  # Distance along the circuit (from FastF1)
+                    y=driver_data["throttle"],   # Throttle percentage 0-100% (from FastF1)
                     name=driver,
                     line=dict(color=color_palette[idx], width=2),
-                    fill="tozeroy",
+                    fill="tozeroy",  # Fill area from zero to the throttle line
+                    # Convert hex color to rgba with transparency for filled area
                     fillcolor=f"rgba({int(color_palette[idx][1:3], 16)}, {int(color_palette[idx][3:5], 16)}, {int(color_palette[idx][5:7], 16)}, 0.3)",
                     mode='lines'
                 )
@@ -103,5 +112,5 @@ def _create_throttle_figure(telemetry_data, selected_drivers, color_palette):
         plot_bgcolor=Color.PRIMARY_BG,
         paper_bgcolor=Color.PRIMARY_BG,
         font=dict(color=TextColor.PRIMARY),
-        hovermode="x unified"
+        hovermode="x unified"  # Show all drivers' values when hovering
     )
