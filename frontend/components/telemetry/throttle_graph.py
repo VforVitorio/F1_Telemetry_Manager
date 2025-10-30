@@ -44,7 +44,7 @@ from components.common.loading import render_loading_spinner
 def _render_section_title() -> None:
     """ Renders the section title"""
     st.markdown(
-        "<h3 style='text-align: center;'>3: THROTTLE(%)</h3>",
+        "<h3 style='text-align: center;'> THROTTLE(%)</h3>",
         unsafe_allow_html=True
     )
 
@@ -91,8 +91,10 @@ def _create_throttle_figure(telemetry_data, selected_drivers, color_palette):
             # Fill from 0 to throttle value to visualize full/partial throttle zones
             fig.add_trace(
                 go.Scatter(
-                    x=driver_data["distance"],  # Distance along the circuit (from FastF1)
-                    y=driver_data["throttle"],   # Throttle percentage 0-100% (from FastF1)
+                    # Distance along the circuit (from FastF1)
+                    x=driver_data["distance"],
+                    # Throttle percentage 0-100% (from FastF1)
+                    y=driver_data["throttle"],
                     name=driver,
                     line=dict(color=color_palette[idx], width=2),
                     fill="tozeroy",  # Fill area from zero to the throttle line
