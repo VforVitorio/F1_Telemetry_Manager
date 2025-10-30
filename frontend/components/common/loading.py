@@ -26,12 +26,15 @@ def render_loading_spinner() -> None:
     st.markdown(
         """
         <div class="spinner-container">
-            <div class="scale-loader">
-                <div></div>
-                <div></div>
-                <div></div>
-                <div></div>
-                <div></div>
+            <div class="spinner-content">
+                <p class="spinner-text">Waiting for telemetry data...</p>
+                <div class="scale-loader">
+                    <div></div>
+                    <div></div>
+                    <div></div>
+                    <div></div>
+                    <div></div>
+                </div>
             </div>
         </div>
         <style>
@@ -47,6 +50,20 @@ def render_loading_spinner() -> None:
             background-color: #181633;
             margin: 20px 0;
             box-shadow: 0 4px 12px rgba(167, 139, 250, 0.2);
+        }
+        .spinner-content {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+        }
+        .spinner-text {
+            color: #d1d5db;
+            font-family: 'Inter', sans-serif;
+            font-size: 18px;
+            font-weight: 400;
+            margin: 0;
+            letter-spacing: 0.5px;
         }
         .scale-loader {
             display: flex;
