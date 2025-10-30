@@ -109,7 +109,7 @@ def render_data_selectors():
                           "Driver 55", "Driver 63", "Driver 16"]
 
         selected_drivers = st.multiselect(
-            "PILOTOS",
+            "DRIVERS",
             options=driver_options,
             default=["Driver 44"],
             max_selections=3
@@ -126,7 +126,8 @@ def render_lap_graph(selected_drivers, color_palette):
         selected_drivers (list): List of selected driver identifiers
         color_palette (list): List of colors for each driver
     """
-    st.markdown("<h2 style='text-align: center;'>LAP CHART</h2>", unsafe_allow_html=True)
+    st.markdown("<h2 style='text-align: center;'>LAP CHART</h2>",
+                unsafe_allow_html=True)
 
     # TODO: Fetch real lap data from backend
     # lap_data = fetch_lap_data(selected_year, selected_gp, selected_session, selected_drivers)
