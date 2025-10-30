@@ -36,13 +36,12 @@ import plotly.graph_objects as go
 import pandas as pd
 import numpy as np
 from app.styles import Color, TextColor
-from components.common.loading import render_loading_spinner
 
 
 def _render_section_title() -> None:
     """Renders the section title"""
     st.markdown(
-        "<h3 style='text-align: center;'>6: GEAR</h3>",
+        "<h3 style='text-align: center;'>GEAR</h3>",
         unsafe_allow_html=True
     )
 
@@ -60,11 +59,9 @@ def render_gear_graph(telemetry_data, selected_drivers, color_palette):
     # Example: telemetry_data = session.laps.pick_driver(driver).get_telemetry()
     # The telemetry data should include: Distance, nGear columns
     # nGear is the gear number: 1-8 (discrete values)
-
-    # Show loading spinner if no data is available
+    # Use mock data if no real data is available
     if telemetry_data is None or telemetry_data.empty:
-        render_loading_spinner()
-        return
+        telemetry_data = _generate_mock_gear_data(selected_drivers)
 
     fig = _create_gear_figure(telemetry_data, selected_drivers, color_palette)
     st.plotly_chart(fig, use_container_width=True)
@@ -112,3 +109,68 @@ def _create_gear_figure(telemetry_data, selected_drivers, color_palette):
     )
 
     return fig
+
+
+def _generate_mock_gear_data(selected_drivers):
+    """
+    Generates mock gear data for visualization testing.
+    Simulates realistic F1 gear selection patterns across a circuit.
+    """
+    # Simulate a ~5km circuit with 100 data points
+    distance = np.linspace(0, 5000, 100)
+    mock_data = []
+
+    for driver in selected_drivers:
+        # Create a realistic gear pattern based on speed profile
+        # Low gears in corners, high gears on straights
+        gear = np.zeros(len(distance))
+
+        # Define circuit sections with typical gear usage
+        # Slow corners: gears 2-4, medium corners: gears 4-6, straights: gears 7-8
+        for i, dist in enumerate(distance):
+            # Main straight (start/finish)
+            if dist < 600:
+                gear[i] = 8
+            # Slow corner 1
+            elif dist < 900:
+                gear[i] = 3
+            # Medium corner complex
+            elif dist < 1300:
+                gear[i] = 5
+            # Straight
+            elif dist < 1900:
+                gear[i] = 7
+            # Slow corner 2
+            elif dist < 2200:
+                gear[i] = 2
+            # Medium section
+            elif dist < 2800:
+                gear[i] = 6
+            # Slow corner 3
+            elif dist < 3100:
+                gear[i] = 3
+            # Long straight
+            elif dist < 3900:
+                gear[i] = 8
+            # Medium corner
+            elif dist < 4400:
+                gear[i] = 5
+            # Final corners
+            else:
+                gear[i] = 4
+
+        # Add small variations between drivers
+        gear = gear + np.random.choice([-1, 0, 0, 1], size=len(gear))
+        # Ensure gears stay in valid range (1-8)
+        gear = np.clip(gear, 1, 8)
+
+        # Create DataFrame for this driver
+        driver_df = pd.DataFrame({
+            'driver': driver,
+            'distance': distance,
+            'gear': gear.astype(int)
+        })
+
+        mock_data.append(driver_df)
+
+    return pd.concat(mock_data, ignore_index=True)
