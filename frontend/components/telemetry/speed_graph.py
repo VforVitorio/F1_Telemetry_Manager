@@ -54,7 +54,7 @@ def render_speed_graph(telemety_data, selected_drivers, color_palette):
 def _render_section_title() -> None:
     """Renders the section title"""
     st.markdown(
-        "<h3 style='text-align: center;'>SPEED</h3>",
+        "<h3 style='text-align: center;'>SPEED (km/h) </h3>",
         unsafe_allow_html=True
     )
 

@@ -33,6 +33,7 @@ import plotly.graph_objects as go
 import pandas as pd
 import numpy as np
 from app.styles import Color, TextColor, Font, FontSize
+from components.common.loading import render_loading_spinner
 
 # TODO: When integrating backend, use fastf1.utils.delta_time() for accurate delta calculation
 # from fastf1 import utils
@@ -48,9 +49,10 @@ def render_delta_graph(telemetry_data, selected_drivers, color_palette):
 
     _render_section_title()
 
-    # Use mock data if no real data is available
+    # Show loading spinner if no data is available
     if telemetry_data is None or telemetry_data.empty:
-        telemetry_data = _generate_mock_delta_data(selected_drivers)
+        render_loading_spinner()
+        return
 
     delta_data = _calculate_deltas(telemetry_data, selected_drivers)
     fig = _create_delta_figure(delta_data, selected_drivers, color_palette)
