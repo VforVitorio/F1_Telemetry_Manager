@@ -37,13 +37,12 @@ import plotly.graph_objects as go
 import pandas as pd
 import numpy as np
 from app.styles import Color, TextColor
-from components.common.loading import render_loading_spinner
 
 
 def _render_section_title() -> None:
     """Renders the section title"""
     st.markdown(
-        "<h3 style='text-align: center;'>5: RPM</h3>",
+        "<h3 style='text-align: center;'>RPM</h3>",
         unsafe_allow_html=True
     )
 
@@ -62,11 +61,9 @@ def render_rmp_graph(telemetry_data, selected_drivers, color_palette):
     # Example: telemetry_data = session.laps.pick_driver(driver).get_telemetry()
     # The telemetry data should include: Distance, RPM columns
     # RPM is engine revolutions per minute (typically 10,000-15,000 for F1)
-
-    # Show loading spinner if no data is available
+    # Use mock data if no real data is available
     if telemetry_data is None or telemetry_data.empty:
-        render_loading_spinner()
-        return
+        telemetry_data = _generate_mock_rpm_data(selected_drivers)
 
     fig = _create_rpm_figure(telemetry_data, selected_drivers, color_palette)
     st.plotly_chart(fig, use_container_width=True)
@@ -114,3 +111,49 @@ def _create_rpm_figure(telemetry_data, selected_drivers, color_palette):
     )
 
     return fig
+
+
+def _generate_mock_rpm_data(selected_drivers):
+    """
+    Generates mock RPM data for visualization testing.
+    Simulates realistic F1 engine RPM patterns with gear changes.
+    Sharp drops in RPM indicate gear shifts.
+    """
+    # Simulate a ~5km circuit with 100 data points
+    distance = np.linspace(0, 5000, 100)
+    mock_data = []
+
+    for driver in selected_drivers:
+        # Base RPM pattern following speed/gear changes
+        # F1 engines typically run between 10,000-15,000 RPM
+        rpm = 12000 + 2000 * np.sin(distance / 400) + \
+            np.random.normal(0, 200, len(distance))
+
+        # Add gear shift drops (sharp RPM decreases)
+        # Gear shifts happen at various points around the circuit
+        shift_points = [600, 900, 1300, 1900, 2200, 2800, 3100, 3900, 4400]
+
+        for shift in shift_points:
+            # RPM drops sharply during upshift, then climbs back up
+            shift_effect = 2000 * np.exp(-((distance - shift) ** 2) / 5000)
+            rpm -= shift_effect
+
+        # Add corner effects (lower RPM in corners)
+        corner_positions = [800, 1500, 2500, 3500, 4200]
+        for corner in corner_positions:
+            corner_effect = 1500 * np.exp(-((distance - corner) ** 2) / 30000)
+            rpm -= corner_effect
+
+        # Ensure realistic RPM range (10,000-15,000 RPM for modern F1)
+        rpm = np.clip(rpm, 10000, 15000)
+
+        # Create DataFrame for this driver
+        driver_df = pd.DataFrame({
+            'driver': driver,
+            'distance': distance,
+            'rpm': rpm
+        })
+
+        mock_data.append(driver_df)
+
+    return pd.concat(mock_data, ignore_index=True)
