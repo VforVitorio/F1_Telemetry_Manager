@@ -17,6 +17,7 @@ from app.styles import GLOBAL_CSS, Color, TextColor
 from components.telemetry.circuit_analysis import render_circuit_analysis_section
 from components.telemetry.speed_graph import render_speed_graph
 from components.telemetry.delta_graph import render_delta_graph
+from components.common.chart_styles import apply_telemetry_chart_styles
 # TODO: Import telemetry service when backend is ready
 # from services.telemetry_service import fetch_available_years, fetch_gps, fetch_sessions, fetch_drivers, fetch_lap_data
 
@@ -214,6 +215,10 @@ def render_dashboard():
     selected_year, selected_gp, selected_session, selected_drivers, color_palette = render_data_selectors()
     render_lap_graph(selected_drivers, color_palette)
     render_control_buttons()
+
+    # Apply purple border styling to all subsequent Plotly charts
+    # (This won't affect the LAP CHART above, only charts rendered after this point)
+    st.markdown(apply_telemetry_chart_styles(), unsafe_allow_html=True)
 
     # Circuit Analysis Section
     render_circuit_analysis_section()
