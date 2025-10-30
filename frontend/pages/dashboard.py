@@ -13,8 +13,10 @@ import streamlit as st
 import plotly.graph_objects as go
 
 # Project imports
-from app.styles import GLOBAL_CSS
+from app.styles import GLOBAL_CSS, Color, TextColor
 from components.telemetry.circuit_analysis import render_circuit_analysis_section
+from components.telemetry.speed_graph import render_speed_graph
+from components.telemetry.delta_graph import render_delta_graph
 # TODO: Import telemetry service when backend is ready
 # from services.telemetry_service import fetch_available_years, fetch_gps, fetch_sessions, fetch_drivers, fetch_lap_data
 
@@ -161,6 +163,9 @@ def render_lap_graph(selected_drivers, color_palette):
         template="plotly_dark",
         height=400,
         margin=dict(l=40, r=40, t=40, b=40),
+        plot_bgcolor=Color.PRIMARY_BG,
+        paper_bgcolor=Color.PRIMARY_BG,
+        font=dict(color=TextColor.PRIMARY),
         showlegend=True
     )
 
@@ -209,4 +214,14 @@ def render_dashboard():
     selected_year, selected_gp, selected_session, selected_drivers, color_palette = render_data_selectors()
     render_lap_graph(selected_drivers, color_palette)
     render_control_buttons()
+
+    # Circuit Analysis Section
     render_circuit_analysis_section()
+
+    # TODO: Fetch telemetry data from backend
+    # telemetry_data = fetch_telemetry_data(selected_year, selected_gp, selected_session, selected_drivers)
+    telemetry_data = None  # Placeholder until backend is ready
+
+    # Other Graphs Section (stacked vertically)
+    render_speed_graph(telemetry_data, selected_drivers, color_palette)
+    render_delta_graph(telemetry_data, selected_drivers, color_palette)
