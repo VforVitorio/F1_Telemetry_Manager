@@ -38,13 +38,12 @@ import plotly.graph_objects as go
 import pandas as pd
 import numpy as np
 from app.styles import Color, TextColor
-from components.common.loading import render_loading_spinner
 
 
 def _render_section_title() -> None:
     """ Renders the section title"""
     st.markdown(
-        "<h3 style='text-align: center;'> THROTTLE(%)</h3>",
+        "<h3 style='text-align: center;'> THROTTLE (%)</h3>",
         unsafe_allow_html=True
     )
 
@@ -64,11 +63,10 @@ def render_throttle_graph(telemetry_data, selected_drivers, color_palette):
     # Example: telemetry_data = session.laps.pick_driver(driver).get_telemetry()
     # The telemetry data should include: Distance, Throttle columns
     # Throttle is a percentage value (0-100%)
-
-    # Show loading spinner if no data is available
+    # Use mock data if no real data is available
     if telemetry_data is None or telemetry_data.empty:
-        render_loading_spinner()
-        return
+        telemetry_data = _generate_mock_throttle_data(selected_drivers)
+
     fig = _create_throttle_figure(
         telemetry_data, selected_drivers, color_palette)
     st.plotly_chart(fig, use_container_width=True)
@@ -116,3 +114,40 @@ def _create_throttle_figure(telemetry_data, selected_drivers, color_palette):
         font=dict(color=TextColor.PRIMARY),
         hovermode="x unified"  # Show all drivers' values when hovering
     )
+
+    return fig
+
+
+def _generate_mock_throttle_data(selected_drivers):
+    """
+    Generates mock throttle data for visualization testing.
+    Simulates realistic F1 throttle patterns with full throttle zones and lifting zones.
+    """
+    # Simulate a ~5km circuit with 100 data points
+    distance = np.linspace(0, 5000, 100)
+    mock_data = []
+
+    for driver in selected_drivers:
+        # Base throttle pattern: full throttle on straights, lift for corners
+        # Create a realistic throttle profile
+        throttle = 70 + 30 * np.sin(distance / 400) + \
+            np.random.normal(0, 3, len(distance))
+
+        # Add corner zones (throttle lifts)
+        for corner in [800, 1500, 2500, 3500, 4200]:
+            corner_effect = 80 * np.exp(-((distance - corner) ** 2) / 40000)
+            throttle -= corner_effect
+
+        # Ensure realistic throttle range (0-100%)
+        throttle = np.clip(throttle, 0, 100)
+
+        # Create DataFrame for this driver
+        driver_df = pd.DataFrame({
+            'driver': driver,
+            'distance': distance,
+            'throttle': throttle
+        })
+
+        mock_data.append(driver_df)
+
+    return pd.concat(mock_data, ignore_index=True)
