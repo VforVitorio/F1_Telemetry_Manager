@@ -53,33 +53,14 @@ def render_delta_graph(telemetry_data, selected_drivers, color_palette):
         telemetry_data = _generate_mock_delta_data(selected_drivers)
 
     delta_data = _calculate_deltas(telemetry_data, selected_drivers)
-
-    # Wrap the chart in a styled container
-    st.markdown(
-        """
-        <div style="
-            border: 2px solid #a78bfa;
-            border-radius: 12px;
-            padding: 20px;
-            background-color: #181633;
-            margin: 20px 0;
-            box-shadow: 0 4px 12px rgba(167, 139, 250, 0.2);
-        ">
-        """,
-        unsafe_allow_html=True
-    )
-
     fig = _create_delta_figure(delta_data, selected_drivers, color_palette)
     st.plotly_chart(fig, use_container_width=True)
-
-    # Close the styled container
-    st.markdown("</div>", unsafe_allow_html=True)
 
 
 def _render_section_title() -> None:
     """Renders the section title"""
     st.markdown(
-        "<h3 style='text-align: center;'>2: DELTA(s)</h3>",
+        "<h3 style='text-align: center;'>DELTA(s)</h3>",
         unsafe_allow_html=True
     )
 
@@ -175,13 +156,16 @@ def _generate_mock_delta_data(selected_drivers):
     for idx, driver in enumerate(selected_drivers):
         # Base time progression (cumulative time)
         # Slower drivers have slightly higher time values
-        base_lap_time = 90.0 + (idx * 0.3)  # Driver 1: 90s, Driver 2: 90.3s, Driver 3: 90.6s
+        # Driver 1: 90s, Driver 2: 90.3s, Driver 3: 90.6s
+        base_lap_time = 90.0 + (idx * 0.3)
 
         # Linear time progression with some variation
         time = np.linspace(0, base_lap_time, len(distance))
 
         # Add realistic time variations (some drivers faster in some sectors)
-        time_variation = 0.1 * np.sin(distance / 1000 + idx) + np.random.normal(0, 0.02, len(distance))
+        time_variation = 0.1 * \
+            np.sin(distance / 1000 + idx) + \
+            np.random.normal(0, 0.02, len(distance))
         time += np.cumsum(time_variation)
 
         # Ensure monotonic increase (time only goes forward)

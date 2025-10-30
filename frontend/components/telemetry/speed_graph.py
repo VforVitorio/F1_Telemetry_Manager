@@ -29,6 +29,8 @@ Private functions:
 
 import streamlit as st
 import plotly.graph_objects as go
+import pandas as pd
+import numpy as np
 from app.styles import Color, TextColor, Font, FontSize
 
 
@@ -36,7 +38,15 @@ def render_speed_graph(telemety_data, selected_drivers, color_palette):
     """
     Renders the Speed graph for selected drivers
     """
+    # Add separator before the section
+    st.markdown("---")
+
     _render_section_title()
+
+    # Use mock data if no real data is available
+    if telemety_data is None or telemety_data.empty:
+        telemety_data = _generate_mock_speed_data(selected_drivers)
+
     fig = _create_speed_figure(telemety_data, selected_drivers, color_palette)
     st.plotly_chart(fig, use_container_width=True)
 
@@ -44,7 +54,7 @@ def render_speed_graph(telemety_data, selected_drivers, color_palette):
 def _render_section_title() -> None:
     """Renders the section title"""
     st.markdown(
-        "<h3 style='text-align: center;'>1: SPEED</h3>",
+        "<h3 style='text-align: center;'>SPEED</h3>",
         unsafe_allow_html=True
     )
 
@@ -61,7 +71,7 @@ def _create_speed_figure(telemetry_data, selected_drivers, color_palette):
             x=driver_data['distance'],
             y=driver_data['speed'],
             name=driver,
-            line=dict(color=color_palette[idx], width=2),
+            line=dict(color=color_palette[idx % len(color_palette)], width=2),
             mode='lines'
         ))
 
@@ -78,3 +88,38 @@ def _create_speed_figure(telemetry_data, selected_drivers, color_palette):
     )
 
     return fig
+
+
+def _generate_mock_speed_data(selected_drivers):
+    """
+    Generates mock speed data for visualization testing.
+    Simulates realistic F1 speed patterns with straights and corners.
+    """
+    # Simulate a ~5km circuit with 100 data points
+    distance = np.linspace(0, 5000, 100)
+    mock_data = []
+
+    for driver in selected_drivers:
+        # Base speed pattern: fast straights + slow corners
+        # Create a realistic speed profile with multiple straights and corners
+        speed = 200 + 80 * np.sin(distance / 500) + \
+            np.random.normal(0, 5, len(distance))
+
+        # Add corner zones (speed drops)
+        for corner in [800, 1500, 2500, 3500, 4200]:
+            corner_effect = 60 * np.exp(-((distance - corner) ** 2) / 50000)
+            speed -= corner_effect
+
+        # Ensure realistic speed range (80-330 km/h)
+        speed = np.clip(speed, 80, 330)
+
+        # Create DataFrame for this driver
+        driver_df = pd.DataFrame({
+            'driver': driver,
+            'distance': distance,
+            'speed': speed
+        })
+
+        mock_data.append(driver_df)
+
+    return pd.concat(mock_data, ignore_index=True)
