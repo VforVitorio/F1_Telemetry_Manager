@@ -19,6 +19,9 @@ from components.telemetry.speed_graph import render_speed_graph
 from components.telemetry.delta_graph import render_delta_graph
 from components.telemetry.throttle_graph import render_throttle_graph
 from components.telemetry.brake_graph import render_brake_graph
+from components.telemetry.rpm_graph import render_rmp_graph
+from components.telemetry.gear_graph import render_gear_graph
+from components.telemetry.drs_graph import render_drs_graph
 from components.common.chart_styles import apply_telemetry_chart_styles
 # TODO: Import telemetry service when backend is ready
 # from services.telemetry_service import fetch_available_years, fetch_gps, fetch_sessions, fetch_drivers, fetch_lap_data
@@ -235,3 +238,6 @@ def render_dashboard():
     render_delta_graph(telemetry_data, selected_drivers, color_palette)
     render_throttle_graph(telemetry_data, selected_drivers, color_palette)
     render_brake_graph(telemetry_data, selected_drivers, color_palette)
+    render_rmp_graph(telemetry_data, selected_drivers, color_palette)
+    render_gear_graph(telemetry_data, selected_drivers, color_palette)
+    render_drs_graph(telemetry_data, selected_drivers, color_palette)
