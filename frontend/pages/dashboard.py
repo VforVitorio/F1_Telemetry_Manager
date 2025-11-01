@@ -23,7 +23,8 @@ from components.telemetry.rpm_graph import render_rmp_graph
 from components.telemetry.gear_graph import render_gear_graph
 from components.telemetry.drs_graph import render_drs_graph
 from components.common.chart_styles import apply_telemetry_chart_styles
-# TODO: Import telemetry service when backend is ready
+from services.telemetry_service import fetch_telemetry_data
+# TODO: Import additional services when backend is ready
 # from services.telemetry_service import fetch_available_years, fetch_gps, fetch_sessions, fetch_drivers, fetch_lap_data
 
 
@@ -229,9 +230,8 @@ def render_dashboard():
     # Circuit Analysis Section
     render_circuit_analysis_section()
 
-    # TODO: Fetch telemetry data from backend
-    # telemetry_data = fetch_telemetry_data(selected_year, selected_gp, selected_session, selected_drivers)
-    telemetry_data = None  # Placeholder until backend is ready
+    # Fetch telemetry data from backend
+    telemetry_data = fetch_telemetry_data(selected_year, selected_gp, selected_session, selected_drivers)
 
     # Other Graphs Section (stacked vertically)
     render_speed_graph(telemetry_data, selected_drivers, color_palette)
