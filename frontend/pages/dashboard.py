@@ -226,12 +226,12 @@ def render_dashboard():
     # (This won't affect the LAP CHART above, only charts rendered after this point)
     st.markdown(apply_telemetry_chart_styles(), unsafe_allow_html=True)
 
-    # Circuit Domination Section
-    render_circuit_domination_section()
-
     # TODO: Fetch telemetry data from backend
     # telemetry_data = fetch_telemetry_data(selected_year, selected_gp, selected_session, selected_drivers)
     telemetry_data = None  # Placeholder until backend is ready
+
+    # Circuit Domination Section
+    render_circuit_domination_section(telemetry_data, selected_drivers, color_palette)
 
     # Other Graphs Section (stacked vertically)
     render_speed_graph(telemetry_data, selected_drivers, color_palette)
