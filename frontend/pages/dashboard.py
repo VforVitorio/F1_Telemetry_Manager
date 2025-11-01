@@ -13,7 +13,16 @@ import streamlit as st
 import plotly.graph_objects as go
 
 # Project imports
-from app.styles import GLOBAL_CSS
+from app.styles import Color, TextColor
+from components.telemetry.circuit_analysis import render_circuit_analysis_section
+from components.telemetry.speed_graph import render_speed_graph
+from components.telemetry.delta_graph import render_delta_graph
+from components.telemetry.throttle_graph import render_throttle_graph
+from components.telemetry.brake_graph import render_brake_graph
+from components.telemetry.rpm_graph import render_rmp_graph
+from components.telemetry.gear_graph import render_gear_graph
+from components.telemetry.drs_graph import render_drs_graph
+from components.common.chart_styles import apply_telemetry_chart_styles
 # TODO: Import telemetry service when backend is ready
 # from services.telemetry_service import fetch_available_years, fetch_gps, fetch_sessions, fetch_drivers, fetch_lap_data
 
@@ -46,7 +55,7 @@ def render_header():
     """
     Display page header.
     """
-    st.markdown("<h1 style='text-align: center;'>LAP CHART</h1>",
+    st.markdown("<h1 style='text-align: center;'>F1 TELEMETRY MANAGER</h1>",
                 unsafe_allow_html=True)
     st.markdown("---")
 
@@ -105,7 +114,7 @@ def render_data_selectors():
                           "Driver 55", "Driver 63", "Driver 16"]
 
         selected_drivers = st.multiselect(
-            "PILOTOS",
+            "DRIVERS",
             options=driver_options,
             default=["Driver 44"],
             max_selections=3
@@ -122,7 +131,8 @@ def render_lap_graph(selected_drivers, color_palette):
         selected_drivers (list): List of selected driver identifiers
         color_palette (list): List of colors for each driver
     """
-    st.subheader("Laps Graphs")
+    st.markdown("<h2 style='text-align: center;'>LAP CHART</h2>",
+                unsafe_allow_html=True)
 
     # TODO: Fetch real lap data from backend
     # lap_data = fetch_lap_data(selected_year, selected_gp, selected_session, selected_drivers)
@@ -160,6 +170,9 @@ def render_lap_graph(selected_drivers, color_palette):
         template="plotly_dark",
         height=400,
         margin=dict(l=40, r=40, t=40, b=40),
+        plot_bgcolor=Color.PRIMARY_BG,
+        paper_bgcolor=Color.PRIMARY_BG,
+        font=dict(color=TextColor.PRIMARY),
         showlegend=True
     )
 
@@ -208,3 +221,23 @@ def render_dashboard():
     selected_year, selected_gp, selected_session, selected_drivers, color_palette = render_data_selectors()
     render_lap_graph(selected_drivers, color_palette)
     render_control_buttons()
+
+    # Apply purple border styling to all subsequent Plotly charts
+    # (This won't affect the LAP CHART above, only charts rendered after this point)
+    st.markdown(apply_telemetry_chart_styles(), unsafe_allow_html=True)
+
+    # Circuit Analysis Section
+    render_circuit_analysis_section()
+
+    # TODO: Fetch telemetry data from backend
+    # telemetry_data = fetch_telemetry_data(selected_year, selected_gp, selected_session, selected_drivers)
+    telemetry_data = None  # Placeholder until backend is ready
+
+    # Other Graphs Section (stacked vertically)
+    render_speed_graph(telemetry_data, selected_drivers, color_palette)
+    render_delta_graph(telemetry_data, selected_drivers, color_palette)
+    render_throttle_graph(telemetry_data, selected_drivers, color_palette)
+    render_brake_graph(telemetry_data, selected_drivers, color_palette)
+    render_rmp_graph(telemetry_data, selected_drivers, color_palette)
+    render_gear_graph(telemetry_data, selected_drivers, color_palette)
+    render_drs_graph(telemetry_data, selected_drivers, color_palette)
