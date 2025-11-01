@@ -14,7 +14,7 @@ import plotly.graph_objects as go
 
 # Project imports
 from app.styles import Color, TextColor
-from components.telemetry.circuit_analysis import render_circuit_analysis_section
+from components.telemetry.circuit_domination import render_circuit_domination_section
 from components.telemetry.speed_graph import render_speed_graph
 from components.telemetry.delta_graph import render_delta_graph
 from components.telemetry.throttle_graph import render_throttle_graph
@@ -226,8 +226,8 @@ def render_dashboard():
     # (This won't affect the LAP CHART above, only charts rendered after this point)
     st.markdown(apply_telemetry_chart_styles(), unsafe_allow_html=True)
 
-    # Circuit Analysis Section
-    render_circuit_analysis_section()
+    # Circuit Domination Section
+    render_circuit_domination_section()
 
     # TODO: Fetch telemetry data from backend
     # telemetry_data = fetch_telemetry_data(selected_year, selected_gp, selected_session, selected_drivers)
