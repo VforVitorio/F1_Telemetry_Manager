@@ -39,7 +39,11 @@ async def get_circuit_domination(
     {
         "x": [100.5, 101.2, ...],
         "y": [50.3, 51.1, ...],
-        "colors": ["#A259F7", "#00B4D8", ...]
+        "colors": ["#A259F7", "#00B4D8", ...],
+        "drivers": [
+            {"driver": "VER", "color": "#A259F7"},
+            {"driver": "NOR", "color": "#00B4D8"}
+        ]
     }
     ```
 
