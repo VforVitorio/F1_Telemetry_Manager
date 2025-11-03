@@ -209,4 +209,7 @@ __marimo__/
 # Project-specific documentation
 docs/CIRCUIT_ANALYSIS_IMPLEMENTATION_PLAN.md
 
+# FastF1 cache directory
+cache/
+
 
