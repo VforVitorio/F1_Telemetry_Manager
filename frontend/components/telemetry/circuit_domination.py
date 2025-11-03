@@ -115,7 +115,8 @@ def _create_circuit_figure(circuit_data: dict) -> go.Figure:
     Creates the Plotly figure for circuit visualization.
 
     Args:
-        circuit_data: Dictionary containing 'x', 'y' coordinates and 'colors' for each segment
+        circuit_data: Dictionary containing 'x', 'y' coordinates, 'colors' for each segment,
+                     and 'drivers' metadata for legend
 
     Returns:
         go.Figure: Plotly figure with the circuit visualization
@@ -125,6 +126,7 @@ def _create_circuit_figure(circuit_data: dict) -> go.Figure:
     x = circuit_data['x']
     y = circuit_data['y']
     colors = circuit_data['colors']
+    drivers = circuit_data.get('drivers', [])
 
     # Add circuit segments with individual colors
     # Each segment represents a microsector colored by the fastest driver
@@ -136,6 +138,17 @@ def _create_circuit_figure(circuit_data: dict) -> go.Figure:
             line=dict(color=colors[i], width=6),
             showlegend=False,
             hoverinfo='skip'
+        ))
+
+    # Add invisible traces for legend (one per driver)
+    for driver_info in drivers:
+        fig.add_trace(go.Scatter(
+            x=[None],
+            y=[None],
+            mode='lines',
+            line=dict(color=driver_info['color'], width=4),
+            name=driver_info['driver'],
+            showlegend=True
         ))
 
     # Configure layout
@@ -158,7 +171,17 @@ def _create_circuit_figure(circuit_data: dict) -> go.Figure:
             showticklabels=False,
             zeroline=False
         ),
-        hovermode=False
+        hovermode=False,
+        showlegend=True,
+        legend=dict(
+            yanchor="top",
+            y=0.99,
+            xanchor="left",
+            x=0.01,
+            bgcolor="rgba(0,0,0,0.5)",
+            bordercolor=TextColor.PRIMARY,
+            borderwidth=1
+        )
     )
 
     return fig
