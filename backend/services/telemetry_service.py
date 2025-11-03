@@ -240,6 +240,10 @@ def _calculate_microsector_dominance(
     """
     Calculate which driver was fastest in each microsector.
 
+    Divides the circuit into microsectors and determines which driver
+    had the highest average speed in each sector. All points in a microsector
+    get the same color.
+
     Args:
         driver_telemetry: Dictionary of telemetry data per driver
         drivers: List of driver codes
@@ -247,7 +251,7 @@ def _calculate_microsector_dominance(
         num_points: Total number of GPS points
 
     Returns:
-        List of hex color strings for each segment
+        List of hex color strings for each segment (length: num_points - 1)
     """
     # Driver color palette (purple, blue, green)
     color_palette = {
@@ -257,29 +261,42 @@ def _calculate_microsector_dominance(
     }
 
     points_per_sector = num_points // num_microsectors
-    colors = []
+    logger.info(f"Calculating dominance: {num_microsectors} microsectors, {points_per_sector} points per sector")
 
-    for i in range(num_points - 1):
-        microsector_idx = i // points_per_sector
+    # First, calculate which driver dominated each microsector
+    microsector_colors = []
 
-        # Find fastest driver at this point
-        max_speed = -1
-        fastest_driver_idx = 0
+    for sector_idx in range(num_microsectors):
+        start_idx = sector_idx * points_per_sector
+        end_idx = min(start_idx + points_per_sector, num_points)
+
+        # Calculate average speed for each driver in this microsector
+        driver_avg_speeds = {}
 
         for driver_idx, driver in enumerate(drivers):
             if driver not in driver_telemetry:
                 continue
 
-            # Get speed at this point (with bounds checking)
             tel = driver_telemetry[driver]
-            if i < len(tel['speed']):
-                speed = tel['speed'][i]
-                if speed > max_speed:
-                    max_speed = speed
-                    fastest_driver_idx = driver_idx
+            sector_speeds = tel['speed'][start_idx:end_idx]
 
-        # Assign color based on fastest driver
-        color = color_palette.get(fastest_driver_idx, color_palette[0])
-        colors.append(color)
+            if len(sector_speeds) > 0:
+                avg_speed = np.mean(sector_speeds)
+                driver_avg_speeds[driver_idx] = avg_speed
+
+        # Find driver with highest average speed in this microsector
+        if driver_avg_speeds:
+            fastest_driver_idx = max(driver_avg_speeds, key=driver_avg_speeds.get)
+            microsector_colors.append(color_palette[fastest_driver_idx])
+        else:
+            microsector_colors.append(color_palette[0])
+
+    logger.info(f"Microsector colors calculated: {len(microsector_colors)} sectors")
+
+    # Now assign the microsector color to all points in that microsector
+    colors = []
+    for i in range(num_points - 1):
+        microsector_idx = min(i // points_per_sector, num_microsectors - 1)
+        colors.append(microsector_colors[microsector_idx])
 
     return colors
