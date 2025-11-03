@@ -78,8 +78,8 @@ def get_circuit_domination_data(
         Dictionary containing:
             - x: List of x coordinates (meters)
             - y: List of y coordinates (meters)
-            - colors: List of hex colors for each segment
-            - drivers: Dictionary mapping driver codes to their colors
+            - colors: List of hex colors for each segment (one per point pair)
+            - drivers: List of driver metadata dicts with 'driver' code and 'color' hex
 
     Raises:
         ValueError: If session not found, no laps available, or invalid GP
@@ -186,10 +186,23 @@ def get_circuit_domination_data(
         len(x_circuit)
     )
 
+    # Create driver metadata for legend
+    color_palette = {
+        0: '#A259F7',  # Purple
+        1: '#00B4D8',  # Blue
+        2: '#43FF64',  # Green
+    }
+
+    driver_legend = [
+        {'driver': drivers[i], 'color': color_palette[i]}
+        for i in range(len(drivers))
+    ]
+
     return {
         'x': x_circuit.tolist(),
         'y': y_circuit.tolist(),
-        'colors': segment_colors
+        'colors': segment_colors,
+        'drivers': driver_legend
     }
 
 
