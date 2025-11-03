@@ -23,18 +23,23 @@ Public function:
 
 Private functions:
     - _render_section_title() -> None
-    - _create_circuit_figure(data, drivers, colors) -> go.Figure
-    - _generate_mock_circuit_data(drivers, colors) -> dict
-    - _calculate_microsector_dominance(telemetry_data, drivers, num_sectors) -> list
+    - _create_circuit_figure(data) -> go.Figure
 """
 
 import streamlit as st
 import plotly.graph_objects as go
-import numpy as np
 from app.styles import Color, TextColor
+from services.telemetry_service import TelemetryService
 
 
-def render_circuit_domination_section(telemetry_data, selected_drivers, color_palette) -> None:
+def render_circuit_domination_section(
+    telemetry_data,
+    selected_drivers,
+    color_palette,
+    year: int,
+    gp: str,
+    session: str
+) -> None:
     """
     Render the Circuit Domination section with the circuit visualization.
 
@@ -44,9 +49,12 @@ def render_circuit_domination_section(telemetry_data, selected_drivers, color_pa
     - A circuit map colored by driver dominance in microsectors
 
     Args:
-        telemetry_data: Telemetry data containing GPS coordinates and timing
+        telemetry_data: Telemetry data containing GPS coordinates and timing (legacy param)
         selected_drivers: List of selected driver identifiers
         color_palette: List of colors for each driver
+        year: Racing season year
+        gp: Grand Prix name
+        session: Session type (FP1, FP2, FP3, Q, R)
     """
     # Horizontal separator
     st.markdown("---")
@@ -54,33 +62,42 @@ def render_circuit_domination_section(telemetry_data, selected_drivers, color_pa
     # Render the section title
     _render_section_title()
 
-    # TODO: Replace with FastF1 backend call
-    # Example backend calls needed:
-    # 1. session = fastf1.get_session(year, gp, session_type)
-    # 2. session.load()
-    # 3. For each driver:
-    #    lap = session.laps.pick_driver(driver).pick_fastest()
-    #    tel = lap.get_telemetry()
-    # 4. Extract GPS coordinates: tel['X'], tel['Y']
-    # 5. Get circuit rotation: session.get_circuit_info().rotation
-    # 6. Apply rotation transform to coordinates
-    # 7. Calculate cumulative distance and scale to official track length
-    # 8. Compare driver speeds/times across microsectors
+    # Attempt to fetch real data from backend API
+    circuit_data = None
 
-    # Use mock data if no real data is available
-    if telemetry_data is None:
-        circuit_data = _generate_mock_circuit_data(selected_drivers, color_palette)
+    # FOR TESTING: Use hardcoded Suzuka 2024 Qualifying VER vs NOR
+    # TODO: Remove this hardcoded test data once dashboard inputs are properly connected
+    test_year = 2024
+    test_gp = "Japan"  # Suzuka
+    test_session = "Q"
+    test_drivers = ["VER", "NOR"]
+
+    st.info(f"🧪 Testing with hardcoded data: {test_year} {test_gp} {test_session} - {', '.join(test_drivers)}")
+
+    # Try to fetch real data from backend
+    success, data, error = TelemetryService.get_circuit_domination(
+        year=test_year,
+        gp=test_gp,
+        session=test_session,
+        drivers=test_drivers
+    )
+
+    if success and data:
+        circuit_data = data
+        st.success(f"✅ Successfully loaded real circuit data for {test_gp} {test_year}")
+        st.info(f"📊 Data points: {len(data.get('x', []))} coordinates, {len(data.get('colors', []))} color segments")
+
+        # Create and render the circuit figure with reduced size
+        # Use columns to center and reduce width (50% of page width)
+        _, center_container, _ = st.columns([1, 2, 1])
+
+        with center_container:
+            fig = _create_circuit_figure(circuit_data)
+            st.plotly_chart(fig, use_container_width=True)
     else:
-        # TODO: Process real telemetry data
-        circuit_data = _generate_mock_circuit_data(selected_drivers, color_palette)
-
-    # Create and render the circuit figure with reduced size
-    # Use columns to center and reduce width (50% of page width)
-    _, center_container, _ = st.columns([1, 2, 1])
-
-    with center_container:
-        fig = _create_circuit_figure(circuit_data)
-        st.plotly_chart(fig, use_container_width=True)
+        # Show error message
+        st.error(f"❌ Failed to load real data: {error}")
+        st.error("⚠️ Cannot display circuit without data. Please check backend logs.")
 
 
 def _render_section_title() -> None:
@@ -145,56 +162,3 @@ def _create_circuit_figure(circuit_data: dict) -> go.Figure:
     )
 
     return fig
-
-
-def _generate_mock_circuit_data(selected_drivers: list, color_palette: list) -> dict:
-    """
-    Generates mock circuit data for visualization testing.
-    Creates a realistic circuit shape divided into 25 microsectors,
-    each colored by a randomly assigned driver.
-
-    Args:
-        selected_drivers: List of driver identifiers
-        color_palette: List of colors for each driver
-
-    Returns:
-        dict: Contains 'x', 'y' coordinates and 'colors' for circuit segments
-    """
-    # TODO: Replace with actual GPS data processing
-    # Real implementation will:
-    # 1. Load GPS coordinates from FastF1 telemetry (X, Y in mm)
-    # 2. Apply circuit-specific rotation angle
-    # 3. Convert mm to meters
-    # 4. Calculate cumulative distance
-    # 5. Scale to official track length from OFFICIAL_TRACK_LENGTHS
-    # 6. Divide into 25 microsectors
-    # 7. Determine fastest driver per microsector
-    # 8. Assign corresponding colors
-
-    # Create a realistic circuit shape (approximates a typical F1 circuit)
-    num_points = 200
-    t = np.linspace(0, 2 * np.pi, num_points)
-
-    # Create circuit shape using parametric equations
-    # Combines circular and sinusoidal components for realistic track layout
-    x = 100 * np.cos(t) + 30 * np.cos(3 * t) + 20 * np.sin(5 * t)
-    y = 100 * np.sin(t) + 30 * np.sin(3 * t) + 15 * np.cos(4 * t)
-
-    # Divide circuit into 25 microsectors
-    num_microsectors = 25
-    points_per_sector = num_points // num_microsectors
-
-    # Assign colors based on "dominant" driver in each microsector
-    # In real implementation, this will be based on actual speed/time comparison
-    colors = []
-    for i in range(num_points - 1):
-        sector_idx = i // points_per_sector
-        # Randomly assign driver for mock data (will be real comparison later)
-        driver_idx = np.random.randint(0, len(color_palette))
-        colors.append(color_palette[driver_idx])
-
-    return {
-        'x': x,
-        'y': y,
-        'colors': colors
-    }
