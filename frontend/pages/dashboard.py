@@ -231,7 +231,14 @@ def render_dashboard():
     telemetry_data = None  # Placeholder until backend is ready
 
     # Circuit Domination Section
-    render_circuit_domination_section(telemetry_data, selected_drivers, color_palette)
+    render_circuit_domination_section(
+        telemetry_data,
+        selected_drivers,
+        color_palette,
+        selected_year,
+        selected_gp,
+        selected_session
+    )
 
     # Other Graphs Section (stacked vertically)
     render_speed_graph(telemetry_data, selected_drivers, color_palette)
