@@ -22,6 +22,7 @@ from components.comparison.speed_comparison_graph import render_speed_comparison
 from components.comparison.brake_comparison_graph import render_brake_comparison_graph
 from components.comparison.throttle_comparison_graph import render_throttle_comparison_graph
 from components.common.chart_styles import apply_telemetry_chart_styles
+from components.layout.navbar import show_error_toast
 
 
 BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
@@ -67,13 +68,31 @@ def fetch_comparison_data(year, gp, session, driver1, driver2, lap1, lap2):
         response = httpx.get(
             f"{BACKEND_URL}/api/v1/comparison/compare",
             params=params,
-            timeout=30.0
+            timeout=120.0  # 2 minutes timeout for FastF1 data loading
         )
         response.raise_for_status()
         return response.json()
 
+    except httpx.HTTPStatusError as e:
+        # Handle specific HTTP errors
+        if e.response.status_code == 404:
+            # Extract error detail from response if available
+            try:
+                error_detail = e.response.json().get('detail', str(e))
+            except:
+                error_detail = str(e)
+
+            # Check if it's a driver not found error
+            if "not found" in error_detail.lower() or "no laps found" in error_detail.lower():
+                # Show error toast for driver not available
+                show_error_toast(f"{error_detail}. Please select another driver or session.")
+            else:
+                show_error_toast(f"Data not found: {error_detail}")
+        else:
+            st.error(f"Error fetching comparison data: {str(e)}")
+        return None
     except httpx.HTTPError as e:
-        st.error(f"Error fetching comparison data: {str(e)}")
+        st.error(f"Connection error: {str(e)}")
         return None
     except Exception as e:
         st.error(f"Unexpected error: {str(e)}")
@@ -101,7 +120,7 @@ def render_comparison_page():
     compare_button = render_compare_button()
 
     if compare_button:
-        with st.spinner("Loading comparison data..."):
+        with st.spinner("Loading comparison data... (may take up to a minute)"):
             comparison_data = fetch_comparison_data(
                 year, gp, session, driver1, driver2, lap1, lap2
             )
