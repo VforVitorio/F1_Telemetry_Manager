@@ -1,0 +1,140 @@
+"""
+Comparison Page
+
+Main page for comparing telemetry between two drivers.
+Orchestrates all comparison components.
+"""
+
+# Path setup - MUST be first, linter will try to reorder without these comments
+import sys  # noqa: E402  # isort: skip
+import os  # noqa: E402  # isort: skip
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # noqa: E402  # isort: skip
+
+# Standard library imports
+import streamlit as st
+import httpx
+
+# Project imports
+from components.common.data_selectors import render_comparison_data_selectors
+from components.comparison.circuit_comparison import render_circuit_comparison
+from components.comparison.delta_time_graph import render_delta_time_graph
+from components.comparison.speed_comparison_graph import render_speed_comparison_graph
+from components.comparison.brake_comparison_graph import render_brake_comparison_graph
+from components.comparison.throttle_comparison_graph import render_throttle_comparison_graph
+from components.common.chart_styles import apply_telemetry_chart_styles
+
+
+BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
+
+
+def render_header():
+    """Display page header."""
+    st.markdown(
+        "<h1 style='text-align: center;'>CIRCUIT COMPARISON</h1>",
+        unsafe_allow_html=True
+    )
+    st.markdown("---")
+
+
+def fetch_comparison_data(year, gp, session, driver1, driver2, lap1, lap2):
+    """
+    Fetch comparison data from backend API.
+
+    Args:
+        year: Season year
+        gp: Grand Prix name
+        session: Session type
+        driver1: First driver abbreviation
+        driver2: Second driver abbreviation
+        lap1: First driver lap number
+        lap2: Second driver lap number
+
+    Returns:
+        Dictionary with comparison data or None if error
+    """
+    try:
+        # TODO: Replace with actual backend endpoint when ready
+        params = {
+            "year": year,
+            "gp": gp,
+            "session": session,
+            "driver1": driver1,
+            "driver2": driver2,
+            "lap1": lap1,
+            "lap2": lap2
+        }
+
+        response = httpx.get(
+            f"{BACKEND_URL}/api/v1/comparison/compare",
+            params=params,
+            timeout=30.0
+        )
+        response.raise_for_status()
+        return response.json()
+
+    except httpx.HTTPError as e:
+        st.error(f"Error fetching comparison data: {str(e)}")
+        return None
+    except Exception as e:
+        st.error(f"Unexpected error: {str(e)}")
+        return None
+
+
+def render_compare_button():
+    """Display centered compare button."""
+    col1, col2, col3 = st.columns([2, 1, 2])
+    with col2:
+        return st.button("🔄 COMPARE", use_container_width=True, type="primary")
+
+
+def render_comparison_page():
+    """
+    Main comparison page rendering function.
+    Orchestrates all comparison components in sequence.
+    """
+    render_header()
+
+    year, gp, session, driver1, driver2, lap1, lap2 = render_comparison_data_selectors()
+
+    st.markdown("---")
+
+    compare_button = render_compare_button()
+
+    if compare_button:
+        with st.spinner("Loading comparison data..."):
+            comparison_data = fetch_comparison_data(
+                year, gp, session, driver1, driver2, lap1, lap2
+            )
+
+        if comparison_data:
+            st.session_state['comparison_data'] = comparison_data
+
+    # Apply purple border styling to all subsequent Plotly charts
+    st.markdown(apply_telemetry_chart_styles(), unsafe_allow_html=True)
+
+    # TODO: Fetch telemetry data from backend
+    # comparison_data = fetch_comparison_data(year, gp, session, driver1, driver2, lap1, lap2)
+    comparison_data = st.session_state.get('comparison_data', None)
+
+    if comparison_data:
+        # Circuit comparison with animation
+        render_circuit_comparison(comparison_data)
+        st.markdown("---")
+
+        # Delta time graph
+        render_delta_time_graph(comparison_data)
+        st.markdown("---")
+
+        # Speed comparison
+        render_speed_comparison_graph(comparison_data)
+        st.markdown("---")
+
+        # Brake comparison
+        render_brake_comparison_graph(comparison_data)
+        st.markdown("---")
+
+        # Throttle comparison
+        render_throttle_comparison_graph(comparison_data)
+    else:
+        st.info(
+            "👆 Select drivers and laps, then click COMPARE to view telemetry comparison")
