@@ -13,6 +13,8 @@ import logging
 import os
 import warnings
 
+from backend.core.driver_colors import get_driver_color
+
 # Suppress specific FastF1/pandas warnings
 warnings.filterwarnings('ignore', message='.*fill_value.*')
 
@@ -177,26 +179,24 @@ def get_circuit_domination_data(
     x_circuit = driver_telemetry[reference_driver]['x']
     y_circuit = driver_telemetry[reference_driver]['y']
 
-    # Calculate microsector dominance
+    # Create driver metadata and color palette using official F1 2024 team colors
+    color_palette = {}
+    driver_legend = []
+
+    for i, driver in enumerate(drivers):
+        color = get_driver_color(driver)
+        color_palette[i] = color
+        driver_legend.append({'driver': driver, 'color': color})
+
+    # Calculate microsector dominance using driver's team colors
     num_microsectors = 25
     segment_colors = _calculate_microsector_dominance(
         driver_telemetry,
         drivers,
         num_microsectors,
-        len(x_circuit)
+        len(x_circuit),
+        color_palette
     )
-
-    # Create driver metadata for legend
-    color_palette = {
-        0: '#A259F7',  # Purple
-        1: '#00B4D8',  # Blue
-        2: '#43FF64',  # Green
-    }
-
-    driver_legend = [
-        {'driver': drivers[i], 'color': color_palette[i]}
-        for i in range(len(drivers))
-    ]
 
     return {
         'x': x_circuit.tolist(),
@@ -248,7 +248,8 @@ def _calculate_microsector_dominance(
     driver_telemetry: Dict,
     drivers: List[str],
     num_microsectors: int,
-    num_points: int
+    num_points: int,
+    color_palette: Dict[int, str]
 ) -> List[str]:
     """
     Calculate which driver was fastest in each microsector.
@@ -262,16 +263,11 @@ def _calculate_microsector_dominance(
         drivers: List of driver codes
         num_microsectors: Number of microsectors to divide circuit into
         num_points: Total number of GPS points
+        color_palette: Dictionary mapping driver index to hex color
 
     Returns:
         List of hex color strings for each segment (length: num_points - 1)
     """
-    # Driver color palette (purple, blue, green)
-    color_palette = {
-        0: '#A259F7',  # Purple
-        1: '#00B4D8',  # Blue
-        2: '#43FF64',  # Green
-    }
 
     points_per_sector = num_points // num_microsectors
     logger.info(f"Calculating dominance: {num_microsectors} microsectors, {points_per_sector} points per sector")
@@ -313,3 +309,101 @@ def _calculate_microsector_dominance(
         colors.append(microsector_colors[microsector_idx])
 
     return colors
+
+
+def fetch_lap_telemetry(
+    year: int,
+    gp: str,
+    session_type: str,
+    driver: str,
+    lap_number: int
+) -> Dict:
+    """
+    Fetch telemetry data for a specific driver's lap.
+
+    Args:
+        year: Racing season year (e.g., 2024)
+        gp: Grand Prix name (e.g., 'Spain', 'Bahrain')
+        session_type: Session type ('FP1', 'FP2', 'FP3', 'Q', 'R')
+        driver: Driver code (e.g., 'VER', 'HAM')
+        lap_number: Lap number to fetch
+
+    Returns:
+        Dictionary containing:
+            - name: Driver code
+            - lap: Lap number
+            - distance: Cumulative distance along track (meters)
+            - x: GPS X coordinates (meters)
+            - y: GPS Y coordinates (meters)
+            - speed: Speed in km/h
+            - throttle: Throttle percentage (0-100)
+            - brake: Brake pressure (0-100)
+
+    Raises:
+        ValueError: If session not found, no laps available, or lap not found
+    """
+    logger.info(f"Fetching lap telemetry: {year} {gp} {session_type} - {driver} lap {lap_number}")
+
+    # Load session
+    try:
+        session = fastf1.get_session(year, gp, session_type)
+        session.load()
+        logger.info(f"Session loaded: {year} {gp} {session_type}")
+    except Exception as e:
+        logger.error(f"Failed to load session: {e}")
+        raise ValueError(f"Session not found: {year} {gp} {session_type}. Error: {str(e)}")
+
+    # Get driver laps
+    driver_laps = session.laps.pick_drivers([driver])
+    if driver_laps.empty:
+        raise ValueError(f"No laps found for driver {driver}")
+
+    # Get specific lap
+    specific_lap = driver_laps[driver_laps['LapNumber'] == lap_number]
+    if specific_lap.empty:
+        raise ValueError(f"Lap {lap_number} not found for driver {driver}")
+
+    lap = specific_lap.iloc[0]
+    logger.info(f"Lap found: {driver} lap {lap_number}, time: {lap['LapTime']}")
+
+    # Get telemetry
+    telemetry = lap.get_telemetry()
+
+    # Extract and clean GPS data
+    if 'X' not in telemetry.columns or 'Y' not in telemetry.columns:
+        raise ValueError(f"GPS data not available for {driver} lap {lap_number}")
+
+    # Filter out NaN values
+    mask = (~np.isnan(telemetry['X']) &
+            ~np.isnan(telemetry['Y']) &
+            ~np.isnan(telemetry['Speed']))
+
+    x_orig = telemetry['X'][mask].to_numpy()
+    y_orig = telemetry['Y'][mask].to_numpy()
+    speed = telemetry['Speed'][mask].to_numpy()
+    throttle = telemetry['Throttle'][mask].to_numpy() if 'Throttle' in telemetry.columns else np.zeros_like(speed)
+    brake = telemetry['Brake'][mask].to_numpy() if 'Brake' in telemetry.columns else np.zeros_like(speed)
+
+    if len(x_orig) == 0:
+        raise ValueError(f"No valid GPS data for {driver} lap {lap_number}")
+
+    logger.info(f"Valid telemetry points: {len(x_orig)}")
+
+    # Convert from mm to meters
+    x_m = x_orig / 1000
+    y_m = y_orig / 1000
+
+    # Calculate cumulative distance
+    distances = np.sqrt(np.diff(x_m)**2 + np.diff(y_m)**2)
+    cumulative_distance = np.insert(np.cumsum(distances), 0, 0)
+
+    return {
+        'name': driver,
+        'lap': lap_number,
+        'distance': cumulative_distance.tolist(),
+        'x': x_m.tolist(),
+        'y': y_m.tolist(),
+        'speed': speed.tolist(),
+        'throttle': throttle.tolist(),
+        'brake': brake.tolist(),
+    }

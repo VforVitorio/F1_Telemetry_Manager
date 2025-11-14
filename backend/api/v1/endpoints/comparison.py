@@ -9,6 +9,8 @@ from typing import Dict
 import logging
 
 from backend.services.comparison_service import prepare_comparison_data
+from backend.services.telemetry_service import fetch_lap_telemetry
+from backend.core.driver_colors import get_driver_color
 
 logger = logging.getLogger(__name__)
 
@@ -58,44 +60,16 @@ async def compare_drivers(
         logger.info(
             f"Comparing {driver1} lap {lap1} vs {driver2} lap {lap2} - {year} {gp} {session}")
 
-        # TODO: Replace with actual FastF1 data fetching
-        # from app.adapters.fastf1_adapter import fetch_lap_telemetry
-        # driver1_data = fetch_lap_telemetry(year, gp, session, driver1, lap1)
-        # driver2_data = fetch_lap_telemetry(year, gp, session, driver2, lap2)
+        # Fetch telemetry data from FastF1
+        driver1_data = fetch_lap_telemetry(year, gp, session, driver1, lap1)
+        driver2_data = fetch_lap_telemetry(year, gp, session, driver2, lap2)
 
-        # Placeholder data structure (replace with real implementation)
-        driver1_data = {
-            'name': driver1,
-            'lap': lap1,
-            'distance': [],  # List of distance values
-            'x': [],  # GPS X coordinates
-            'y': [],  # GPS Y coordinates
-            'speed': [],  # Speed in km/h
-            'throttle': [],  # Throttle percentage (0-100)
-            'brake': [],  # Brake pressure (0-100)
-        }
+        logger.info(
+            f"Fetched telemetry: {driver1} ({len(driver1_data['x'])} points), {driver2} ({len(driver2_data['x'])} points)")
 
-        driver2_data = {
-            'name': driver2,
-            'lap': lap2,
-            'distance': [],
-            'x': [],
-            'y': [],
-            'speed': [],
-            'throttle': [],
-            'brake': [],
-        }
-
-        # Validate data exists
-        if not driver1_data['x'] or not driver2_data['x']:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Telemetry data not found for {driver1} lap {lap1} or {driver2} lap {lap2}"
-            )
-
-        # Assign colors (default team colors or custom palette)
-        driver1_color = "#0600EF"  # Blue
-        driver2_color = "#FF8700"  # Orange
+        # Assign colors based on driver's team (F1 2024 official colors)
+        driver1_color = get_driver_color(driver1)
+        driver2_color = get_driver_color(driver2)
 
         # Process comparison data
         comparison_data = prepare_comparison_data(
@@ -108,10 +82,14 @@ async def compare_drivers(
         logger.info(f"Comparison data prepared successfully")
         return comparison_data
 
+    except ValueError as e:
+        # Handle expected errors from telemetry service (session/driver/lap not found)
+        logger.warning(f"ValueError: {e}")
+        raise HTTPException(status_code=404, detail=str(e))
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error comparing drivers: {str(e)}")
+        logger.error(f"Error comparing drivers: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=500,
             detail=f"Internal error processing comparison: {str(e)}"
