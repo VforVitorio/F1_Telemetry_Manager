@@ -37,9 +37,9 @@ def render_header():
     st.markdown("---")
 
 
-def fetch_comparison_data(year, gp, session, driver1, driver2, lap1, lap2):
+def fetch_comparison_data(year, gp, session, driver1, driver2):
     """
-    Fetch comparison data from backend API.
+    Fetch comparison data from backend API (fastest laps only).
 
     Args:
         year: Season year
@@ -47,22 +47,17 @@ def fetch_comparison_data(year, gp, session, driver1, driver2, lap1, lap2):
         session: Session type
         driver1: First driver abbreviation
         driver2: Second driver abbreviation
-        lap1: First driver lap number
-        lap2: Second driver lap number
 
     Returns:
         Dictionary with comparison data or None if error
     """
     try:
-        # TODO: Replace with actual backend endpoint when ready
         params = {
             "year": year,
             "gp": gp,
             "session": session,
             "driver1": driver1,
-            "driver2": driver2,
-            "lap1": lap1,
-            "lap2": lap2
+            "driver2": driver2
         }
 
         response = httpx.get(
@@ -110,10 +105,11 @@ def render_comparison_page():
     """
     Main comparison page rendering function.
     Orchestrates all comparison components in sequence.
+    Compares fastest laps between two drivers.
     """
     render_header()
 
-    year, gp, session, driver1, driver2, lap1, lap2 = render_comparison_data_selectors()
+    year, gp, session, driver1, driver2 = render_comparison_data_selectors()
 
     st.markdown("---")
 
@@ -122,7 +118,7 @@ def render_comparison_page():
     if compare_button:
         with st.spinner("Loading comparison data... (may take up to a minute)"):
             comparison_data = fetch_comparison_data(
-                year, gp, session, driver1, driver2, lap1, lap2
+                year, gp, session, driver1, driver2
             )
 
         if comparison_data:
@@ -156,4 +152,4 @@ def render_comparison_page():
         render_throttle_comparison_graph(comparison_data)
     else:
         st.info(
-            "👆 Select drivers and laps, then click COMPARE to view telemetry comparison")
+            "👆 Select two drivers, then click COMPARE to view telemetry comparison (fastest laps only)")
