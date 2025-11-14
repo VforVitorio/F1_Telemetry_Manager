@@ -38,15 +38,15 @@ def _inject_driver_colors_css():
     st.markdown(css, unsafe_allow_html=True)
 
 
-def render_comparison_data_selectors() -> Tuple[int, str, str, str, str, int, int]:
+def render_comparison_data_selectors() -> Tuple[int, str, str, str, str]:
     """
-    Render data selectors for comparison page (2 drivers, 2 laps).
+    Render data selectors for comparison page (2 drivers, fastest laps only).
 
-    Displays year, GP, session selectors, followed by two driver selectors
-    and their corresponding lap number inputs.
+    Displays year, GP, session selectors, followed by two driver selectors.
+    Only fastest laps will be compared.
 
     Returns:
-        Tuple of (year, gp, session, driver1, driver2, lap1, lap2)
+        Tuple of (year, gp, session, driver1, driver2)
     """
     # Inject CSS to color driver names
     _inject_driver_colors_css()
@@ -64,6 +64,9 @@ def render_comparison_data_selectors() -> Tuple[int, str, str, str, str, int, in
 
     st.markdown("---")
 
+    # Info message about fastest laps
+    st.info("🏁 Only fastest laps will be compared for each driver")
+
     col_driver1, col_driver2 = st.columns(2)
 
     with col_driver1:
@@ -71,16 +74,14 @@ def render_comparison_data_selectors() -> Tuple[int, str, str, str, str, int, in
                     unsafe_allow_html=True)
         driver1 = _render_driver_selector(
             year, gp, session, "Driver 1", "driver1_selector")
-        lap1 = _render_lap_selector(driver1, "Lap Number", "lap1_input")
 
     with col_driver2:
         st.markdown("<h3 style='text-align: center;'>DRIVER 2</h3>",
                     unsafe_allow_html=True)
         driver2 = _render_driver_selector(
             year, gp, session, "Driver 2", "driver2_selector")
-        lap2 = _render_lap_selector(driver2, "Lap Number", "lap2_input")
 
-    return year, gp, session, driver1, driver2, lap1, lap2
+    return year, gp, session, driver1, driver2
 
 
 def _render_year_selector() -> int:
@@ -183,28 +184,3 @@ def _render_driver_selector(year: int, gp: str, session: str, label: str, key: s
         key=key
     )
     return driver
-
-
-def _render_lap_selector(driver: str, label: str, key: str) -> int:
-    """
-    Render lap number input field.
-
-    Args:
-        driver: Selected driver abbreviation
-        label: Label for the input field
-        key: Unique key for the Streamlit widget
-
-    Returns:
-        Selected lap number as integer
-    """
-    # TODO: Replace with dynamic lap range based on driver's available laps
-    # max_lap = fetch_driver_max_lap(year, gp, session, driver)
-    lap = st.number_input(
-        label,
-        min_value=1,
-        max_value=100,
-        value=1,
-        step=1,
-        key=key
-    )
-    return lap
