@@ -23,6 +23,7 @@ from components.telemetry.rpm_graph import render_rmp_graph
 from components.telemetry.gear_graph import render_gear_graph
 from components.telemetry.drs_graph import render_drs_graph
 from components.common.chart_styles import apply_telemetry_chart_styles
+from components.common.link_button import render_link_button
 # TODO: Import telemetry service when backend is ready
 # from services.telemetry_service import fetch_available_years, fetch_gps, fetch_sessions, fetch_drivers, fetch_lap_data
 
@@ -238,6 +239,14 @@ def render_dashboard():
         selected_year,
         selected_gp,
         selected_session
+    )
+
+    # Link button to comparison page
+    st.markdown("---")
+    render_link_button(
+        text="If you want to compare the lap progress between your 2 selected drivers, click here",
+        target_page="comparison",
+        button_text="⚖️ GO TO COMPARISON"
     )
 
     # Other Graphs Section (stacked vertically)
