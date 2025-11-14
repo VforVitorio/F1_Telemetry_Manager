@@ -26,15 +26,13 @@ async def compare_drivers(
     driver1: str = Query(...,
                          description="First driver abbreviation (e.g., VER)"),
     driver2: str = Query(...,
-                         description="Second driver abbreviation (e.g., HAM)"),
-    lap1: int = Query(..., description="Lap number for first driver"),
-    lap2: int = Query(..., description="Lap number for second driver")
+                         description="Second driver abbreviation (e.g., HAM)")
 ) -> Dict:
     """
-    Compare telemetry between two drivers.
+    Compare telemetry between two drivers using their fastest laps.
 
-    Fetches telemetry data for specified laps, optimizes circuit layout,
-    synchronizes data points, and calculates delta times.
+    Fetches fastest lap telemetry data for both drivers, optimizes circuit layout,
+    synchronizes data points, and calculates delta times and microsector dominance.
 
     Args:
         year: Season year
@@ -42,27 +40,27 @@ async def compare_drivers(
         session: Session type
         driver1: First driver abbreviation
         driver2: Second driver abbreviation
-        lap1: Lap number for first driver
-        lap2: Lap number for second driver
 
     Returns:
         Dictionary containing:
-        - circuit: Optimized x, y coordinates
+        - circuit: Optimized x, y coordinates with microsector colors
         - pilot1: Synchronized telemetry with color
         - pilot2: Synchronized telemetry with color
         - delta: Time differences at each point
         - metadata: Rotation angle and aspect ratio
 
     Raises:
-        HTTPException: If session/driver/lap data not found
+        HTTPException: If session/driver data not found or no valid fastest lap available
     """
     try:
         logger.info(
-            f"Comparing {driver1} lap {lap1} vs {driver2} lap {lap2} - {year} {gp} {session}")
+            f"Comparing fastest laps: {driver1} vs {driver2} - {year} {gp} {session}")
 
-        # Fetch telemetry data from FastF1
-        driver1_data = fetch_lap_telemetry(year, gp, session, driver1, lap1)
-        driver2_data = fetch_lap_telemetry(year, gp, session, driver2, lap2)
+        # Fetch fastest lap telemetry data from FastF1
+        driver1_data = fetch_lap_telemetry(
+            year, gp, session, driver1, use_fastest_lap=True)
+        driver2_data = fetch_lap_telemetry(
+            year, gp, session, driver2, use_fastest_lap=True)
 
         logger.info(
             f"Fetched telemetry: {driver1} ({len(driver1_data['x'])} points), {driver2} ({len(driver2_data['x'])} points)")
