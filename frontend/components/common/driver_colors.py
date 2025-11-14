@@ -48,6 +48,10 @@ DRIVER_COLORS = {
     # Haas (Grey)
     'MAG': '#787878',  # Magnussen - Gris medio
     'HUL': '#A8A8A8',  # Hülkenberg - Gris claro
+    'BEA': '#959595',  # Bearman - Gris intermedio (Haas)
+
+    # Reserve/Test Drivers
+    'DOO': '#FFB0D3',  # Doohan - Rosa pastel (Alpine reserve)
 }
 
 
