@@ -17,17 +17,102 @@ router = APIRouter(prefix="/comparison", tags=["comparison"])
 
 @router.get("/compare")
 async def compare_drivers(
-    year: int = Query(...),
-    gp: str = Query(...),
-    session: str = Query(...),
-    driver1: str = Query(...),
-    driver2: str = Query(...),
-    lap1: int = Query(...),
-    lap2: int = Query(...)
+    year: int = Query(..., description="Season year"),
+    gp: str = Query(..., description="Grand Prix name"),
+    session: str = Query(...,
+                         description="Session type (FP1, FP2, FP3, Q, R)"),
+    driver1: str = Query(...,
+                         description="First driver abbreviation (e.g., VER)"),
+    driver2: str = Query(...,
+                         description="Second driver abbreviation (e.g., HAM)"),
+    lap1: int = Query(..., description="Lap number for first driver"),
+    lap2: int = Query(..., description="Lap number for second driver")
 ) -> Dict:
     """
     Compare telemetry between two drivers.
 
-    Returns optimized circuit coordinates, synchronized telemetry, and delta times.
+    Fetches telemetry data for specified laps, optimizes circuit layout,
+    synchronizes data points, and calculates delta times.
+
+    Args:
+        year: Season year
+        gp: Grand Prix name
+        session: Session type
+        driver1: First driver abbreviation
+        driver2: Second driver abbreviation
+        lap1: Lap number for first driver
+        lap2: Lap number for second driver
+
+    Returns:
+        Dictionary containing:
+        - circuit: Optimized x, y coordinates
+        - pilot1: Synchronized telemetry with color
+        - pilot2: Synchronized telemetry with color
+        - delta: Time differences at each point
+        - metadata: Rotation angle and aspect ratio
+
+    Raises:
+        HTTPException: If session/driver/lap data not found
     """
-    pass
+    try:
+        logger.info(
+            f"Comparing {driver1} lap {lap1} vs {driver2} lap {lap2} - {year} {gp} {session}")
+
+        # TODO: Replace with actual FastF1 data fetching
+        # from app.adapters.fastf1_adapter import fetch_lap_telemetry
+        # driver1_data = fetch_lap_telemetry(year, gp, session, driver1, lap1)
+        # driver2_data = fetch_lap_telemetry(year, gp, session, driver2, lap2)
+
+        # Placeholder data structure (replace with real implementation)
+        driver1_data = {
+            'name': driver1,
+            'lap': lap1,
+            'distance': [],  # List of distance values
+            'x': [],  # GPS X coordinates
+            'y': [],  # GPS Y coordinates
+            'speed': [],  # Speed in km/h
+            'throttle': [],  # Throttle percentage (0-100)
+            'brake': [],  # Brake pressure (0-100)
+        }
+
+        driver2_data = {
+            'name': driver2,
+            'lap': lap2,
+            'distance': [],
+            'x': [],
+            'y': [],
+            'speed': [],
+            'throttle': [],
+            'brake': [],
+        }
+
+        # Validate data exists
+        if not driver1_data['x'] or not driver2_data['x']:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Telemetry data not found for {driver1} lap {lap1} or {driver2} lap {lap2}"
+            )
+
+        # Assign colors (default team colors or custom palette)
+        driver1_color = "#0600EF"  # Blue
+        driver2_color = "#FF8700"  # Orange
+
+        # Process comparison data
+        comparison_data = prepare_comparison_data(
+            driver1_data=driver1_data,
+            driver2_data=driver2_data,
+            driver1_color=driver1_color,
+            driver2_color=driver2_color
+        )
+
+        logger.info(f"Comparison data prepared successfully")
+        return comparison_data
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error comparing drivers: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal error processing comparison: {str(e)}"
+        )
