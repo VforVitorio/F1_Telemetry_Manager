@@ -311,12 +311,48 @@ def _calculate_microsector_dominance(
     return colors
 
 
+def _get_lap_data(driver_laps, driver: str, lap_number: int, use_fastest_lap: bool):
+    """
+    Extract specific lap or fastest lap from driver's laps dataframe.
+
+    Args:
+        driver_laps: FastF1 laps dataframe for the driver
+        driver: Driver code for error messages
+        lap_number: Specific lap number to fetch (ignored if use_fastest_lap=True)
+        use_fastest_lap: If True, return fastest lap
+
+    Returns:
+        Single lap row from dataframe
+
+    Raises:
+        ValueError: If lap not found
+    """
+    if use_fastest_lap:
+        # Get fastest lap for this driver
+        try:
+            lap = driver_laps.pick_fastest()
+            return lap
+        except Exception as e:
+            raise ValueError(f"No valid fastest lap found for driver {driver}. Error: {str(e)}")
+    else:
+        # Get specific lap by number
+        if lap_number is None:
+            raise ValueError("lap_number must be provided when use_fastest_lap=False")
+
+        specific_lap = driver_laps[driver_laps['LapNumber'] == lap_number]
+        if specific_lap.empty:
+            raise ValueError(f"Lap {lap_number} not found for driver {driver}")
+
+        return specific_lap.iloc[0]
+
+
 def fetch_lap_telemetry(
     year: int,
     gp: str,
     session_type: str,
     driver: str,
-    lap_number: int
+    lap_number: int = None,
+    use_fastest_lap: bool = False
 ) -> Dict:
     """
     Fetch telemetry data for a specific driver's lap.
@@ -326,7 +362,8 @@ def fetch_lap_telemetry(
         gp: Grand Prix name (e.g., 'Spain', 'Bahrain')
         session_type: Session type ('FP1', 'FP2', 'FP3', 'Q', 'R')
         driver: Driver code (e.g., 'VER', 'HAM')
-        lap_number: Lap number to fetch
+        lap_number: Lap number to fetch (ignored if use_fastest_lap=True)
+        use_fastest_lap: If True, fetch the fastest lap instead of specific lap number
 
     Returns:
         Dictionary containing:
@@ -342,7 +379,8 @@ def fetch_lap_telemetry(
     Raises:
         ValueError: If session not found, no laps available, or lap not found
     """
-    logger.info(f"Fetching lap telemetry: {year} {gp} {session_type} - {driver} lap {lap_number}")
+    lap_description = "fastest lap" if use_fastest_lap else f"lap {lap_number}"
+    logger.info(f"Fetching lap telemetry: {year} {gp} {session_type} - {driver} {lap_description}")
 
     # Load session
     try:
@@ -358,13 +396,9 @@ def fetch_lap_telemetry(
     if driver_laps.empty:
         raise ValueError(f"No laps found for driver {driver}")
 
-    # Get specific lap
-    specific_lap = driver_laps[driver_laps['LapNumber'] == lap_number]
-    if specific_lap.empty:
-        raise ValueError(f"Lap {lap_number} not found for driver {driver}")
-
-    lap = specific_lap.iloc[0]
-    logger.info(f"Lap found: {driver} lap {lap_number}, time: {lap['LapTime']}")
+    # Get the lap based on mode
+    lap = _get_lap_data(driver_laps, driver, lap_number, use_fastest_lap)
+    logger.info(f"Lap found: {driver} lap {lap['LapNumber']}, time: {lap['LapTime']}")
 
     # Get telemetry
     telemetry = lap.get_telemetry()
@@ -399,7 +433,7 @@ def fetch_lap_telemetry(
 
     return {
         'name': driver,
-        'lap': lap_number,
+        'lap': int(lap['LapNumber']),
         'distance': cumulative_distance.tolist(),
         'x': x_m.tolist(),
         'y': y_m.tolist(),
