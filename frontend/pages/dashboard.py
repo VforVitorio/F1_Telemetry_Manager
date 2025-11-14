@@ -24,6 +24,7 @@ from components.telemetry.gear_graph import render_gear_graph
 from components.telemetry.drs_graph import render_drs_graph
 from components.common.chart_styles import apply_telemetry_chart_styles
 from components.common.link_button import render_link_button
+from components.common.driver_colors import get_driver_color
 # TODO: Import telemetry service when backend is ready
 # from services.telemetry_service import fetch_available_years, fetch_gps, fetch_sessions, fetch_drivers, fetch_lap_data
 
@@ -104,22 +105,26 @@ def render_data_selectors():
         )
 
     with col4:
-        # Driver multiselect with color palette
-        color_palette = ['#A259F7', '#00B4D8', '#43FF64']
-
         # TODO: Replace with dynamic drivers based on selected year, GP, and session
         # drivers = fetch_drivers(selected_year, selected_gp, selected_session)
         # GET /api/v1/telemetry/drivers?year={year}&gp={gp}&session={session}
-        # driver_options = [f"Driver {d['number']} - {d['name']}" for d in drivers]
-        driver_options = ["Driver 1", "Driver 44",
-                          "Driver 55", "Driver 63", "Driver 16"]
+        # driver_options = [f"{d['code']} - {d['name']}" for d in drivers]
+
+        # Placeholder driver options (will be replaced with real data)
+        # Format: "CODE - Name" (e.g., "VER - Verstappen")
+        driver_options = ["VER - Verstappen", "HAM - Hamilton",
+                          "LEC - Leclerc", "NOR - Norris", "PIA - Piastri"]
 
         selected_drivers = st.multiselect(
             "DRIVERS",
             options=driver_options,
-            default=["Driver 44"],
+            default=["VER - Verstappen"],
             max_selections=3
         )
+
+        # Extract driver codes and get their official team colors
+        driver_codes = [driver.split(' - ')[0] for driver in selected_drivers]
+        color_palette = [get_driver_color(code) for code in driver_codes]
 
     return selected_year, selected_gp, selected_session, selected_drivers, color_palette
 
