@@ -24,33 +24,44 @@ from components.telemetry.gear_graph import render_gear_graph
 from components.telemetry.drs_graph import render_drs_graph
 from components.common.chart_styles import apply_telemetry_chart_styles
 from components.common.link_button import render_link_button
-from components.common.driver_colors import get_driver_color
+from components.common.driver_colors import get_driver_color, DRIVER_COLORS
 # TODO: Import telemetry service when backend is ready
 # from services.telemetry_service import fetch_available_years, fetch_gps, fetch_sessions, fetch_drivers, fetch_lap_data
 
 
 def render_custom_css():
     """
-    Apply custom CSS for multiselect driver pills with colors.
+    Apply custom CSS for multiselect driver pills and colored driver names.
     """
-    st.markdown("""
+    # Generate CSS rules for each driver to color their names in dropdowns
+    driver_css_rules = []
+    for driver_code, color in DRIVER_COLORS.items():
+        driver_css_rules.append(f"""
+        /* Color for {driver_code} */
+        div[data-baseweb="select"] li[role="option"]:has(div:first-child:contains("{driver_code}")) {{
+            color: {color} !important;
+            font-weight: 600;
+        }}
+        """)
+
+    css_content = f"""
         <style>
-        /* First selected driver - Purple */
-        div[data-baseweb="tag"] {
-            background-color: #A259F7 !important;
-            color: white !important;
-        }
-        /* Second selected driver - Blue */
-        div[data-baseweb="tag"]:nth-of-type(2) {
-            background-color: #00B4D8 !important;
-        }
-        /* Third selected driver - Green */
-        div[data-baseweb="tag"]:nth-of-type(3) {
-            background-color: #43FF64 !important;
-            color: black !important;
-        }
+        /* Driver name colors in dropdowns */
+        {' '.join(driver_css_rules)}
+
+        /* Multiselect pills with dynamic colors */
+        div[data-baseweb="tag"] {{
+            font-weight: 600;
+        }}
+
+        /* Style for driver options - make them bold */
+        div[data-baseweb="select"] li {{
+            font-weight: 600;
+        }}
         </style>
-    """, unsafe_allow_html=True)
+    """
+
+    st.markdown(css_content, unsafe_allow_html=True)
 
 
 def render_header():
@@ -110,10 +121,21 @@ def render_data_selectors():
         # GET /api/v1/telemetry/drivers?year={year}&gp={gp}&session={session}
         # driver_options = [f"{d['code']} - {d['name']}" for d in drivers]
 
-        # Placeholder driver options (will be replaced with real data)
+        # F1 2024 Complete driver lineup (24 drivers)
         # Format: "CODE - Name" (e.g., "VER - Verstappen")
-        driver_options = ["VER - Verstappen", "HAM - Hamilton",
-                          "LEC - Leclerc", "NOR - Norris", "PIA - Piastri"]
+        driver_options = [
+            "VER - Verstappen", "PER - Pérez",  # Red Bull
+            "LEC - Leclerc", "SAI - Sainz",  # Ferrari
+            "HAM - Hamilton", "RUS - Russell",  # Mercedes
+            "NOR - Norris", "PIA - Piastri",  # McLaren
+            "ALO - Alonso", "STR - Stroll",  # Aston Martin
+            "GAS - Gasly", "OCO - Ocon",  # Alpine
+            "ALB - Albon", "COL - Colapinto", "SAR - Sargeant",  # Williams
+            "TSU - Tsunoda", "RIC - Ricciardo", "LAW - Lawson",  # RB
+            "BOT - Bottas", "ZHO - Zhou",  # Sauber
+            "MAG - Magnussen", "HUL - Hülkenberg", "BEA - Bearman",  # Haas
+            "DOO - Doohan",  # Reserve/Test
+        ]
 
         selected_drivers = st.multiselect(
             "DRIVERS",

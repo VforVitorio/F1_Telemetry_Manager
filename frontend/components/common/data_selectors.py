@@ -7,6 +7,35 @@ Used in dashboard and comparison pages.
 
 import streamlit as st
 from typing import Tuple, List, Optional
+from components.common.driver_colors import DRIVER_COLORS
+
+
+def _inject_driver_colors_css():
+    """
+    Inject custom CSS to color driver options in selectboxes.
+    """
+    # Generate CSS rules for each driver
+    css_rules = []
+    for driver_code, color in DRIVER_COLORS.items():
+        css_rules.append(f"""
+        option[value="{driver_code}"] {{
+            color: {color} !important;
+            font-weight: bold;
+        }}
+        """)
+
+    css = f"""
+    <style>
+    /* Color driver options in selectboxes */
+    {' '.join(css_rules)}
+
+    /* Style selectbox to show driver colors */
+    div[data-baseweb="select"] span {{
+        font-weight: 600;
+    }}
+    </style>
+    """
+    st.markdown(css, unsafe_allow_html=True)
 
 
 def render_comparison_data_selectors() -> Tuple[int, str, str, str, str, int, int]:
@@ -19,6 +48,9 @@ def render_comparison_data_selectors() -> Tuple[int, str, str, str, str, int, in
     Returns:
         Tuple of (year, gp, session, driver1, driver2, lap1, lap2)
     """
+    # Inject CSS to color driver names
+    _inject_driver_colors_css()
+
     col1, col2, col3 = st.columns(3)
 
     with col1:
@@ -130,10 +162,23 @@ def _render_driver_selector(year: int, gp: str, session: str, label: str, key: s
     # TODO: Replace with dynamic drivers based on selected year, GP, and session
     # drivers = fetch_drivers(year, gp, session)
     # GET /api/v1/telemetry/drivers?year={year}&gp={gp}&session={session}
+
+    # F1 2024 Complete driver lineup (24 drivers)
     driver = st.selectbox(
         label,
-        options=["VER", "HAM", "LEC", "NOR", "PER",
-                 "SAI", "RUS", "ALO", "OCO", "GAS"],
+        options=[
+            "VER", "PER",  # Red Bull
+            "LEC", "SAI",  # Ferrari
+            "HAM", "RUS",  # Mercedes
+            "NOR", "PIA",  # McLaren
+            "ALO", "STR",  # Aston Martin
+            "GAS", "OCO",  # Alpine
+            "ALB", "COL", "SAR",  # Williams
+            "TSU", "RIC", "LAW",  # RB
+            "BOT", "ZHO",  # Sauber
+            "MAG", "HUL", "BEA",  # Haas
+            "DOO",  # Reserve/Test
+        ],
         index=0,
         key=key
     )
