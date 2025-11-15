@@ -43,7 +43,7 @@ def _create_circuit_animation(comparison_data: Dict) -> go.Figure:
     """
     Create Plotly figure with circuit animation using colored microsectors.
 
-    The circuit is rendered as individual segments that progressively change
+    The circuit is rendered as 25 microsectors that progressively change
     color as drivers pass through them, showing which driver was faster in
     each microsector.
 
@@ -61,17 +61,16 @@ def _create_circuit_animation(comparison_data: Dict) -> go.Figure:
 
     fig = go.Figure()
 
-    # Add individual circuit segments (initially all gray)
-    num_segments = len(circuit_x) - 1
-    for i in range(num_segments):
-        fig.add_trace(go.Scatter(
-            x=[circuit_x[i], circuit_x[i + 1]],
-            y=[circuit_y[i], circuit_y[i + 1]],
-            mode='lines',
-            line=dict(color='gray', width=4),
-            showlegend=False,
-            hoverinfo='skip'
-        ))
+    # Calculate microsector boundaries (25 microsectors)
+    num_points = len(circuit_x)
+    num_microsectors = 25
+    microsector_indices = _calculate_microsector_indices(num_points, num_microsectors)
+
+    # Add microsector traces (initially all gray)
+    for microsector_idx in range(num_microsectors):
+        start_idx, end_idx = microsector_indices[microsector_idx]
+        fig.add_trace(_create_microsector_trace(
+            circuit_x, circuit_y, start_idx, end_idx, 'gray'))
 
     # Pilot 1 trail (initially empty)
     fig.add_trace(go.Scatter(
@@ -125,7 +124,7 @@ def _create_circuit_animation(comparison_data: Dict) -> go.Figure:
 
     # Create animation frames
     frames = _create_animation_frames(
-        pilot1, pilot2, circuit_x, circuit_y, microsector_colors)
+        pilot1, pilot2, circuit_x, circuit_y, microsector_colors, microsector_indices)
     fig.frames = frames
 
     # Configure layout
@@ -134,48 +133,100 @@ def _create_circuit_animation(comparison_data: Dict) -> go.Figure:
     return fig
 
 
-def _create_circuit_segment_traces(
+def _calculate_microsector_indices(num_points: int, num_microsectors: int) -> List[tuple]:
+    """
+    Calculate start and end indices for each microsector.
+
+    Args:
+        num_points: Total number of circuit points
+        num_microsectors: Number of microsectors to divide circuit into (25)
+
+    Returns:
+        List of tuples (start_idx, end_idx) for each microsector
+    """
+    points_per_sector = num_points // num_microsectors
+    microsector_indices = []
+
+    for sector_idx in range(num_microsectors):
+        start_idx = sector_idx * points_per_sector
+        # Last microsector extends to end of circuit
+        end_idx = num_points if sector_idx == num_microsectors - 1 else (sector_idx + 1) * points_per_sector
+        microsector_indices.append((start_idx, end_idx))
+
+    return microsector_indices
+
+
+def _create_microsector_trace(
+    circuit_x: List,
+    circuit_y: List,
+    start_idx: int,
+    end_idx: int,
+    color: str
+) -> go.Scatter:
+    """
+    Create a single trace for a microsector.
+
+    Args:
+        circuit_x: Circuit X coordinates
+        circuit_y: Circuit Y coordinates
+        start_idx: Start index for this microsector
+        end_idx: End index for this microsector
+        color: Color for this microsector
+
+    Returns:
+        Scatter trace for the microsector
+    """
+    return go.Scatter(
+        x=circuit_x[start_idx:end_idx],
+        y=circuit_y[start_idx:end_idx],
+        mode='lines',
+        line=dict(color=color, width=4),
+        showlegend=False,
+        hoverinfo='skip'
+    )
+
+
+def _create_microsector_traces(
     circuit_x: List,
     circuit_y: List,
     microsector_colors: List,
+    microsector_indices: List[tuple],
     current_position: int
 ) -> List[go.Scatter]:
     """
-    Create circuit segment traces with progressive coloring.
+    Create microsector traces with progressive coloring.
 
-    Segments before current position get their microsector color,
-    segments after remain gray.
+    Microsectors before current position get their speed-dominance color,
+    microsectors after remain gray.
 
     Args:
         circuit_x: Circuit X coordinates
         circuit_y: Circuit Y coordinates
         microsector_colors: Color for each point (from backend)
+        microsector_indices: List of (start_idx, end_idx) tuples for each microsector
         current_position: Current animation position index
 
     Returns:
-        List of Scatter traces for circuit segments
+        List of Scatter traces for all microsectors
     """
-    segment_traces = []
-    num_segments = len(circuit_x) - 1
+    microsector_traces = []
+    num_microsectors = len(microsector_indices)
 
-    for seg_idx in range(num_segments):
-        # Segments up to current position get their microsector color
-        if seg_idx <= current_position:
-            color = microsector_colors[seg_idx]
+    for microsector_idx in range(num_microsectors):
+        start_idx, end_idx = microsector_indices[microsector_idx]
+
+        # Check if this microsector has been passed by the current position
+        if current_position >= start_idx:
+            # Use the color from the first point in this microsector
+            color = microsector_colors[start_idx]
         else:
-            # Future segments remain gray
+            # Future microsectors remain gray
             color = 'gray'
 
-        segment_traces.append(go.Scatter(
-            x=[circuit_x[seg_idx], circuit_x[seg_idx + 1]],
-            y=[circuit_y[seg_idx], circuit_y[seg_idx + 1]],
-            mode='lines',
-            line=dict(color=color, width=4),
-            showlegend=False,
-            hoverinfo='skip'
-        ))
+        microsector_traces.append(_create_microsector_trace(
+            circuit_x, circuit_y, start_idx, end_idx, color))
 
-    return segment_traces
+    return microsector_traces
 
 
 def _create_trail_trace(pilot_x: List, pilot_y: List, color: str, position: int, trail_length: int = 50) -> go.Scatter:
@@ -236,13 +287,14 @@ def _create_animation_frames(
     pilot2: Dict,
     circuit_x: List,
     circuit_y: List,
-    microsector_colors: List
+    microsector_colors: List,
+    microsector_indices: List[tuple]
 ) -> List:
     """
     Create animation frames with progressive microsector coloring.
 
     Each frame updates:
-    - Circuit segments (colored based on current position)
+    - Circuit microsectors (25 total, colored based on current position)
     - Both driver trails (last 50 points)
     - Both driver markers (current position)
 
@@ -252,21 +304,22 @@ def _create_animation_frames(
         circuit_x: Circuit X coordinates
         circuit_y: Circuit Y coordinates
         microsector_colors: Color for each circuit point
+        microsector_indices: List of (start_idx, end_idx) for each microsector
 
     Returns:
-        List of plotly frames
+        List of plotly frames (29 traces per frame = 25 microsectors + 2 trails + 2 markers)
     """
     frames = []
     num_points = len(pilot1['x'])
     trail_length = 50
 
     for i in range(num_points):
-        # Build frame data: circuit segments + trails + markers
+        # Build frame data: microsectors + trails + markers
         frame_data = []
 
-        # Add all circuit segments with progressive coloring
-        frame_data.extend(_create_circuit_segment_traces(
-            circuit_x, circuit_y, microsector_colors, i))
+        # Add all 25 microsectors with progressive coloring
+        frame_data.extend(_create_microsector_traces(
+            circuit_x, circuit_y, microsector_colors, microsector_indices, i))
 
         # Add pilot 1 trail and marker
         frame_data.append(_create_trail_trace(
