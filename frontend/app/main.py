@@ -10,6 +10,7 @@ import streamlit as st
 
 # Project imports (now work because setup_path configured sys.path)
 from pages.dashboard import render_dashboard
+from pages.comparison import render_comparison_page
 from components.auth.auth_form import render_auth_form
 from components.layout.navbar import render_navbar, show_welcome_toast
 from config import BACKEND_URL
@@ -36,6 +37,10 @@ if pages_dir not in sys.path:
 if 'authenticated' not in st.session_state:
     st.session_state['authenticated'] = False
 
+# Initialize current page (only after authentication)
+if 'current_page' not in st.session_state:
+    st.session_state['current_page'] = 'dashboard'
+
 # Check authentication
 if not st.session_state['authenticated']:
     render_auth_form()
@@ -50,8 +55,14 @@ else:
         show_welcome_toast(st.session_state.get('email', 'User'))
         st.session_state['welcome_shown'] = True
 
-    # Render main dashboard
-    render_dashboard()
+    # Multi-page navigation logic
+    current_page = st.session_state.get('current_page', 'dashboard')
+
+    if current_page == 'comparison':
+        render_comparison_page()
+    else:
+        # Default to dashboard
+        render_dashboard()
 
     # Optional: Backend connection test (can be removed later)
     st.markdown("---")

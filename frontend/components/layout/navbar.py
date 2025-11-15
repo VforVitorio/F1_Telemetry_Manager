@@ -145,3 +145,80 @@ def show_welcome_toast(username):
 
     # Render toast
     st.markdown(toast_html, unsafe_allow_html=True)
+
+
+def show_error_toast(message):
+    """
+    Shows a custom error toast notification with animation.
+    Appears top-right and fades out after 4 seconds.
+    Similar to welcome toast but in red with X icon.
+
+    Args:
+        message (str): Error message to display in the toast
+    """
+    toast_html = f"""
+        <style>
+        /* Toast container for error */
+        @keyframes slideInRight {{
+            from {{
+                transform: translateX(100%);
+                opacity: 0;
+            }}
+            to {{
+                transform: translateX(0);
+                opacity: 1;
+            }}
+        }}
+
+        @keyframes slideOutRight {{
+            from {{
+                transform: translateX(0);
+                opacity: 1;
+            }}
+            to {{
+                transform: translateX(100%);
+                opacity: 0;
+            }}
+        }}
+
+        .custom-error-toast {{
+            position: fixed;
+            top: 80px;
+            right: 20px;
+            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+            color: white;
+            padding: 1rem 1.5rem;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(239, 68, 68, 0.4);
+            z-index: 10000;
+            font-weight: 600;
+            font-size: 1rem;
+            animation: slideInRight 0.5s ease-out, slideOutRight 0.5s ease-in 3.5s;
+            animation-fill-mode: forwards;
+            max-width: 400px;
+        }}
+
+        .custom-error-toast-icon {{
+            font-size: 1.5rem;
+            margin-right: 0.5rem;
+        }}
+        </style>
+
+        <div class="custom-error-toast">
+            <span class="custom-error-toast-icon">❌</span>
+            {message}
+        </div>
+
+        <script>
+        setTimeout(function() {{
+            const toast = document.querySelector('.custom-error-toast');
+            if (toast) {{
+                toast.style.animation = 'slideOutRight 0.5s ease-in';
+                setTimeout(() => toast.remove(), 500);
+            }}
+        }}, 4000);
+        </script>
+    """
+
+    # Render error toast
+    st.markdown(toast_html, unsafe_allow_html=True)

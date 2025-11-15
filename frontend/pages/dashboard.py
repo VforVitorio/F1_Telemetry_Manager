@@ -14,7 +14,7 @@ import plotly.graph_objects as go
 
 # Project imports
 from app.styles import Color, TextColor
-from components.telemetry.circuit_analysis import render_circuit_analysis_section
+from components.telemetry.circuit_domination import render_circuit_domination_section
 from components.telemetry.speed_graph import render_speed_graph
 from components.telemetry.delta_graph import render_delta_graph
 from components.telemetry.throttle_graph import render_throttle_graph
@@ -23,33 +23,45 @@ from components.telemetry.rpm_graph import render_rmp_graph
 from components.telemetry.gear_graph import render_gear_graph
 from components.telemetry.drs_graph import render_drs_graph
 from components.common.chart_styles import apply_telemetry_chart_styles
-from services.telemetry_service import fetch_telemetry_data
-# TODO: Import additional services when backend is ready
+from components.common.link_button import render_link_button
+from components.common.driver_colors import get_driver_color, DRIVER_COLORS
+# TODO: Import telemetry service when backend is ready
 # from services.telemetry_service import fetch_available_years, fetch_gps, fetch_sessions, fetch_drivers, fetch_lap_data
 
 
 def render_custom_css():
     """
-    Apply custom CSS for multiselect driver pills with colors.
+    Apply custom CSS for multiselect driver pills and colored driver names.
     """
-    st.markdown("""
+    # Generate CSS rules for each driver to color their names in dropdowns
+    driver_css_rules = []
+    for driver_code, color in DRIVER_COLORS.items():
+        driver_css_rules.append(f"""
+        /* Color for {driver_code} */
+        div[data-baseweb="select"] li[role="option"]:has(div:first-child:contains("{driver_code}")) {{
+            color: {color} !important;
+            font-weight: 600;
+        }}
+        """)
+
+    css_content = f"""
         <style>
-        /* First selected driver - Purple */
-        div[data-baseweb="tag"] {
-            background-color: #A259F7 !important;
-            color: white !important;
-        }
-        /* Second selected driver - Blue */
-        div[data-baseweb="tag"]:nth-of-type(2) {
-            background-color: #00B4D8 !important;
-        }
-        /* Third selected driver - Green */
-        div[data-baseweb="tag"]:nth-of-type(3) {
-            background-color: #43FF64 !important;
-            color: black !important;
-        }
+        /* Driver name colors in dropdowns */
+        {' '.join(driver_css_rules)}
+
+        /* Multiselect pills with dynamic colors */
+        div[data-baseweb="tag"] {{
+            font-weight: 600;
+        }}
+
+        /* Style for driver options - make them bold */
+        div[data-baseweb="select"] li {{
+            font-weight: 600;
+        }}
         </style>
-    """, unsafe_allow_html=True)
+    """
+
+    st.markdown(css_content, unsafe_allow_html=True)
 
 
 def render_header():
@@ -104,22 +116,37 @@ def render_data_selectors():
         )
 
     with col4:
-        # Driver multiselect with color palette
-        color_palette = ['#A259F7', '#00B4D8', '#43FF64']
-
         # TODO: Replace with dynamic drivers based on selected year, GP, and session
         # drivers = fetch_drivers(selected_year, selected_gp, selected_session)
         # GET /api/v1/telemetry/drivers?year={year}&gp={gp}&session={session}
-        # driver_options = [f"Driver {d['number']} - {d['name']}" for d in drivers]
-        driver_options = ["Driver 1", "Driver 44",
-                          "Driver 55", "Driver 63", "Driver 16"]
+        # driver_options = [f"{d['code']} - {d['name']}" for d in drivers]
+
+        # F1 2024 Complete driver lineup (24 drivers)
+        # Format: "CODE - Name" (e.g., "VER - Verstappen")
+        driver_options = [
+            "VER - Verstappen", "PER - Pérez",  # Red Bull
+            "LEC - Leclerc", "SAI - Sainz",  # Ferrari
+            "HAM - Hamilton", "RUS - Russell",  # Mercedes
+            "NOR - Norris", "PIA - Piastri",  # McLaren
+            "ALO - Alonso", "STR - Stroll",  # Aston Martin
+            "GAS - Gasly", "OCO - Ocon",  # Alpine
+            "ALB - Albon", "COL - Colapinto", "SAR - Sargeant",  # Williams
+            "TSU - Tsunoda", "RIC - Ricciardo", "LAW - Lawson",  # RB
+            "BOT - Bottas", "ZHO - Zhou",  # Sauber
+            "MAG - Magnussen", "HUL - Hülkenberg", "BEA - Bearman",  # Haas
+            "DOO - Doohan",  # Reserve/Test
+        ]
 
         selected_drivers = st.multiselect(
             "DRIVERS",
             options=driver_options,
-            default=["Driver 44"],
+            default=["VER - Verstappen"],
             max_selections=3
         )
+
+        # Extract driver codes and get their official team colors
+        driver_codes = [driver.split(' - ')[0] for driver in selected_drivers]
+        color_palette = [get_driver_color(code) for code in driver_codes]
 
     return selected_year, selected_gp, selected_session, selected_drivers, color_palette
 
@@ -227,11 +254,27 @@ def render_dashboard():
     # (This won't affect the LAP CHART above, only charts rendered after this point)
     st.markdown(apply_telemetry_chart_styles(), unsafe_allow_html=True)
 
-    # Circuit Analysis Section
-    render_circuit_analysis_section()
+    # TODO: Fetch telemetry data from backend
+    # telemetry_data = fetch_telemetry_data(selected_year, selected_gp, selected_session, selected_drivers)
+    telemetry_data = None  # Placeholder until backend is ready
 
-    # Fetch telemetry data from backend
-    telemetry_data = fetch_telemetry_data(selected_year, selected_gp, selected_session, selected_drivers)
+    # Circuit Domination Section
+    render_circuit_domination_section(
+        telemetry_data,
+        selected_drivers,
+        color_palette,
+        selected_year,
+        selected_gp,
+        selected_session
+    )
+
+    # Link button to comparison page
+    st.markdown("---")
+    render_link_button(
+        text="If you want to compare the lap progress between your 2 selected drivers, click here",
+        target_page="comparison",
+        button_text="⚖️ GO TO COMPARISON"
+    )
 
     # Other Graphs Section (stacked vertically)
     render_speed_graph(telemetry_data, selected_drivers, color_palette)
