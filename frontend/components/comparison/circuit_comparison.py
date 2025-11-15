@@ -66,11 +66,14 @@ def _create_circuit_animation(comparison_data: Dict) -> go.Figure:
     num_microsectors = 25
     microsector_indices = _calculate_microsector_indices(num_points, num_microsectors)
 
-    # Add microsector traces (initially all gray)
+    # IMPORTANT: Order must match frames order exactly!
+    # Layer 1: Microsectors (background - circuit base)
     for microsector_idx in range(num_microsectors):
         start_idx, end_idx = microsector_indices[microsector_idx]
         fig.add_trace(_create_microsector_trace(
             circuit_x, circuit_y, start_idx, end_idx, 'gray'))
+
+    # Layer 2: Trails (middle - always visible above circuit)
 
     # Pilot 1 trail (initially empty)
     fig.add_trace(go.Scatter(
@@ -80,21 +83,6 @@ def _create_circuit_animation(comparison_data: Dict) -> go.Figure:
         line=dict(color=pilot1['color'], width=3),
         name=f"{pilot1['name']} (Lap {pilot1.get('lap', '?')})",
         showlegend=True
-    ))
-
-    # Pilot 1 marker
-    fig.add_trace(go.Scatter(
-        x=[pilot1['x'][0]],
-        y=[pilot1['y'][0]],
-        mode='markers',
-        marker=dict(
-            size=15,
-            color=pilot1['color'],
-            symbol='circle',
-            line=dict(color='white', width=2)
-        ),
-        showlegend=False,
-        hoverinfo='skip'
     ))
 
     # Pilot 2 trail (initially empty)
@@ -107,13 +95,30 @@ def _create_circuit_animation(comparison_data: Dict) -> go.Figure:
         showlegend=True
     ))
 
-    # Pilot 2 marker
+    # Layer 3: Markers (top - always visible)
+
+    # Pilot 1 marker (circle)
+    fig.add_trace(go.Scatter(
+        x=[pilot1['x'][0]],
+        y=[pilot1['y'][0]],
+        mode='markers',
+        marker=dict(
+            size=14,
+            color=pilot1['color'],
+            symbol='circle',
+            line=dict(color='white', width=2)
+        ),
+        showlegend=False,
+        hoverinfo='skip'
+    ))
+
+    # Pilot 2 marker (circle)
     fig.add_trace(go.Scatter(
         x=[pilot2['x'][0]],
         y=[pilot2['y'][0]],
         mode='markers',
         marker=dict(
-            size=15,
+            size=14,
             color=pilot2['color'],
             symbol='circle',
             line=dict(color='white', width=2)
@@ -180,7 +185,7 @@ def _create_microsector_trace(
         x=circuit_x[start_idx:end_idx],
         y=circuit_y[start_idx:end_idx],
         mode='lines',
-        line=dict(color=color, width=4),
+        line=dict(color=color, width=8),
         showlegend=False,
         hoverinfo='skip'
     )
@@ -215,12 +220,12 @@ def _create_microsector_traces(
     for microsector_idx in range(num_microsectors):
         start_idx, end_idx = microsector_indices[microsector_idx]
 
-        # Check if this microsector has been passed by the current position
-        if current_position >= start_idx:
+        # Check if this microsector has been completely passed
+        if current_position >= end_idx:
             # Use the color from the first point in this microsector
             color = microsector_colors[start_idx]
         else:
-            # Future microsectors remain gray
+            # Unpassed microsectors remain gray
             color = 'gray'
 
         microsector_traces.append(_create_microsector_trace(
@@ -233,12 +238,14 @@ def _create_trail_trace(pilot_x: List, pilot_y: List, color: str, position: int,
     """
     Create trail trace for a single driver.
 
+    Shows the last N points of the driver's path (trail effect).
+
     Args:
         pilot_x: Driver's X coordinates
         pilot_y: Driver's Y coordinates
         color: Driver's color
         position: Current position index
-        trail_length: Number of points to show in trail
+        trail_length: Number of points to show in trail (default: 50)
 
     Returns:
         Scatter trace for trail
@@ -254,7 +261,7 @@ def _create_trail_trace(pilot_x: List, pilot_y: List, color: str, position: int,
     )
 
 
-def _create_marker_trace(pilot_x: List, pilot_y: List, color: str, position: int) -> go.Scatter:
+def _create_marker_trace(pilot_x: List, pilot_y: List, color: str, position: int, symbol: str = 'circle') -> go.Scatter:
     """
     Create marker trace for a single driver.
 
@@ -263,6 +270,7 @@ def _create_marker_trace(pilot_x: List, pilot_y: List, color: str, position: int
         pilot_y: Driver's Y coordinates
         color: Driver's color
         position: Current position index
+        symbol: Marker symbol ('circle', 'square', etc.)
 
     Returns:
         Scatter trace for marker
@@ -272,9 +280,9 @@ def _create_marker_trace(pilot_x: List, pilot_y: List, color: str, position: int
         y=[pilot_y[position]],
         mode='markers',
         marker=dict(
-            size=15,
+            size=14,
             color=color,
-            symbol='circle',
+            symbol=symbol,
             line=dict(color='white', width=2)
         ),
         showlegend=False,
@@ -314,24 +322,24 @@ def _create_animation_frames(
     trail_length = 50
 
     for i in range(num_points):
-        # Build frame data: microsectors + trails + markers
+        # Build frame data: microsectors → trails → markers (order matters for visibility)
         frame_data = []
 
-        # Add all 25 microsectors with progressive coloring
+        # Add microsectors first (background - circuit base)
         frame_data.extend(_create_microsector_traces(
             circuit_x, circuit_y, microsector_colors, microsector_indices, i))
 
-        # Add pilot 1 trail and marker
+        # Add trails (middle layer - always visible above circuit)
         frame_data.append(_create_trail_trace(
             pilot1['x'], pilot1['y'], pilot1['color'], i, trail_length))
-        frame_data.append(_create_marker_trace(
-            pilot1['x'], pilot1['y'], pilot1['color'], i))
-
-        # Add pilot 2 trail and marker
         frame_data.append(_create_trail_trace(
             pilot2['x'], pilot2['y'], pilot2['color'], i, trail_length))
+
+        # Add markers last (top layer - always visible)
         frame_data.append(_create_marker_trace(
-            pilot2['x'], pilot2['y'], pilot2['color'], i))
+            pilot1['x'], pilot1['y'], pilot1['color'], i, symbol='circle'))
+        frame_data.append(_create_marker_trace(
+            pilot2['x'], pilot2['y'], pilot2['color'], i, symbol='circle'))
 
         frame = go.Frame(data=frame_data, name=str(i))
         frames.append(frame)
@@ -383,7 +391,7 @@ def _configure_layout(fig: go.Figure) -> None:
                     'label': '▶ Play',
                     'method': 'animate',
                     'args': [None, {
-                        'frame': {'duration': 50, 'redraw': True},
+                        'frame': {'duration': 120, 'redraw': True},
                         'fromcurrent': True,
                         'mode': 'immediate'
                     }]
