@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from backend.core.config import FRONTEND_URL
-from backend.api.v1.endpoints import auth, circuit_domination, comparison
+from backend.api.v1.endpoints import auth, circuit_domination, comparison, telemetry
 
 app = FastAPI(title="F1 Telemetry API")
 
@@ -14,6 +14,9 @@ app.add_middleware(
 )
 
 app.include_router(auth.router, prefix="/api/v1")
+
+# Add telemetry router
+app.include_router(telemetry.router, prefix="/api/v1")
 
 # Add circuit domination router
 app.include_router(circuit_domination.router, prefix="/api/v1")
