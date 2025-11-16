@@ -335,10 +335,14 @@ def prepare_comparison_data(
         driver2_color
     )
 
+    # Calculate average coordinates to center circuit between both trajectories
+    circuit_x = [(x1 + x2) / 2 for x1, x2 in zip(sync_telem1['x'], sync_telem2['x'])]
+    circuit_y = [(y1 + y2) / 2 for y1, y2 in zip(sync_telem1['y'], sync_telem2['y'])]
+
     comparison_data = {
         'circuit': {
-            'x': sync_telem1['x'],  # Use interpolated coordinates (same 500 points as pilots)
-            'y': sync_telem1['y'],
+            'x': circuit_x,  # Average of both pilots (centered ideal line)
+            'y': circuit_y,
             'colors': microsector_colors  # Colors for each point
         },
         'pilot1': {

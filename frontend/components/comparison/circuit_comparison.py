@@ -185,7 +185,7 @@ def _create_microsector_trace(
         x=circuit_x[start_idx:end_idx],
         y=circuit_y[start_idx:end_idx],
         mode='lines',
-        line=dict(color=color, width=8),
+        line=dict(color=color, width=10),
         showlegend=False,
         hoverinfo='skip'
     )
@@ -373,9 +373,9 @@ def _configure_layout(fig: go.Figure, circuit_x: List, circuit_y: List, pilot1: 
     x_min, x_max = min(all_x), max(all_x)
     y_min, y_max = min(all_y), max(all_y)
 
-    # Add 5% padding to ensure everything is visible
-    x_padding = (x_max - x_min) * 0.05
-    y_padding = (y_max - y_min) * 0.05
+    # Add 10% padding for zoomed out view
+    x_padding = (x_max - x_min) * 0.10
+    y_padding = (y_max - y_min) * 0.10
 
     fig.update_layout(
         template="plotly_dark",
