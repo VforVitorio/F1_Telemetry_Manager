@@ -64,20 +64,27 @@ def render_navbar():
         hide_streamlit_markers=False
     )
 
-    # Handle logout action
-    if menu_id == 'Logout':
+    # Only handle navigation if menu_id changed (actual click, not just re-render)
+    # Store last menu_id to detect actual clicks vs passive re-renders
+    last_menu_id = st.session_state.get('last_navbar_click', None)
+
+    # Handle logout action (only on actual click)
+    if menu_id == 'Logout' and menu_id != last_menu_id:
+        st.session_state['last_navbar_click'] = menu_id
         st.session_state['authenticated'] = False
         st.session_state['welcome_shown'] = False
         st.rerun()
 
-    # Handle home navigation (only if not already on main page)
-    elif menu_id == 'Home':
+    # Handle home navigation (only on actual click)
+    elif menu_id == 'Home' and menu_id != last_menu_id:
+        st.session_state['last_navbar_click'] = menu_id
         if st.session_state.get('current_page') != 'main':
             st.session_state['current_page'] = 'main'
             st.rerun()
 
-    # Handle comparison navigation (only if not already on comparison page)
-    elif menu_id == 'Comparison':
+    # Handle comparison navigation (only on actual click)
+    elif menu_id == 'Comparison' and menu_id != last_menu_id:
+        st.session_state['last_navbar_click'] = menu_id
         if st.session_state.get('current_page') != 'comparison':
             st.session_state['current_page'] = 'comparison'
             st.rerun()
