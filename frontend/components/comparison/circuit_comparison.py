@@ -234,7 +234,7 @@ def _create_microsector_traces(
     return microsector_traces
 
 
-def _create_trail_trace(pilot_x: List, pilot_y: List, color: str, position: int, trail_length: int = 50) -> go.Scatter:
+def _create_trail_trace(pilot_x: List, pilot_y: List, color: str, position: int, name: str, trail_length: int = 50) -> go.Scatter:
     """
     Create trail trace for a single driver.
 
@@ -245,6 +245,7 @@ def _create_trail_trace(pilot_x: List, pilot_y: List, color: str, position: int,
         pilot_y: Driver's Y coordinates
         color: Driver's color
         position: Current position index
+        name: Pilot name for legend (must match initial trace name)
         trail_length: Number of points to show in trail (default: 50)
 
     Returns:
@@ -256,7 +257,8 @@ def _create_trail_trace(pilot_x: List, pilot_y: List, color: str, position: int,
         y=pilot_y[trail_start:position + 1],
         mode='lines',
         line=dict(color=color, width=3),
-        showlegend=False,
+        name=name,
+        showlegend=True,  # Keep legend visible during animation
         hoverinfo='skip'
     )
 
@@ -330,10 +332,13 @@ def _create_animation_frames(
             circuit_x, circuit_y, microsector_colors, microsector_indices, i))
 
         # Add trails (middle layer - always visible above circuit)
+        # Pass pilot names to maintain legend visibility (same name as initial traces)
         frame_data.append(_create_trail_trace(
-            pilot1['x'], pilot1['y'], pilot1['color'], i, trail_length))
+            pilot1['x'], pilot1['y'], pilot1['color'], i,
+            f"{pilot1['name']} (Lap {pilot1.get('lap', '?')})", trail_length))
         frame_data.append(_create_trail_trace(
-            pilot2['x'], pilot2['y'], pilot2['color'], i, trail_length))
+            pilot2['x'], pilot2['y'], pilot2['color'], i,
+            f"{pilot2['name']} (Lap {pilot2.get('lap', '?')})", trail_length))
 
         # Add markers last (top layer - always visible)
         frame_data.append(_create_marker_trace(
