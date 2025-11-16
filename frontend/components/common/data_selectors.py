@@ -38,7 +38,7 @@ def _inject_driver_colors_css():
     st.markdown(css, unsafe_allow_html=True)
 
 
-def render_comparison_data_selectors() -> Tuple[int, str, str, str, str]:
+def render_comparison_data_selectors() -> Tuple[Optional[int], Optional[str], Optional[str], Optional[str], Optional[str]]:
     """
     Render data selectors for comparison page (2 drivers, fastest laps only).
 
@@ -46,7 +46,7 @@ def render_comparison_data_selectors() -> Tuple[int, str, str, str, str]:
     Only fastest laps will be compared.
 
     Returns:
-        Tuple of (year, gp, session, driver1, driver2)
+        Tuple of (year, gp, session, driver1, driver2), any can be None if not selected
     """
     # Inject CSS to color driver names
     _inject_driver_colors_css()
@@ -84,33 +84,34 @@ def render_comparison_data_selectors() -> Tuple[int, str, str, str, str]:
     return year, gp, session, driver1, driver2
 
 
-def _render_year_selector() -> int:
+def _render_year_selector() -> Optional[int]:
     """
-    Render year dropdown selector.
+    Render year dropdown selector with placeholder.
 
     Returns:
-        Selected year as integer
+        Selected year as integer or None if not selected
     """
     # TODO: Replace with dynamic years from backend
     # years = fetch_available_years()  # GET /api/v1/telemetry/years
     year = st.selectbox(
         "YEAR",
         options=[2024, 2023, 2022, 2021, 2020],
-        index=0,
+        index=None,
+        placeholder="Select Season",
         key="comparison_year_selector"
     )
     return year
 
 
-def _render_gp_selector(year: int) -> str:
+def _render_gp_selector(year: Optional[int]) -> Optional[str]:
     """
     Render GP dropdown selector based on selected year.
 
     Args:
-        year: Selected season year
+        year: Selected season year (can be None)
 
     Returns:
-        Selected GP name as string
+        Selected GP name as string or None if not selected
     """
     # TODO: Replace with dynamic GPs based on selected year
     # gps = fetch_gps(year)  # GET /api/v1/telemetry/gps?year={year}
@@ -118,51 +119,56 @@ def _render_gp_selector(year: int) -> str:
         "GP",
         options=["Bahrain", "Saudi Arabia", "Australia",
                  "Japan", "China", "Miami", "Monaco"],
-        index=0,
+        index=None,
+        placeholder="Select GP",
         key="comparison_gp_selector"
     )
     return gp
 
 
-def _render_session_selector(year: int, gp: str) -> str:
+def _render_session_selector(year: Optional[int], gp: Optional[str]) -> Optional[str]:
     """
     Render session dropdown selector based on selected year and GP.
 
     Args:
-        year: Selected season year
-        gp: Selected Grand Prix name
+        year: Selected season year (can be None)
+        gp: Selected Grand Prix name (can be None)
 
     Returns:
-        Selected session type as string
+        Selected session type as string or None if not selected
     """
     # TODO: Replace with dynamic sessions based on selected year and GP
     # sessions = fetch_sessions(year, gp)  # GET /api/v1/telemetry/sessions?year={year}&gp={gp}
     session = st.selectbox(
         "SESSION",
         options=["FP1", "FP2", "FP3", "Q", "R"],
-        index=4,
+        index=None,
+        placeholder="Select Session",
         key="comparison_session_selector"
     )
     return session
 
 
-def _render_driver_selector(year: int, gp: str, session: str, label: str, key: str) -> str:
+def _render_driver_selector(year: Optional[int], gp: Optional[str], session: Optional[str], label: str, key: str) -> Optional[str]:
     """
-    Render single driver dropdown selector.
+    Render single driver dropdown selector with placeholder.
 
     Args:
-        year: Selected season year
-        gp: Selected Grand Prix name
-        session: Selected session type
+        year: Selected season year (can be None)
+        gp: Selected Grand Prix name (can be None)
+        session: Selected session type (can be None)
         label: Label for the selector
         key: Unique key for the Streamlit widget
 
     Returns:
-        Selected driver abbreviation as string
+        Selected driver abbreviation as string or None if not selected
     """
     # TODO: Replace with dynamic drivers based on selected year, GP, and session
     # drivers = fetch_drivers(year, gp, session)
     # GET /api/v1/telemetry/drivers?year={year}&gp={gp}&session={session}
+
+    # Determine placeholder based on which driver selector this is
+    placeholder = "Select First Driver" if "driver1" in key else "Select Second Driver"
 
     # F1 2024 Complete driver lineup (24 drivers)
     driver = st.selectbox(
@@ -180,7 +186,8 @@ def _render_driver_selector(year: int, gp: str, session: str, label: str, key: s
             "MAG", "HUL", "BEA",  # Haas
             "DOO",  # Reserve/Test
         ],
-        index=0,
+        index=None,
+        placeholder=placeholder,
         key=key
     )
     return driver

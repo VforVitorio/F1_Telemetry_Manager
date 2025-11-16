@@ -34,7 +34,7 @@ def render_circuit_comparison(comparison_data: Dict) -> None:
 def _render_section_title() -> None:
     """Render centered section title."""
     st.markdown(
-        "<h2 style='text-align: center;'>CIRCUIT COMPARISON</h2>",
+        "<h2 style='text-align: center;'>LAP ANIMATION</h2>",
         unsafe_allow_html=True
     )
 
