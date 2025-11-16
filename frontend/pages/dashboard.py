@@ -33,35 +33,85 @@ def render_custom_css():
     """
     Apply custom CSS for multiselect driver pills and colored driver names.
     """
-    # Generate CSS rules for each driver to color their names in dropdowns
-    driver_css_rules = []
+    # Generate JavaScript object with driver colors
+    driver_colors_js = "{"
     for driver_code, color in DRIVER_COLORS.items():
-        driver_css_rules.append(f"""
-        /* Color for {driver_code} */
-        div[data-baseweb="select"] li[role="option"]:has(div:first-child:contains("{driver_code}")) {{
-            color: {color} !important;
-            font-weight: 600;
-        }}
-        """)
+        driver_colors_js += f'"{driver_code}": "{color}", '
+    driver_colors_js = driver_colors_js.rstrip(", ") + "}"
 
-    css_content = f"""
+    css_and_js = f"""
         <style>
-        /* Driver name colors in dropdowns */
-        {' '.join(driver_css_rules)}
-
-        /* Multiselect pills with dynamic colors */
-        div[data-baseweb="tag"] {{
-            font-weight: 600;
+        /* Aggressively remove ALL backgrounds from multiselect pills */
+        span[data-baseweb="tag"],
+        span[data-baseweb="tag"] > span,
+        span[data-baseweb="tag"] > span > span,
+        span[data-baseweb="tag"] * {{
+            background-color: transparent !important;
+            background: transparent !important;
+            background-image: none !important;
+            border: none !important;
+            box-shadow: none !important;
+            padding: 2px 3px !important;
+            margin-right: 6px !important;
         }}
 
-        /* Style for driver options - make them bold */
-        div[data-baseweb="select"] li {{
-            font-weight: 600;
+        /* Target div tags as well */
+        div[data-baseweb="tag"],
+        div[data-baseweb="tag"] > span,
+        div[data-baseweb="tag"] * {{
+            background-color: transparent !important;
+            background: transparent !important;
+            background-image: none !important;
+            border: none !important;
+            box-shadow: none !important;
+        }}
+
+        /* Hide the close/X button on pills */
+        span[data-baseweb="tag"] svg,
+        div[data-baseweb="tag"] svg {{
+            display: none !important;
+        }}
+
+        /* Make driver codes bold and slightly larger */
+        span[data-baseweb="tag"] span,
+        div[data-baseweb="tag"] span {{
+            font-weight: 700 !important;
+            font-size: 14px !important;
+        }}
+
+        /* Style dropdown options */
+        div[data-baseweb="select"] li[role="option"] {{
+            font-weight: 600 !important;
         }}
         </style>
+
+        <script>
+        // Color driver codes based on DRIVER_COLORS
+        const driverColors = {driver_colors_js};
+
+        function colorDriverTags() {{
+            const tags = document.querySelectorAll('span[data-baseweb="tag"] span, div[data-baseweb="tag"] span');
+            tags.forEach(tag => {{
+                const text = tag.textContent.trim();
+                if (driverColors[text]) {{
+                    tag.style.setProperty('color', driverColors[text], 'important');
+                }}
+            }});
+        }}
+
+        // Run on load and whenever DOM changes
+        if (document.readyState === 'loading') {{
+            document.addEventListener('DOMContentLoaded', colorDriverTags);
+        }} else {{
+            colorDriverTags();
+        }}
+
+        const observer = new MutationObserver(colorDriverTags);
+        observer.observe(document.body, {{ childList: true, subtree: true }});
+        </script>
     """
 
-    st.markdown(css_content, unsafe_allow_html=True)
+    st.markdown(css_and_js, unsafe_allow_html=True)
 
 
 def render_header():
@@ -119,35 +169,33 @@ def render_data_selectors():
         # TODO: Replace with dynamic drivers based on selected year, GP, and session
         # drivers = fetch_drivers(selected_year, selected_gp, selected_session)
         # GET /api/v1/telemetry/drivers?year={year}&gp={gp}&session={session}
-        # driver_options = [f"{d['code']} - {d['name']}" for d in drivers]
 
-        # F1 2024 Complete driver lineup (24 drivers)
+        # F1 2024 Complete driver lineup (24 drivers) - codes only
         driver_options = [
-            "VER - Verstappen", "PER - Perez",  # Red Bull
-            "LEC - Leclerc", "SAI - Sainz",  # Ferrari
-            "HAM - Hamilton", "RUS - Russell",  # Mercedes
-            "NOR - Norris", "PIA - Piastri",  # McLaren
-            "ALO - Alonso", "STR - Stroll",  # Aston Martin
-            "GAS - Gasly", "OCO - Ocon",  # Alpine
-            "ALB - Albon", "COL - Colapinto", "SAR - Sargeant",  # Williams
-            "TSU - Tsunoda", "RIC - Ricciardo", "LAW - Lawson",  # RB
-            "BOT - Bottas", "ZHO - Zhou",  # Sauber
-            "MAG - Magnussen", "HUL - Hulkenberg", "BEA - Bearman",  # Haas
-            "DOO - Doohan",  # Reserve/Test
+            "VER", "PER",  # Red Bull
+            "LEC", "SAI",  # Ferrari
+            "HAM", "RUS",  # Mercedes
+            "NOR", "PIA",  # McLaren
+            "ALO", "STR",  # Aston Martin
+            "GAS", "OCO",  # Alpine
+            "ALB", "COL", "SAR",  # Williams
+            "TSU", "RIC", "LAW",  # RB
+            "BOT", "ZHO",  # Sauber
+            "MAG", "HUL", "BEA",  # Haas
+            "DOO",  # Reserve/Test
         ]
 
         selected_drivers = st.multiselect(
             "DRIVERS",
             options=driver_options,
-            default=["VER - Verstappen"],
+            default=["VER"],
             max_selections=3
         )
 
-        # Extract driver codes from "CODE - Name" format
-        driver_codes = [d.split(" - ")[0] for d in selected_drivers]
-        color_palette = [get_driver_color(code) for code in driver_codes]
+        # Get official team colors for selected drivers
+        color_palette = [get_driver_color(code) for code in selected_drivers]
 
-    return selected_year, selected_gp, selected_session, driver_codes, color_palette
+    return selected_year, selected_gp, selected_session, selected_drivers, color_palette
 
 
 def render_lap_graph(selected_drivers, color_palette):
