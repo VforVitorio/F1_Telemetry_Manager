@@ -70,5 +70,7 @@ def render_link_button(text: str, target_page: str, button_text: str = "Click he
 
         # Render the actual clickable button
         if st.button(button_text, use_container_width=True, type="primary", key=f"link_btn_{target_page}"):
-            st.session_state['current_page'] = target_page
-            st.rerun()
+            # Only rerun if actually changing pages (avoid infinite loop)
+            if st.session_state.get('current_page') != target_page:
+                st.session_state['current_page'] = target_page
+                st.rerun()
