@@ -62,31 +62,17 @@ def render_circuit_domination_section(
     # Render the section title
     _render_section_title()
 
-    # Attempt to fetch real data from backend API
-    circuit_data = None
+    # TODO: Remove hardcoded test data when backend is ready
+    # Hardcoded test: Suzuka 2024, VER vs NOR
+    with st.spinner("Loading circuit domination data..."):
+        success, circuit_data, error = TelemetryService.get_circuit_domination(
+            year=2024,
+            gp="Japan",
+            session="Q",
+            drivers=["VER", "NOR"]
+        )
 
-    # FOR TESTING: Use hardcoded Suzuka 2024 Qualifying VER vs NOR
-    # TODO: Remove this hardcoded test data once dashboard inputs are properly connected
-    test_year = 2024
-    test_gp = "Japan"  # Suzuka
-    test_session = "Q"
-    test_drivers = ["VER", "NOR"]
-
-    st.info(f"🧪 Testing with hardcoded data: {test_year} {test_gp} {test_session} - {', '.join(test_drivers)}")
-
-    # Try to fetch real data from backend
-    success, data, error = TelemetryService.get_circuit_domination(
-        year=test_year,
-        gp=test_gp,
-        session=test_session,
-        drivers=test_drivers
-    )
-
-    if success and data:
-        circuit_data = data
-        st.success(f"✅ Successfully loaded real circuit data for {test_gp} {test_year}")
-        st.info(f"📊 Data points: {len(data.get('x', []))} coordinates, {len(data.get('colors', []))} color segments")
-
+    if success and circuit_data:
         # Create and render the circuit figure with reduced size
         # Use columns to center and reduce width (50% of page width)
         _, center_container, _ = st.columns([1, 2, 1])
@@ -96,8 +82,7 @@ def render_circuit_domination_section(
             st.plotly_chart(fig, use_container_width=True)
     else:
         # Show error message
-        st.error(f"❌ Failed to load real data: {error}")
-        st.error("⚠️ Cannot display circuit without data. Please check backend logs.")
+        st.error(f"❌ Failed to load circuit data: {error}")
 
 
 def _render_section_title() -> None:

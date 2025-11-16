@@ -101,7 +101,7 @@ def render_data_selectors():
         # selected_gp = st.selectbox("GP", options=gps, index=0)
         selected_gp = st.selectbox(
             "GP",
-            options=["Bahrain", "Saudi Arabia", "Australia", "Japan", "China"],
+            options=["Bahrain", "Saudi Arabia", "Australia", "Japan", "China", "Miami", "Monaco"],
             index=0
         )
 
@@ -112,7 +112,7 @@ def render_data_selectors():
         selected_session = st.selectbox(
             "SESSION",
             options=["FP1", "FP2", "FP3", "Q", "R"],
-            index=4
+            index=0
         )
 
     with col4:
@@ -122,9 +122,8 @@ def render_data_selectors():
         # driver_options = [f"{d['code']} - {d['name']}" for d in drivers]
 
         # F1 2024 Complete driver lineup (24 drivers)
-        # Format: "CODE - Name" (e.g., "VER - Verstappen")
         driver_options = [
-            "VER - Verstappen", "PER - Pérez",  # Red Bull
+            "VER - Verstappen", "PER - Perez",  # Red Bull
             "LEC - Leclerc", "SAI - Sainz",  # Ferrari
             "HAM - Hamilton", "RUS - Russell",  # Mercedes
             "NOR - Norris", "PIA - Piastri",  # McLaren
@@ -133,7 +132,7 @@ def render_data_selectors():
             "ALB - Albon", "COL - Colapinto", "SAR - Sargeant",  # Williams
             "TSU - Tsunoda", "RIC - Ricciardo", "LAW - Lawson",  # RB
             "BOT - Bottas", "ZHO - Zhou",  # Sauber
-            "MAG - Magnussen", "HUL - Hülkenberg", "BEA - Bearman",  # Haas
+            "MAG - Magnussen", "HUL - Hulkenberg", "BEA - Bearman",  # Haas
             "DOO - Doohan",  # Reserve/Test
         ]
 
@@ -144,11 +143,11 @@ def render_data_selectors():
             max_selections=3
         )
 
-        # Extract driver codes and get their official team colors
-        driver_codes = [driver.split(' - ')[0] for driver in selected_drivers]
+        # Extract driver codes from "CODE - Name" format
+        driver_codes = [d.split(" - ")[0] for d in selected_drivers]
         color_palette = [get_driver_color(code) for code in driver_codes]
 
-    return selected_year, selected_gp, selected_session, selected_drivers, color_palette
+    return selected_year, selected_gp, selected_session, driver_codes, color_palette
 
 
 def render_lap_graph(selected_drivers, color_palette):
@@ -187,7 +186,7 @@ def render_lap_graph(selected_drivers, color_palette):
         y=[92.5, 91.8, 91.2, 90.9, 91.5, 90.7, 91.1, 90.8, 91.3, 90.6],
         mode='lines+markers',
         name='Driver 44',
-        line=dict(color=color_palette[0], width=2),
+        line=dict(color=color_palette[0] if color_palette else Color.ACCENT, width=2),
         marker=dict(size=6)
     ))
 
