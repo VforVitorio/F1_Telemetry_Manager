@@ -51,6 +51,13 @@ def render_navbar():
         </style>
     """, unsafe_allow_html=True)
 
+    # Map current_page to navbar menu ID for proper highlighting
+    current_page = st.session_state.get('current_page', 'dashboard')
+    if current_page == 'comparison':
+        force_value = 'Comparison'  # Force Comparison to be highlighted
+    else:  # 'main' or 'dashboard' both map to Home
+        force_value = 'Home'  # Force Home to be highlighted
+
     # Render navbar with hydralit_components (Comparison link between Home and Logout)
     menu_id = hc.nav_bar(
         menu_definition=[
@@ -59,6 +66,7 @@ def render_navbar():
         override_theme=override_theme,
         home_name='Home',
         login_name='Logout',  # This creates the logout button
+        force_value=force_value,  # Force the correct item to be highlighted based on current page
         sticky_nav=True,  # Makes navbar sticky
         sticky_mode='pinned',  # Pinned mode (no jumping)
         hide_streamlit_markers=False
