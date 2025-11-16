@@ -23,6 +23,7 @@ from components.comparison.brake_comparison_graph import render_brake_comparison
 from components.comparison.throttle_comparison_graph import render_throttle_comparison_graph
 from components.common.chart_styles import apply_telemetry_chart_styles
 from components.layout.navbar import show_error_toast
+from components.common.driver_colors import get_driver_color
 
 
 BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
@@ -35,6 +36,49 @@ def render_header():
         unsafe_allow_html=True
     )
     st.markdown("---")
+
+
+def _apply_driver_selectbox_colors(driver1, driver2):
+    """
+    Apply team colors to driver selectboxes based on selected drivers.
+
+    Args:
+        driver1 (str): First driver code (or None)
+        driver2 (str): Second driver code (or None)
+    """
+    if not driver1 and not driver2:
+        return
+
+    css = "<style>"
+
+    # Color for first driver selectbox (driver1)
+    if driver1:
+        color1 = get_driver_color(driver1)
+        css += f"""
+        /* Color for Driver 1 selectbox text */
+        div[data-testid="stSelectbox"]:nth-of-type(4) div[data-baseweb="select"] > div,
+        div[data-testid="stSelectbox"]:nth-of-type(4) div[data-baseweb="select"] div,
+        div[data-testid="stSelectbox"]:nth-of-type(4) div[data-baseweb="select"] span {{
+            color: {color1} !important;
+            font-weight: 700 !important;
+        }}
+        """
+
+    # Color for second driver selectbox (driver2)
+    if driver2:
+        color2 = get_driver_color(driver2)
+        css += f"""
+        /* Color for Driver 2 selectbox text */
+        div[data-testid="stSelectbox"]:nth-of-type(5) div[data-baseweb="select"] > div,
+        div[data-testid="stSelectbox"]:nth-of-type(5) div[data-baseweb="select"] div,
+        div[data-testid="stSelectbox"]:nth-of-type(5) div[data-baseweb="select"] span {{
+            color: {color2} !important;
+            font-weight: 700 !important;
+        }}
+        """
+
+    css += "</style>"
+    st.markdown(css, unsafe_allow_html=True)
 
 
 def fetch_comparison_data(year, gp, session, driver1, driver2):
@@ -110,6 +154,9 @@ def render_comparison_page():
     render_header()
 
     year, gp, session, driver1, driver2 = render_comparison_data_selectors()
+
+    # Apply colors to driver selectboxes (must be after selectors)
+    _apply_driver_selectbox_colors(driver1, driver2)
 
     st.markdown("---")
 
