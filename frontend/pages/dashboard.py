@@ -31,21 +31,15 @@ from components.common.driver_colors import get_driver_color, DRIVER_COLORS
 
 def render_custom_css():
     """
-    Apply custom CSS for multiselect driver pills and colored driver names.
+    Apply custom CSS for multiselect driver pills (transparent background, no borders).
     """
-    # Generate JavaScript object with driver colors
-    driver_colors_js = "{"
-    for driver_code, color in DRIVER_COLORS.items():
-        driver_colors_js += f'"{driver_code}": "{color}", '
-    driver_colors_js = driver_colors_js.rstrip(", ") + "}"
-
-    css_and_js = f"""
+    css_content = """
         <style>
         /* Aggressively remove ALL backgrounds from multiselect pills */
         span[data-baseweb="tag"],
         span[data-baseweb="tag"] > span,
         span[data-baseweb="tag"] > span > span,
-        span[data-baseweb="tag"] * {{
+        span[data-baseweb="tag"] * {
             background-color: transparent !important;
             background: transparent !important;
             background-image: none !important;
@@ -53,65 +47,64 @@ def render_custom_css():
             box-shadow: none !important;
             padding: 2px 3px !important;
             margin-right: 6px !important;
-        }}
+        }
 
         /* Target div tags as well */
         div[data-baseweb="tag"],
         div[data-baseweb="tag"] > span,
-        div[data-baseweb="tag"] * {{
+        div[data-baseweb="tag"] * {
             background-color: transparent !important;
             background: transparent !important;
             background-image: none !important;
             border: none !important;
             box-shadow: none !important;
-        }}
+        }
 
         /* Hide the close/X button on pills */
         span[data-baseweb="tag"] svg,
-        div[data-baseweb="tag"] svg {{
+        div[data-baseweb="tag"] svg {
             display: none !important;
-        }}
+        }
 
         /* Make driver codes bold and slightly larger */
         span[data-baseweb="tag"] span,
-        div[data-baseweb="tag"] span {{
+        div[data-baseweb="tag"] span {
             font-weight: 700 !important;
             font-size: 14px !important;
-        }}
+        }
 
         /* Style dropdown options */
-        div[data-baseweb="select"] li[role="option"] {{
+        div[data-baseweb="select"] li[role="option"] {
             font-weight: 600 !important;
-        }}
+        }
         </style>
-
-        <script>
-        // Color driver codes based on DRIVER_COLORS
-        const driverColors = {driver_colors_js};
-
-        function colorDriverTags() {{
-            const tags = document.querySelectorAll('span[data-baseweb="tag"] span, div[data-baseweb="tag"] span');
-            tags.forEach(tag => {{
-                const text = tag.textContent.trim();
-                if (driverColors[text]) {{
-                    tag.style.setProperty('color', driverColors[text], 'important');
-                }}
-            }});
-        }}
-
-        // Run on load and whenever DOM changes
-        if (document.readyState === 'loading') {{
-            document.addEventListener('DOMContentLoaded', colorDriverTags);
-        }} else {{
-            colorDriverTags();
-        }}
-
-        const observer = new MutationObserver(colorDriverTags);
-        observer.observe(document.body, {{ childList: true, subtree: true }});
-        </script>
     """
 
-    st.markdown(css_and_js, unsafe_allow_html=True)
+    st.markdown(css_content, unsafe_allow_html=True)
+
+
+def apply_driver_pill_colors(selected_drivers):
+    """
+    Apply team colors to driver pills based on selection order using nth-of-type.
+
+    Args:
+        selected_drivers (list): List of selected driver codes in order
+    """
+    if not selected_drivers:
+        return
+
+    css = "<style>"
+    for i, driver_code in enumerate(selected_drivers, start=1):
+        color = get_driver_color(driver_code)
+        css += f"""
+        span[data-baseweb="tag"]:nth-of-type({i}) span,
+        div[data-baseweb="tag"]:nth-of-type({i}) span {{
+            color: {color} !important;
+        }}
+        """
+    css += "</style>"
+
+    st.markdown(css, unsafe_allow_html=True)
 
 
 def render_header():
@@ -291,9 +284,17 @@ def render_dashboard():
     Main dashboard rendering function.
     Orchestrates all dashboard components in sequence.
     """
+    # Early return if navigating away to avoid unnecessary API calls and rendering
+    if st.session_state.get('current_page') == 'comparison':
+        return  # Don't render dashboard, let main.py handle routing
+
     render_custom_css()
     render_header()
     selected_year, selected_gp, selected_session, selected_drivers, color_palette = render_data_selectors()
+
+    # Apply colors to driver pills based on selection (must be after selectors)
+    apply_driver_pill_colors(selected_drivers)
+
     render_lap_graph(selected_drivers, color_palette)
     render_control_buttons()
 
