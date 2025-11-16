@@ -51,9 +51,11 @@ def render_navbar():
         </style>
     """, unsafe_allow_html=True)
 
-    # Render navbar with hydralit_components (no menu items, just Home and Logout)
+    # Render navbar with hydralit_components (Comparison link between Home and Logout)
     menu_id = hc.nav_bar(
-        menu_definition=[],  # Empty menu - only Home and Logout buttons
+        menu_definition=[
+            {'id': 'Comparison', 'icon': "fa fa-balance-scale", 'label': "Comparison"}
+        ],
         override_theme=override_theme,
         home_name='Home',
         login_name='Logout',  # This creates the logout button
@@ -67,6 +69,18 @@ def render_navbar():
         st.session_state['authenticated'] = False
         st.session_state['welcome_shown'] = False
         st.rerun()
+
+    # Handle home navigation (only if not already on main page)
+    elif menu_id == 'Home':
+        if st.session_state.get('current_page') != 'main':
+            st.session_state['current_page'] = 'main'
+            st.rerun()
+
+    # Handle comparison navigation (only if not already on comparison page)
+    elif menu_id == 'Comparison':
+        if st.session_state.get('current_page') != 'comparison':
+            st.session_state['current_page'] = 'comparison'
+            st.rerun()
 
     return menu_id
 
