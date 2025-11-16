@@ -75,20 +75,20 @@ def _create_circuit_animation(comparison_data: Dict) -> go.Figure:
 
     # Layer 2: Trails (middle - always visible above circuit)
 
-    # Pilot 1 trail (initially empty)
+    # Pilot 1 trail (initially showing first point)
     fig.add_trace(go.Scatter(
-        x=[],
-        y=[],
+        x=[pilot1['x'][0]],
+        y=[pilot1['y'][0]],
         mode='lines',
         line=dict(color=pilot1['color'], width=3),
         name=f"{pilot1['name']} (Lap {pilot1.get('lap', '?')})",
         showlegend=True
     ))
 
-    # Pilot 2 trail (initially empty)
+    # Pilot 2 trail (initially showing first point)
     fig.add_trace(go.Scatter(
-        x=[],
-        y=[],
+        x=[pilot2['x'][0]],
+        y=[pilot2['y'][0]],
         mode='lines',
         line=dict(color=pilot2['color'], width=3),
         name=f"{pilot2['name']} (Lap {pilot2.get('lap', '?')})",
@@ -132,8 +132,8 @@ def _create_circuit_animation(comparison_data: Dict) -> go.Figure:
         pilot1, pilot2, circuit_x, circuit_y, microsector_colors, microsector_indices)
     fig.frames = frames
 
-    # Configure layout
-    _configure_layout(fig)
+    # Configure layout with fixed axis ranges
+    _configure_layout(fig, circuit_x, circuit_y, pilot1, pilot2)
 
     return fig
 
@@ -347,13 +347,31 @@ def _create_animation_frames(
     return frames
 
 
-def _configure_layout(fig: go.Figure) -> None:
+def _configure_layout(fig: go.Figure, circuit_x: List, circuit_y: List, pilot1: Dict, pilot2: Dict) -> None:
     """
-    Configure figure layout with dark theme and animation controls.
+    Configure figure layout with dark theme, fixed axis ranges, and animation controls.
 
-    Sets up plotly_dark template, aspect ratio 1:1, animation buttons,
-    and legend positioning.
+    Sets up plotly_dark template, aspect ratio 1:1, fixed axes to prevent zoom/movement,
+    centered animation buttons, and legend positioning.
+
+    Args:
+        fig: Plotly figure to configure
+        circuit_x: Circuit X coordinates (for axis range calculation)
+        circuit_y: Circuit Y coordinates (for axis range calculation)
+        pilot1: Pilot 1 data (for axis range calculation)
+        pilot2: Pilot 2 data (for axis range calculation)
     """
+    # Calculate fixed axis ranges from all data to prevent auto-scaling
+    all_x = circuit_x + pilot1['x'] + pilot2['x']
+    all_y = circuit_y + pilot1['y'] + pilot2['y']
+
+    x_min, x_max = min(all_x), max(all_x)
+    y_min, y_max = min(all_y), max(all_y)
+
+    # Add 5% padding to ensure everything is visible
+    x_padding = (x_max - x_min) * 0.05
+    y_padding = (y_max - y_min) * 0.05
+
     fig.update_layout(
         template="plotly_dark",
         height=500,
@@ -366,12 +384,16 @@ def _configure_layout(fig: go.Figure) -> None:
             showticklabels=False,
             zeroline=False,
             scaleanchor="y",
-            scaleratio=1
+            scaleratio=1,
+            range=[x_min - x_padding, x_max + x_padding],  # Fixed range (no auto-scaling)
+            fixedrange=True  # Disable zoom/pan
         ),
         yaxis=dict(
             showgrid=False,
             showticklabels=False,
-            zeroline=False
+            zeroline=False,
+            range=[y_min - y_padding, y_max + y_padding],  # Fixed range (no auto-scaling)
+            fixedrange=True  # Disable zoom/pan
         ),
         hovermode=False,
         showlegend=True,
