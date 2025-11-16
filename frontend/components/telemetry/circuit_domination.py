@@ -30,6 +30,7 @@ import streamlit as st
 import plotly.graph_objects as go
 from app.styles import Color, TextColor
 from services.telemetry_service import TelemetryService
+from components.common.loading import render_loading_spinner
 
 
 def render_circuit_domination_section(
@@ -62,14 +63,19 @@ def render_circuit_domination_section(
     # Render the section title
     _render_section_title()
 
-    # TODO: Remove hardcoded test data when backend is ready
-    # Hardcoded test: Suzuka 2024, VER vs NOR
+    # Check if all required data is selected
+    if not all([year, gp, session]) or not selected_drivers or len(selected_drivers) < 2:
+        # Show loading spinner waiting for data selection
+        render_loading_spinner()
+        return
+
+    # Fetch real data from backend API
     with st.spinner("Loading circuit domination data..."):
         success, circuit_data, error = TelemetryService.get_circuit_domination(
-            year=2024,
-            gp="Japan",
-            session="Q",
-            drivers=["VER", "NOR"]
+            year=year,
+            gp=gp,
+            session=session,
+            drivers=selected_drivers
         )
 
     if success and circuit_data:
