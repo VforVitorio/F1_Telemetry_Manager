@@ -164,6 +164,7 @@ def synchronize_telemetry(
         'speed': np.interp(common_distance, telem1['distance'], telem1['speed']).tolist(),
         'throttle': np.interp(common_distance, telem1['distance'], telem1['throttle']).tolist(),
         'brake': np.interp(common_distance, telem1['distance'], telem1['brake']).tolist(),
+        'lap_time': telem1.get('lap_time'),  # Pass through lap time
     }
 
     sync_telem2 = {
@@ -173,6 +174,7 @@ def synchronize_telemetry(
         'speed': np.interp(common_distance, telem2['distance'], telem2['speed']).tolist(),
         'throttle': np.interp(common_distance, telem2['distance'], telem2['throttle']).tolist(),
         'brake': np.interp(common_distance, telem2['distance'], telem2['brake']).tolist(),
+        'lap_time': telem2.get('lap_time'),  # Pass through lap time
     }
 
     return sync_telem1, sync_telem2
@@ -184,12 +186,12 @@ def calculate_delta_time(telem1: Dict, telem2: Dict) -> List[float]:
     """
     Calculate time delta between two drivers at each point.
 
-    Delta is calculated based on speed differences and accumulated over distance.
-    Positive values = pilot1 ahead, negative = pilot2 ahead.
+    Delta is calculated based on speed differences and scaled to match real lap times.
+    Positive values = pilot1 ahead (faster), negative = pilot2 ahead (faster).
 
     Args:
-        telem1: First driver's synchronized telemetry data
-        telem2: Second driver's synchronized telemetry data
+        telem1: First driver's synchronized telemetry data (includes 'lap_time')
+        telem2: Second driver's synchronized telemetry data (includes 'lap_time')
 
     Returns:
         List of delta values in seconds at each point
@@ -198,17 +200,34 @@ def calculate_delta_time(telem1: Dict, telem2: Dict) -> List[float]:
     speed1 = np.array(telem1['speed'])
     speed2 = np.array(telem2['speed'])
 
+    # Get real lap times (in seconds)
+    lap_time1 = telem1.get('lap_time')
+    lap_time2 = telem2.get('lap_time')
+
     delta_distance = np.diff(distance)
 
     epsilon = 1e-6
     time1 = delta_distance / (speed1[:-1] / 3.6 + epsilon)
     time2 = delta_distance / (speed2[:-1] / 3.6 + epsilon)
 
-    # Inverted: time2 - time1 so positive = pilot1 faster (ahead)
-    time_diff = time2 - time1
+    # Calculate relative time difference at each segment
+    # time1 - time2: positive when driver1 is faster (takes less time)
+    time_diff = time1 - time2
     cumulative_delta = np.cumsum(time_diff)
-
     delta = np.insert(cumulative_delta, 0, 0.0)
+
+    # Scale delta to match real lap time difference if available
+    if lap_time1 is not None and lap_time2 is not None:
+        calculated_final_delta = delta[-1]
+        real_delta = lap_time1 - lap_time2
+
+        # Scale factor to match reality
+        if abs(calculated_final_delta) > epsilon:
+            scale_factor = real_delta / calculated_final_delta
+            delta = delta * scale_factor
+        else:
+            # If calculated delta is zero, use real delta uniformly
+            delta = np.linspace(0, real_delta, len(delta))
 
     return delta.tolist()
 

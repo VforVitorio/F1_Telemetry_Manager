@@ -7,6 +7,7 @@ microsector calculation, and driver comparison.
 """
 
 import numpy as np
+import pandas as pd
 import fastf1
 from typing import Dict, List, Tuple
 import logging
@@ -416,6 +417,10 @@ def fetch_lap_telemetry(
     # Get telemetry
     telemetry = lap.get_telemetry()
 
+    # Get lap time in seconds
+    lap_time_seconds = lap['LapTime'].total_seconds(
+    ) if pd.notna(lap['LapTime']) else None
+
     # Extract and clean GPS data
     if 'X' not in telemetry.columns or 'Y' not in telemetry.columns:
         raise ValueError(
@@ -444,13 +449,19 @@ def fetch_lap_telemetry(
     x_m = x_orig / 1000
     y_m = y_orig / 1000
 
-    # Calculate cumulative distance
-    distances = np.sqrt(np.diff(x_m)**2 + np.diff(y_m)**2)
-    cumulative_distance = np.insert(np.cumsum(distances), 0, 0)
+    # Use FastF1's Distance if available, otherwise calculate it manually
+    if 'Distance' in telemetry.columns and not telemetry['Distance'][mask].isna().all():
+        # FastF1 provides Distance in meters
+        cumulative_distance = telemetry['Distance'][mask].to_numpy()
+    else:
+        # Fallback: Calculate cumulative distance from GPS coordinates
+        distances = np.sqrt(np.diff(x_m)**2 + np.diff(y_m)**2)
+        cumulative_distance = np.insert(np.cumsum(distances), 0, 0)
 
     return {
         'name': driver,
         'lap': int(lap['LapNumber']),
+        'lap_time': lap_time_seconds,  # Total lap time in seconds
         'distance': cumulative_distance.tolist(),
         'x': x_m.tolist(),
         'y': y_m.tolist(),
