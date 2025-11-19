@@ -27,6 +27,9 @@ def render_circuit_comparison(comparison_data: Dict) -> None:
         render_loading_spinner()
         return
 
+    # Render lap times info box
+    _render_lap_times_info(comparison_data)
+
     fig = _create_circuit_animation(comparison_data)
     st.plotly_chart(fig, use_container_width=True)
 
@@ -35,6 +38,124 @@ def _render_section_title() -> None:
     """Render centered section title."""
     st.markdown(
         "<h2 style='text-align: center;'>LAP ANIMATION</h2>",
+        unsafe_allow_html=True
+    )
+
+
+def _render_lap_times_info(comparison_data: Dict) -> None:
+    """
+    Render lap times information box with styled container.
+
+    Shows both drivers' lap times and the winner with time difference.
+
+    Args:
+        comparison_data: Dictionary with pilot1, pilot2, and lap_time data
+    """
+    pilot1 = comparison_data['pilot1']
+    pilot2 = comparison_data['pilot2']
+
+    # Get lap times (in seconds)
+    lap_time1 = pilot1.get('lap_time')
+    lap_time2 = pilot2.get('lap_time')
+
+    if lap_time1 is None or lap_time2 is None:
+        return  # Don't show if lap times not available
+
+    # Convert seconds to minutes:seconds.milliseconds format
+    def format_lap_time(seconds: float) -> str:
+        minutes = int(seconds // 60)
+        remaining_seconds = seconds % 60
+        secs = int(remaining_seconds)
+        millis = int((remaining_seconds - secs) * 1000)
+        return f"{minutes}:{secs:02d}.{millis:03d}"
+
+    # Determine winner and time difference
+    time_diff = abs(lap_time1 - lap_time2)
+    if lap_time1 < lap_time2:
+        winner_name = pilot1['name']
+        winner_text = f"{winner_name} finished first by {time_diff:.3f} seconds"
+    elif lap_time2 < lap_time1:
+        winner_name = pilot2['name']
+        winner_text = f"{winner_name} finished first by {time_diff:.3f} seconds"
+    else:
+        winner_text = "Both drivers finished with identical times"
+
+    # Format lap times
+    time1_formatted = format_lap_time(lap_time1)
+    time2_formatted = format_lap_time(lap_time2)
+
+    # Determine winner color
+    winner_color = pilot1['color'] if lap_time1 < lap_time2 else pilot2['color']
+
+    # Inject dynamic CSS for driver colors
+    st.markdown(
+        f"""
+        <style>
+        .driver1-name {{
+            color: {pilot1['color']} !important;
+        }}
+        .driver2-name {{
+            color: {pilot2['color']} !important;
+        }}
+        .driver1-time {{
+            color: {pilot1['color']} !important;
+        }}
+        .driver2-time {{
+            color: {pilot2['color']} !important;
+        }}
+        .winner-name {{
+            color: {winner_color} !important;
+        }}
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+
+    # Render styled container with class-based colored driver names and times
+    st.markdown(
+        f"""
+        <div class="lap-times-container">
+            <p class="lap-time-text"><strong class="driver1-name">{pilot1['name']}</strong> - <span class="driver1-time">{time1_formatted}</span></p>
+            <p class="lap-time-text"><strong class="driver2-name">{pilot2['name']}</strong> - <span class="driver2-time">{time2_formatted}</span></p>
+            <p class="winner-text"><strong class="winner-name">{winner_name}</strong> finished first by {time_diff:.3f} seconds</p>
+        </div>
+        <style>
+        .lap-times-container {{
+            width: 100%;
+            padding: 20px 30px;
+            background: linear-gradient(135deg, rgba(167, 139, 250, 0.1) 0%, rgba(162, 89, 247, 0.1) 100%);
+            border: 2px solid #a78bfa;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(167, 139, 250, 0.3);
+            text-align: center;
+            margin: 20px auto;
+            max-width: 800px;
+            transition: all 0.3s ease;
+        }}
+        .lap-times-container:hover {{
+            box-shadow: 0 6px 16px rgba(167, 139, 250, 0.5);
+            border-color: #A259F7;
+        }}
+        .lap-time-text {{
+            color: #d1d5db;
+            font-family: 'Inter', sans-serif;
+            font-size: 16px;
+            font-weight: 400;
+            margin: 8px 0;
+            letter-spacing: 0.3px;
+            line-height: 1.6;
+        }}
+        .winner-text {{
+            color: #a78bfa;
+            font-family: 'Inter', sans-serif;
+            font-size: 18px;
+            font-weight: 600;
+            margin: 15px 0 5px 0;
+            letter-spacing: 0.5px;
+            line-height: 1.6;
+        }}
+        </style>
+        """,
         unsafe_allow_html=True
     )
 
@@ -64,7 +185,8 @@ def _create_circuit_animation(comparison_data: Dict) -> go.Figure:
     # Calculate microsector boundaries (25 microsectors)
     num_points = len(circuit_x)
     num_microsectors = 25
-    microsector_indices = _calculate_microsector_indices(num_points, num_microsectors)
+    microsector_indices = _calculate_microsector_indices(
+        num_points, num_microsectors)
 
     # IMPORTANT: Order must match frames order exactly!
     # Layer 1: Microsectors (background - circuit base)
@@ -155,7 +277,8 @@ def _calculate_microsector_indices(num_points: int, num_microsectors: int) -> Li
     for sector_idx in range(num_microsectors):
         start_idx = sector_idx * points_per_sector
         # Last microsector extends to end of circuit
-        end_idx = num_points if sector_idx == num_microsectors - 1 else (sector_idx + 1) * points_per_sector
+        end_idx = num_points if sector_idx == num_microsectors - \
+            1 else (sector_idx + 1) * points_per_sector
         microsector_indices.append((start_idx, end_idx))
 
     return microsector_indices
@@ -390,14 +513,16 @@ def _configure_layout(fig: go.Figure, circuit_x: List, circuit_y: List, pilot1: 
             zeroline=False,
             scaleanchor="y",
             scaleratio=1,
-            range=[x_min - x_padding, x_max + x_padding],  # Fixed range (no auto-scaling)
+            # Fixed range (no auto-scaling)
+            range=[x_min - x_padding, x_max + x_padding],
             fixedrange=True  # Disable zoom/pan
         ),
         yaxis=dict(
             showgrid=False,
             showticklabels=False,
             zeroline=False,
-            range=[y_min - y_padding, y_max + y_padding],  # Fixed range (no auto-scaling)
+            # Fixed range (no auto-scaling)
+            range=[y_min - y_padding, y_max + y_padding],
             fixedrange=True  # Disable zoom/pan
         ),
         hovermode=False,
