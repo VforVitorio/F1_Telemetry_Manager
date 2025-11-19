@@ -91,14 +91,16 @@ def get_circuit_domination_data(
 
     # Load session
     try:
-        logger.info(f"Requesting session from FastF1: {year} {gp} {session_type}")
+        logger.info(
+            f"Requesting session from FastF1: {year} {gp} {session_type}")
         session = fastf1.get_session(year, gp, session_type)
         logger.info("Loading session data (this may take time on first run)...")
         session.load()
         logger.info("Session loaded successfully")
     except Exception as e:
         logger.error(f"Failed to load session: {e}", exc_info=True)
-        raise ValueError(f"Session not found or failed to load: {year} {gp} {session_type}. Error: {str(e)}")
+        raise ValueError(
+            f"Session not found or failed to load: {year} {gp} {session_type}. Error: {str(e)}")
 
     # Get circuit info for rotation
     circuit_info = session.get_circuit_info()
@@ -108,7 +110,8 @@ def get_circuit_domination_data(
     # Get official track length
     track_length = OFFICIAL_TRACK_LENGTHS.get(gp)
     if not track_length:
-        logger.warning(f"No official track length for {gp}, using calculated length")
+        logger.warning(
+            f"No official track length for {gp}, using calculated length")
 
     # Process telemetry for each driver
     driver_telemetry = {}
@@ -125,11 +128,13 @@ def get_circuit_domination_data(
             logger.info(f"Fastest lap for {driver}: {fastest_lap['LapTime']}")
 
             telemetry = fastest_lap.get_telemetry()
-            logger.info(f"Telemetry shape for {driver}: {len(telemetry)} points")
+            logger.info(
+                f"Telemetry shape for {driver}: {len(telemetry)} points")
 
             # Extract and clean GPS data
             if 'X' not in telemetry.columns or 'Y' not in telemetry.columns:
-                logger.error(f"GPS data not available in telemetry for {driver}")
+                logger.error(
+                    f"GPS data not available in telemetry for {driver}")
                 continue
 
             mask = ~np.isnan(telemetry['X']) & ~np.isnan(telemetry['Y'])
@@ -270,7 +275,8 @@ def _calculate_microsector_dominance(
     """
 
     points_per_sector = num_points // num_microsectors
-    logger.info(f"Calculating dominance: {num_microsectors} microsectors, {points_per_sector} points per sector")
+    logger.info(
+        f"Calculating dominance: {num_microsectors} microsectors, {points_per_sector} points per sector")
 
     # First, calculate which driver dominated each microsector
     microsector_colors = []
@@ -295,12 +301,14 @@ def _calculate_microsector_dominance(
 
         # Find driver with highest average speed in this microsector
         if driver_avg_speeds:
-            fastest_driver_idx = max(driver_avg_speeds, key=driver_avg_speeds.get)
+            fastest_driver_idx = max(
+                driver_avg_speeds, key=driver_avg_speeds.get)
             microsector_colors.append(color_palette[fastest_driver_idx])
         else:
             microsector_colors.append(color_palette[0])
 
-    logger.info(f"Microsector colors calculated: {len(microsector_colors)} sectors")
+    logger.info(
+        f"Microsector colors calculated: {len(microsector_colors)} sectors")
 
     # Now assign the microsector color to all points in that microsector
     colors = []
@@ -333,11 +341,13 @@ def _get_lap_data(driver_laps, driver: str, lap_number: int, use_fastest_lap: bo
             lap = driver_laps.pick_fastest()
             return lap
         except Exception as e:
-            raise ValueError(f"No valid fastest lap found for driver {driver}. Error: {str(e)}")
+            raise ValueError(
+                f"No valid fastest lap found for driver {driver}. Error: {str(e)}")
     else:
         # Get specific lap by number
         if lap_number is None:
-            raise ValueError("lap_number must be provided when use_fastest_lap=False")
+            raise ValueError(
+                "lap_number must be provided when use_fastest_lap=False")
 
         specific_lap = driver_laps[driver_laps['LapNumber'] == lap_number]
         if specific_lap.empty:
@@ -380,7 +390,8 @@ def fetch_lap_telemetry(
         ValueError: If session not found, no laps available, or lap not found
     """
     lap_description = "fastest lap" if use_fastest_lap else f"lap {lap_number}"
-    logger.info(f"Fetching lap telemetry: {year} {gp} {session_type} - {driver} {lap_description}")
+    logger.info(
+        f"Fetching lap telemetry: {year} {gp} {session_type} - {driver} {lap_description}")
 
     # Load session
     try:
@@ -389,7 +400,8 @@ def fetch_lap_telemetry(
         logger.info(f"Session loaded: {year} {gp} {session_type}")
     except Exception as e:
         logger.error(f"Failed to load session: {e}")
-        raise ValueError(f"Session not found: {year} {gp} {session_type}. Error: {str(e)}")
+        raise ValueError(
+            f"Session not found: {year} {gp} {session_type}. Error: {str(e)}")
 
     # Get driver laps
     driver_laps = session.laps.pick_drivers([driver])
@@ -398,14 +410,16 @@ def fetch_lap_telemetry(
 
     # Get the lap based on mode
     lap = _get_lap_data(driver_laps, driver, lap_number, use_fastest_lap)
-    logger.info(f"Lap found: {driver} lap {lap['LapNumber']}, time: {lap['LapTime']}")
+    logger.info(
+        f"Lap found: {driver} lap {lap['LapNumber']}, time: {lap['LapTime']}")
 
     # Get telemetry
     telemetry = lap.get_telemetry()
 
     # Extract and clean GPS data
     if 'X' not in telemetry.columns or 'Y' not in telemetry.columns:
-        raise ValueError(f"GPS data not available for {driver} lap {lap_number}")
+        raise ValueError(
+            f"GPS data not available for {driver} lap {lap_number}")
 
     # Filter out NaN values
     mask = (~np.isnan(telemetry['X']) &
@@ -415,8 +429,11 @@ def fetch_lap_telemetry(
     x_orig = telemetry['X'][mask].to_numpy()
     y_orig = telemetry['Y'][mask].to_numpy()
     speed = telemetry['Speed'][mask].to_numpy()
-    throttle = telemetry['Throttle'][mask].to_numpy() if 'Throttle' in telemetry.columns else np.zeros_like(speed)
-    brake = telemetry['Brake'][mask].to_numpy() if 'Brake' in telemetry.columns else np.zeros_like(speed)
+    throttle = telemetry['Throttle'][mask].to_numpy(
+    ) if 'Throttle' in telemetry.columns else np.zeros_like(speed)
+    # Convert brake from boolean (0/1) to percentage (0-100)
+    brake = telemetry['Brake'][mask].to_numpy(
+    ) * 100 if 'Brake' in telemetry.columns else np.zeros_like(speed)
 
     if len(x_orig) == 0:
         raise ValueError(f"No valid GPS data for {driver} lap {lap_number}")
