@@ -62,19 +62,17 @@ def _create_delta_figure(delta: List[float], distance: List[float], pilot1_name:
     """
     fig = go.Figure()
 
-    # Add delta line with filled area
+    # Add delta line (simple line, no fill)
     fig.add_trace(go.Scatter(
         x=distance,
         y=delta,
         mode='lines',
         line=dict(color='white', width=2),
-        fill='tozeroy',
-        fillcolor='rgba(67, 255, 100, 0.3)',  # Green for positive
-        name=f'{pilot1_name} ahead',
+        name='Time Delta',
         hovertemplate='Distance: %{x:.0f}m<br>Delta: %{y:.3f}s<extra></extra>'
     ))
 
-    # Add zero reference line
+    # Add zero reference line (horizontal)
     fig.add_hline(
         y=0,
         line_dash="dash",

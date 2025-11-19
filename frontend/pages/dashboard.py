@@ -144,7 +144,8 @@ def render_data_selectors():
         # selected_gp = st.selectbox("GP", options=gps, index=0)
         selected_gp = st.selectbox(
             "GP",
-            options=["Bahrain", "Saudi Arabia", "Australia", "Japan", "China", "Miami", "Monaco"],
+            options=["Bahrain", "Saudi Arabia", "Australia",
+                     "Japan", "China", "Miami", "Monaco"],
             index=0
         )
 
@@ -227,8 +228,10 @@ def render_lap_graph(selected_drivers, color_palette):
         y=[92.5, 91.8, 91.2, 90.9, 91.5, 90.7, 91.1, 90.8, 91.3, 90.6],
         mode='lines+markers',
         name='Driver 44',
-        line=dict(color=color_palette[0] if color_palette else Color.ACCENT, width=2),
-        marker=dict(size=6)
+        line=dict(color=color_palette[0]
+                  if color_palette else Color.ACCENT, width=2),
+        marker=dict(size=6),
+        hovertemplate='Lap: %{x}<br>Time: %{y:.3f}s<extra></extra>'
     ))
 
     # Configure layout

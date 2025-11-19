@@ -94,7 +94,8 @@ def _create_throttle_figure(telemetry_data, selected_drivers, color_palette):
                     y=driver_data["throttle"],
                     name=driver,
                     line=dict(color=color_palette[idx], width=2),
-                    mode='lines'
+                    mode='lines',
+                    hovertemplate='Distance: %{x:.0f}m<br>Throttle: %{y:.1f}%<extra></extra>'
                 )
             )
 

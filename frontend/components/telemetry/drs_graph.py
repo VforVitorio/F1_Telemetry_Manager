@@ -106,7 +106,8 @@ def _create_drs_figure(telemetry_data, selected_drivers, color_palette):
                 y=driver_data['drs'],
                 name=driver,
                 line=dict(color=color_palette[idx], width=2),
-                mode='lines'
+                mode='lines',
+                hovertemplate='Distance: %{x:.0f}m<br>DRS: %{y:.0f}<extra></extra>'
             ))
 
     # Configure layout with dark theme

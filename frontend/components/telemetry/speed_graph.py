@@ -75,7 +75,8 @@ def _create_speed_figure(telemetry_data, selected_drivers, color_palette):
             y=driver_data['speed'],
             name=driver,
             line=dict(color=color_palette[idx % len(color_palette)], width=2),
-            mode='lines'
+            mode='lines',
+            hovertemplate='Distance: %{x:.0f}m<br>Speed: %{y:.1f} km/h<extra></extra>'
         ))
 
     # Configure layout with dark theme

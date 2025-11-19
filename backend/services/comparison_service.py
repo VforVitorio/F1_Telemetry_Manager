@@ -204,7 +204,8 @@ def calculate_delta_time(telem1: Dict, telem2: Dict) -> List[float]:
     time1 = delta_distance / (speed1[:-1] / 3.6 + epsilon)
     time2 = delta_distance / (speed2[:-1] / 3.6 + epsilon)
 
-    time_diff = time1 - time2
+    # Inverted: time2 - time1 so positive = pilot1 faster (ahead)
+    time_diff = time2 - time1
     cumulative_delta = np.cumsum(time_diff)
 
     delta = np.insert(cumulative_delta, 0, 0.0)
@@ -266,7 +267,8 @@ def calculate_microsector_colors(
             # Fallback to driver1 color if no data
             microsector_colors.append(driver1_color)
 
-    logger.info(f"Microsector colors calculated: {len(microsector_colors)} sectors")
+    logger.info(
+        f"Microsector colors calculated: {len(microsector_colors)} sectors")
 
     # Assign the microsector color to all points in that microsector
     point_colors = []
@@ -316,7 +318,8 @@ def prepare_comparison_data(
 
     # Prepare data with transformed coordinates
     driver1_optimized = {**driver1_data, 'x': optimized_x, 'y': optimized_y}
-    driver2_optimized = {**driver2_data, 'x': driver2_x_rotated, 'y': driver2_y_rotated}
+    driver2_optimized = {**driver2_data,
+                         'x': driver2_x_rotated, 'y': driver2_y_rotated}
 
     # Synchronize telemetry (each driver keeps their own trajectory)
     sync_telem1, sync_telem2 = synchronize_telemetry(
@@ -336,8 +339,10 @@ def prepare_comparison_data(
     )
 
     # Calculate average coordinates to center circuit between both trajectories
-    circuit_x = [(x1 + x2) / 2 for x1, x2 in zip(sync_telem1['x'], sync_telem2['x'])]
-    circuit_y = [(y1 + y2) / 2 for y1, y2 in zip(sync_telem1['y'], sync_telem2['y'])]
+    circuit_x = [(x1 + x2) / 2 for x1,
+                 x2 in zip(sync_telem1['x'], sync_telem2['x'])]
+    circuit_y = [(y1 + y2) / 2 for y1,
+                 y2 in zip(sync_telem1['y'], sync_telem2['y'])]
 
     comparison_data = {
         'circuit': {

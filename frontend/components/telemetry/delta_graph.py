@@ -128,7 +128,8 @@ def _create_delta_figure(delta_data, selected_drivers, color_palette):
                 line=dict(color=color_palette[idx], width=2),
                 fill='tozeroy',
                 fillcolor=f"rgba({int(color_palette[idx][1:3], 16)}, {int(color_palette[idx][3:5], 16)}, {int(color_palette[idx][5:7], 16)}, 0.3)",
-                mode='lines'
+                mode='lines',
+                hovertemplate='Distance: %{x:.0f}m<br>Delta: %{y:.3f}s<extra></extra>'
             ))
 
     # Configure layout with dark theme

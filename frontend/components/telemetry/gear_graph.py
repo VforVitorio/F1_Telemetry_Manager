@@ -83,11 +83,15 @@ def _create_gear_figure(telemetry_data, selected_drivers, color_palette):
             # Create step plot showing gear selection across the circuit
             # 'hv' shape creates horizontal-then-vertical steps (stairstep pattern)
             fig.add_trace(go.Scatter(
-                x=driver_data['distance'],  # Distance along the circuit (from FastF1)
-                y=driver_data['gear'],       # Gear number: 1-8 (from FastF1 nGear column)
+                # Distance along the circuit (from FastF1)
+                x=driver_data['distance'],
+                # Gear number: 1-8 (from FastF1 nGear column)
+                y=driver_data['gear'],
                 name=driver,
-                line=dict(color=color_palette[idx], width=2, shape='hv'),  # Step plot
-                mode='lines'
+                line=dict(color=color_palette[idx],
+                          width=2, shape='hv'),  # Step plot
+                mode='lines',
+                hovertemplate='Distance: %{x:.0f}m<br>Gear: %{y:.0f}<extra></extra>'
             ))
 
     # Configure layout with dark theme
