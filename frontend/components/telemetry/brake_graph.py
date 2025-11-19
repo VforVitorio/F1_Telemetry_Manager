@@ -87,17 +87,15 @@ def _create_brake_figure(telemetry_data, selected_drivers, color_palette):
         driver_data = telemetry_data[telemetry_data["driver"] == driver]
 
         if not driver_data.empty:
-            # Create filled area chart showing braking zones
-            # Fill from 0 to brake value to visualize where and how hard drivers brake
+            # Create line chart showing braking zones
             fig.add_trace(
                 go.Scatter(
-                    x=driver_data["distance"],  # Distance along the circuit (from FastF1)
-                    y=driver_data["brake"],      # Brake input: boolean (0/1) or percentage (0-100%) (from FastF1)
+                    # Distance along the circuit (from FastF1)
+                    x=driver_data["distance"],
+                    # Brake input: boolean (0/1) or percentage (0-100%) (from FastF1)
+                    y=driver_data["brake"],
                     name=driver,
                     line=dict(color=color_palette[idx], width=2),
-                    fill="tozeroy",  # Fill area from zero to the brake line
-                    # Convert hex color to rgba with transparency for filled area
-                    fillcolor=f"rgba({int(color_palette[idx][1:3], 16)}, {int(color_palette[idx][3:5], 16)}, {int(color_palette[idx][5:7], 16)}, 0.3)",
                     mode='lines'
                 )
             )
@@ -135,7 +133,8 @@ def _generate_mock_brake_data(selected_drivers):
         # Braking happens just before the corner positions
         for corner in [800, 1500, 2500, 3500, 4200]:
             # Brake zone starts ~100m before corner and peaks at corner entry
-            brake_zone = 100 * np.exp(-((distance - (corner - 50)) ** 2) / 3000)
+            brake_zone = 100 * \
+                np.exp(-((distance - (corner - 50)) ** 2) / 3000)
             brake += brake_zone
 
         # Ensure realistic brake range (0-100%)
