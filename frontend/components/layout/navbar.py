@@ -51,13 +51,6 @@ def render_navbar():
         </style>
     """, unsafe_allow_html=True)
 
-    # Map current_page to navbar menu ID for proper highlighting
-    current_page = st.session_state.get('current_page', 'dashboard')
-    if current_page == 'comparison':
-        force_value = 'Comparison'  # Force Comparison to be highlighted
-    else:  # 'main' or 'dashboard' both map to Home
-        force_value = 'Home'  # Force Home to be highlighted
-
     # Render navbar with hydralit_components (Comparison link between Home and Logout)
     menu_id = hc.nav_bar(
         menu_definition=[
@@ -66,36 +59,36 @@ def render_navbar():
         override_theme=override_theme,
         home_name='Home',
         login_name='Logout',  # This creates the logout button
-        force_value=force_value,  # Force the correct item to be highlighted based on current page
         sticky_nav=True,  # Makes navbar sticky
         sticky_mode='pinned',  # Pinned mode (no jumping)
         hide_streamlit_markers=False
     )
 
-    # Only handle navigation if menu_id changed (actual click, not just re-render)
-    # Store last menu_id to detect actual clicks vs passive re-renders
-    last_menu_id = st.session_state.get('last_navbar_click', None)
-
-    # Handle logout action (only on actual click)
-    if menu_id == 'Logout' and menu_id != last_menu_id:
-        st.session_state['last_navbar_click'] = menu_id
-        st.session_state['authenticated'] = False
-        st.session_state['welcome_shown'] = False
-        st.rerun()
-
-    # Handle home navigation (only on actual click)
-    elif menu_id == 'Home' and menu_id != last_menu_id:
-        st.session_state['last_navbar_click'] = menu_id
-        if st.session_state.get('current_page') != 'main':
-            st.session_state['current_page'] = 'main'
+    # Track menu clicks to avoid re-triggering navigation on re-renders
+    last_menu_id = st.session_state.get('last_navbar_menu_id', None)
+    
+    # Only navigate if the menu_id actually changed (new click)
+    if menu_id != last_menu_id:
+        st.session_state['last_navbar_menu_id'] = menu_id
+        
+        # Handle logout action
+        if menu_id == 'Logout':
+            st.session_state['authenticated'] = False
+            st.session_state['welcome_shown'] = False
+            st.session_state['current_page'] = 'dashboard'
             st.rerun()
 
-    # Handle comparison navigation (only on actual click)
-    elif menu_id == 'Comparison' and menu_id != last_menu_id:
-        st.session_state['last_navbar_click'] = menu_id
-        if st.session_state.get('current_page') != 'comparison':
-            st.session_state['current_page'] = 'comparison'
-            st.rerun()
+        # Handle home navigation
+        elif menu_id == 'Home':
+            if st.session_state.get('current_page') != 'dashboard':
+                st.session_state['current_page'] = 'dashboard'
+                st.rerun()
+
+        # Handle comparison navigation
+        elif menu_id == 'Comparison':
+            if st.session_state.get('current_page') != 'comparison':
+                st.session_state['current_page'] = 'comparison'
+                st.rerun()
 
     return menu_id
 
