@@ -23,7 +23,8 @@ from components.comparison.brake_comparison_graph import render_brake_comparison
 from components.comparison.throttle_comparison_graph import render_throttle_comparison_graph
 from components.common.chart_styles import apply_telemetry_chart_styles
 from components.layout.navbar import show_error_toast
-from components.common.driver_colors import get_driver_color
+# Reuse dashboard functions
+from pages.dashboard import apply_driver_pill_colors, render_custom_css
 
 
 BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
@@ -41,44 +42,14 @@ def render_header():
 def _apply_driver_selectbox_colors(driver1, driver2):
     """
     Apply team colors to driver selectboxes based on selected drivers.
+    DISABLED - Not working correctly yet.
 
     Args:
         driver1 (str): First driver code (or None)
         driver2 (str): Second driver code (or None)
     """
-    if not driver1 and not driver2:
-        return
-
-    css = "<style>"
-
-    # Color for first driver selectbox (driver1)
-    if driver1:
-        color1 = get_driver_color(driver1)
-        css += f"""
-        /* Color for Driver 1 selectbox text */
-        div[data-testid="stSelectbox"]:nth-of-type(4) div[data-baseweb="select"] > div,
-        div[data-testid="stSelectbox"]:nth-of-type(4) div[data-baseweb="select"] div,
-        div[data-testid="stSelectbox"]:nth-of-type(4) div[data-baseweb="select"] span {{
-            color: {color1} !important;
-            font-weight: 700 !important;
-        }}
-        """
-
-    # Color for second driver selectbox (driver2)
-    if driver2:
-        color2 = get_driver_color(driver2)
-        css += f"""
-        /* Color for Driver 2 selectbox text */
-        div[data-testid="stSelectbox"]:nth-of-type(5) div[data-baseweb="select"] > div,
-        div[data-testid="stSelectbox"]:nth-of-type(5) div[data-baseweb="select"] div,
-        div[data-testid="stSelectbox"]:nth-of-type(5) div[data-baseweb="select"] span {{
-            color: {color2} !important;
-            font-weight: 700 !important;
-        }}
-        """
-
-    css += "</style>"
-    st.markdown(css, unsafe_allow_html=True)
+    # TODO: Fix selectbox coloring - needs different approach
+    pass
 
 
 def fetch_comparison_data(year, gp, session, driver1, driver2):
@@ -124,7 +95,8 @@ def fetch_comparison_data(year, gp, session, driver1, driver2):
             # Check if it's a driver not found error
             if "not found" in error_detail.lower() or "no laps found" in error_detail.lower():
                 # Show error toast for driver not available
-                show_error_toast(f"{error_detail}. Please select another driver or session.")
+                show_error_toast(
+                    f"{error_detail}. Please select another driver or session.")
             else:
                 show_error_toast(f"Data not found: {error_detail}")
         else:
@@ -155,17 +127,22 @@ def render_comparison_page():
 
     year, gp, session, driver1, driver2 = render_comparison_data_selectors()
 
-    # Apply colors to driver selectboxes (must be after selectors)
-    _apply_driver_selectbox_colors(driver1, driver2)
+    # Apply pill styles: first remove backgrounds, then apply colors
+    selected_drivers = [d for d in [driver1, driver2] if d is not None]
+    if selected_drivers:
+        render_custom_css()  # Remove backgrounds
+        apply_driver_pill_colors(selected_drivers)  # Apply text colors
 
-    st.markdown("---")
+    # Add spacing before compare button
+    st.markdown("<br>", unsafe_allow_html=True)
 
     compare_button = render_compare_button()
 
     if compare_button:
         # Check if all selections are made
         if not all([year, gp, session, driver1, driver2]):
-            show_error_toast("Please select all options (Season, GP, Session, and both Drivers)")
+            show_error_toast(
+                "Please select all options (Season, GP, Session, and both Drivers)")
         else:
             with st.spinner("Loading comparison data... (may take up to a minute)"):
                 comparison_data = fetch_comparison_data(

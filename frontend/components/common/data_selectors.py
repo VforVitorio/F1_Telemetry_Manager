@@ -42,7 +42,7 @@ def render_comparison_data_selectors() -> Tuple[Optional[int], Optional[str], Op
     """
     Render data selectors for comparison page (2 drivers, fastest laps only).
 
-    Displays year, GP, session selectors, followed by two driver selectors.
+    Displays year, GP, session selectors, followed by a multiselect for choosing 2 drivers.
     Only fastest laps will be compared.
 
     Returns:
@@ -67,19 +67,39 @@ def render_comparison_data_selectors() -> Tuple[Optional[int], Optional[str], Op
     # Info message about fastest laps
     st.info("🏁 Only fastest laps will be compared for each driver")
 
-    col_driver1, col_driver2 = st.columns(2)
+    # Title outside columns so it doesn't wrap
+    st.markdown("<h3 style='text-align: center;'>SELECT 2 DRIVERS</h3>",
+                unsafe_allow_html=True)
 
-    with col_driver1:
-        st.markdown("<h3 style='text-align: center;'>DRIVER 1</h3>",
-                    unsafe_allow_html=True)
-        driver1 = _render_driver_selector(
-            year, gp, session, "Driver 1", "driver1_selector")
+    # Center column for driver multiselect (narrower)
+    col_left, col_center, col_right = st.columns([2, 1, 2])
 
-    with col_driver2:
-        st.markdown("<h3 style='text-align: center;'>DRIVER 2</h3>",
-                    unsafe_allow_html=True)
-        driver2 = _render_driver_selector(
-            year, gp, session, "Driver 2", "driver2_selector")
+    with col_center:
+        # F1 2024 Complete driver lineup (24 drivers)
+        selected_drivers = st.multiselect(
+            "Drivers",
+            options=[
+                "VER", "PER",  # Red Bull
+                "LEC", "SAI",  # Ferrari
+                "HAM", "RUS",  # Mercedes
+                "NOR", "PIA",  # McLaren
+                "ALO", "STR",  # Aston Martin
+                "GAS", "OCO",  # Alpine
+                "ALB", "COL", "SAR",  # Williams
+                "TSU", "RIC", "LAW",  # RB
+                "BOT", "ZHO",  # Sauber
+                "MAG", "HUL", "BEA",  # Haas
+                "DOO",  # Reserve/Test
+            ],
+            max_selections=2,
+            placeholder="Select exactly 2 drivers to compare",
+            key="comparison_drivers_multiselect",
+            label_visibility="collapsed"
+        )
+
+    # Extract driver1 and driver2 from the multiselect
+    driver1 = selected_drivers[0] if len(selected_drivers) > 0 else None
+    driver2 = selected_drivers[1] if len(selected_drivers) > 1 else None
 
     return year, gp, session, driver1, driver2
 
