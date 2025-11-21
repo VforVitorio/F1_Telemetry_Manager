@@ -134,20 +134,55 @@ def render_data_selectors():
         # selected_year = st.selectbox("YEAR", options=years, index=0)
         selected_year = st.selectbox(
             "YEAR",
-            options=[2024, 2023, 2022, 2021, 2020],
+            options=[2024, 2023],
             index=0
         )
 
     with col2:
-        # TODO: Replace with dynamic GPs based on selected year
-        # gps = fetch_gps(selected_year)  # GET /api/v1/telemetry/gps?year={year}
+        # TODO: Replace with dynamic GPs from backend using FastF1's get_event_schedule()
+        # Example backend implementation:
+        #   - Backend endpoint: GET /api/v1/telemetry/gps?year={year}
+        #   - Uses: fastf1.get_event_schedule(year) to get all events dynamically
+        #   - Returns list of GP names and validates availability per season
+        # Frontend would call: gps = fetch_gps(selected_year)
         # selected_gp = st.selectbox("GP", options=gps, index=0)
+
+        # Full 2024 F1 Calendar (in chronological order) - HARDCODED for now
         selected_gp = st.selectbox(
             "GP",
-            options=["Bahrain", "Saudi Arabia", "Australia",
-                     "Japan", "China", "Miami", "Monaco"],
+            options=[
+                "Bahrain",           # Sakhir
+                "Saudi Arabia",      # Jeddah Street Circuit
+                "Australia",         # Albert Park (Melbourne)
+                "Japan",             # Suzuka
+                "China",             # Shanghai International Circuit
+                "Miami",             # Miami International Autodrome
+                "Emilia Romagna",    # Imola
+                "Monaco",            # Circuit de Monaco
+                "Canada",            # Circuit Gilles Villeneuve (Montreal)
+                "Spain",             # Circuit de Barcelona-Catalunya
+                "Austria",           # Red Bull Ring (Spielberg)
+                "Britain",           # Silverstone
+                "Hungary",           # Hungaroring (Budapest)
+                "Belgium",           # Spa-Francorchamps
+                "Netherlands",       # Circuit Zandvoort
+                "Italy",             # Monza
+                "Azerbaijan",        # Baku City Circuit
+                "Singapore",         # Marina Bay Street Circuit
+                "United States",     # Circuit of the Americas (COTA, Austin)
+                "Mexico",            # Autódromo Hermanos Rodríguez (Ciudad de México)
+                "Brazil",            # Autódromo José Carlos Pace (Interlagos, São Paulo)
+                "Las Vegas",         # Las Vegas Strip Circuit
+                "Qatar",             # Lusail International Circuit
+                "Abu Dhabi",         # Yas Marina
+            ],
             index=0
         )
+
+        # Validate: China was not held in 2023
+        if selected_year == 2023 and selected_gp == "China":
+            st.error("⚠️ The Chinese Grand Prix was not held in the 2023 season. Please select another GP.")
+            selected_gp = None
 
     with col3:
         # TODO: Replace with dynamic sessions based on selected year and GP
