@@ -159,6 +159,98 @@ def _render_lap_times_info(comparison_data: Dict) -> None:
         unsafe_allow_html=True
     )
 
+    # Display qualifying phase info if present
+    metadata = comparison_data.get('metadata', {})
+    warning = metadata.get('warning')
+    qualifying_phase = metadata.get('qualifying_phase')
+
+    if qualifying_phase:
+        # Always show green success message first for qualifying comparisons
+        st.markdown(
+            f"""
+            <div class="qualifying-success-container">
+                <p class="success-icon">✓</p>
+                <p class="success-text">Comparing fastest laps from <strong>{qualifying_phase}</strong></p>
+            </div>
+            <style>
+            .qualifying-success-container {{
+                width: 100%;
+                padding: 12px 25px;
+                background: linear-gradient(135deg, rgba(34, 197, 94, 0.15) 0%, rgba(22, 163, 74, 0.15) 100%);
+                border: 2px solid #22c55e;
+                border-radius: 10px;
+                box-shadow: 0 3px 10px rgba(34, 197, 94, 0.25);
+                text-align: center;
+                margin: 15px auto;
+                max-width: 800px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 10px;
+            }}
+            .success-icon {{
+                font-size: 20px;
+                color: #22c55e;
+                margin: 0;
+                font-weight: bold;
+            }}
+            .success-text {{
+                color: #22c55e;
+                font-family: 'Inter', sans-serif;
+                font-size: 14px;
+                font-weight: 500;
+                margin: 0;
+                letter-spacing: 0.3px;
+                line-height: 1.5;
+            }}
+            </style>
+            """,
+            unsafe_allow_html=True
+        )
+
+        # Show yellow warning below if there's a performance gap
+        if warning:
+            st.markdown(
+                f"""
+                <div class="qualifying-warning-container">
+                    <p class="warning-icon">⚠️</p>
+                    <p class="warning-text">{warning}</p>
+                </div>
+                <style>
+                .qualifying-warning-container {{
+                    width: 100%;
+                    padding: 15px 25px;
+                    background: linear-gradient(135deg, rgba(251, 191, 36, 0.15) 0%, rgba(245, 158, 11, 0.15) 100%);
+                    border: 2px solid #fbbf24;
+                    border-radius: 10px;
+                    box-shadow: 0 3px 10px rgba(251, 191, 36, 0.25);
+                    text-align: center;
+                    margin: 10px auto 15px auto;
+                    max-width: 800px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    gap: 10px;
+                }}
+                .warning-icon {{
+                    font-size: 24px;
+                    margin: 0;
+                }}
+                .warning-text {{
+                    color: #fbbf24;
+                    font-family: 'Inter', sans-serif;
+                    font-size: 14px;
+                    font-weight: 500;
+                    margin: 0;
+                    letter-spacing: 0.3px;
+                    line-height: 1.5;
+                    text-align: center;
+                }}
+                </style>
+                """,
+                unsafe_allow_html=True
+            )
+
 
 def _create_circuit_animation(comparison_data: Dict) -> go.Figure:
     """

@@ -9,7 +9,7 @@ microsector calculation, and driver comparison.
 import numpy as np
 import pandas as pd
 import fastf1
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Optional
 import logging
 import os
 import warnings
@@ -469,3 +469,212 @@ def fetch_lap_telemetry(
         'throttle': throttle.tolist(),
         'brake': brake.tolist(),
     }
+
+
+# ============ QUALIFYING PHASE FUNCTIONS ============
+
+def get_driver_qualifying_phases(driver: str, session) -> List[str]:
+    """
+    Get which qualifying phases a driver participated in.
+
+    Args:
+        driver: Driver code (e.g., 'VER', 'HAM')
+        session: FastF1 session object (must be loaded)
+
+    Returns:
+        List of phase names (e.g., ['Q3', 'Q2', 'Q1']) in descending order
+    """
+    try:
+        results = session.results
+        driver_result = results[results['Abbreviation'] == driver]
+
+        if driver_result.empty:
+            logger.warning(f"Driver {driver} not found in session results")
+            return []
+
+        phases = []
+        for phase in ['Q3', 'Q2', 'Q1']:
+            if phase in driver_result.columns:
+                phase_time = driver_result[phase].values[0]
+                if pd.notna(phase_time):
+                    phases.append(phase)
+
+        return phases
+
+    except Exception as e:
+        logger.error(f"Error getting qualifying phases for {driver}: {e}")
+        return []
+
+
+def get_highest_common_q_phase(driver1: str, driver2: str, session) -> Optional[str]:
+    """
+    Find the highest qualifying phase both drivers participated in.
+
+    Args:
+        driver1: First driver code
+        driver2: Second driver code
+        session: FastF1 session object (must be loaded)
+
+    Returns:
+        'Q3', 'Q2', 'Q1', or None if they don't share any phase
+    """
+    driver1_phases = get_driver_qualifying_phases(driver1, session)
+    driver2_phases = get_driver_qualifying_phases(driver2, session)
+
+    logger.info(
+        f"Qualifying phases - {driver1}: {driver1_phases}, {driver2}: {driver2_phases}")
+
+    # Find highest common phase
+    for phase in ['Q3', 'Q2', 'Q1']:
+        if phase in driver1_phases and phase in driver2_phases:
+            logger.info(f"Highest common phase: {phase}")
+            return phase
+
+    logger.warning(
+        f"No common qualifying phase found for {driver1} and {driver2}")
+    return None
+
+
+def get_fastest_lap_in_q_phase(driver: str, phase: str, session):
+    """
+    Get the fastest lap of a driver in a specific qualifying phase.
+
+    Uses the session results Q1/Q2/Q3 time data to determine phase boundaries.
+
+    Args:
+        driver: Driver code (e.g., 'VER', 'HAM')
+        phase: Qualifying phase ('Q1', 'Q2', or 'Q3')
+        session: FastF1 session object (must be loaded)
+
+    Returns:
+        FastF1 Lap object (fastest lap in that phase)
+
+    Raises:
+        ValueError: If no laps found in the specified phase
+    """
+    try:
+        # Get all laps for this driver
+        driver_laps = session.laps.pick_drivers([driver])
+
+        if driver_laps.empty:
+            raise ValueError(f"No laps found for driver {driver}")
+
+        # Use results data to get the best time in this phase
+        results = session.results
+        driver_result = results[results['Abbreviation'] == driver]
+
+        if driver_result.empty:
+            raise ValueError(f"Driver {driver} not found in results")
+
+        # Get the time for this phase
+        if phase not in driver_result.columns:
+            raise ValueError(f"Phase {phase} not available in session results")
+
+        phase_time = driver_result[phase].values[0]
+
+        if pd.isna(phase_time):
+            raise ValueError(f"Driver {driver} did not participate in {phase}")
+
+        logger.info(f"Target {phase} time for {driver}: {phase_time}")
+
+        # Find the lap that matches this time
+        # Allow small tolerance for time matching (10ms)
+        tolerance = pd.Timedelta(milliseconds=10)
+
+        matching_laps = driver_laps[
+            (driver_laps['LapTime'] >= phase_time - tolerance) &
+            (driver_laps['LapTime'] <= phase_time + tolerance)
+        ]
+
+        if matching_laps.empty:
+            # Fallback: just get the fastest lap from all laps
+            # This might not be perfect but better than failing
+            logger.warning(
+                f"Could not find exact lap matching {phase} time {phase_time}, using fastest overall")
+            fastest_lap = driver_laps.pick_fastest()
+        else:
+            fastest_lap = matching_laps.iloc[0]
+
+        logger.info(
+            f"Fastest lap for {driver} in {phase}: lap {fastest_lap['LapNumber']}, time {fastest_lap['LapTime']}")
+
+        return fastest_lap
+
+    except Exception as e:
+        logger.error(
+            f"Error getting fastest lap in {phase} for {driver}: {e}")
+        raise ValueError(
+            f"Could not get fastest lap for {driver} in {phase}: {str(e)}")
+
+
+def extract_telemetry_from_lap(lap, driver: str) -> Dict:
+    """
+    Extract telemetry data from a FastF1 Lap object.
+
+    Similar to fetch_lap_telemetry but works with an existing lap object
+    instead of fetching by lap number.
+
+    Args:
+        lap: FastF1 Lap object
+        driver: Driver code for metadata
+
+    Returns:
+        Dictionary with telemetry data (same format as fetch_lap_telemetry)
+    """
+    try:
+        telemetry = lap.get_telemetry()
+
+        # Get lap time in seconds
+        lap_time_seconds = lap['LapTime'].total_seconds(
+        ) if pd.notna(lap['LapTime']) else None
+
+        # Extract and clean GPS data
+        if 'X' not in telemetry.columns or 'Y' not in telemetry.columns:
+            raise ValueError(
+                f"GPS data not available for {driver} lap {lap['LapNumber']}")
+
+        # Filter out NaN values
+        mask = (~np.isnan(telemetry['X']) &
+                ~np.isnan(telemetry['Y']) &
+                ~np.isnan(telemetry['Speed']))
+
+        x_orig = telemetry['X'][mask].to_numpy()
+        y_orig = telemetry['Y'][mask].to_numpy()
+        speed = telemetry['Speed'][mask].to_numpy()
+        throttle = telemetry['Throttle'][mask].to_numpy(
+        ) if 'Throttle' in telemetry.columns else np.zeros_like(speed)
+        brake = telemetry['Brake'][mask].to_numpy(
+        ) * 100 if 'Brake' in telemetry.columns else np.zeros_like(speed)
+
+        if len(x_orig) == 0:
+            raise ValueError(
+                f"No valid GPS data for {driver} lap {lap['LapNumber']}")
+
+        logger.info(f"Valid telemetry points: {len(x_orig)}")
+
+        # Convert from mm to meters
+        x_m = x_orig / 1000
+        y_m = y_orig / 1000
+
+        # Use FastF1's Distance if available
+        if 'Distance' in telemetry.columns and not telemetry['Distance'][mask].isna().all():
+            cumulative_distance = telemetry['Distance'][mask].to_numpy()
+        else:
+            distances = np.sqrt(np.diff(x_m)**2 + np.diff(y_m)**2)
+            cumulative_distance = np.insert(np.cumsum(distances), 0, 0)
+
+        return {
+            'name': driver,
+            'lap': int(lap['LapNumber']),
+            'lap_time': lap_time_seconds,
+            'distance': cumulative_distance.tolist(),
+            'x': x_m.tolist(),
+            'y': y_m.tolist(),
+            'speed': speed.tolist(),
+            'throttle': throttle.tolist(),
+            'brake': brake.tolist(),
+        }
+
+    except Exception as e:
+        logger.error(f"Error extracting telemetry from lap: {e}")
+        raise ValueError(f"Failed to extract telemetry: {str(e)}")
