@@ -5,7 +5,6 @@ import setup_path  # noqa: F401, E402  # isort: skip  # type: ignore
 # Standard library imports
 import sys
 import os
-import requests
 import streamlit as st
 
 # Project imports (now work because setup_path configured sys.path)
@@ -13,7 +12,6 @@ from pages.dashboard import render_dashboard
 from pages.comparison import render_comparison_page
 from components.auth.auth_form import render_auth_form
 from components.layout.navbar import render_navbar, show_welcome_toast
-from config import BACKEND_URL
 from styles import GLOBAL_CSS
 
 # Page configuration - MUST be first Streamlit command
@@ -63,17 +61,3 @@ else:
     else:
         # Default to dashboard
         render_dashboard()
-
-    # Optional: Backend connection test (can be removed later)
-    st.markdown("---")
-    st.subheader("🔧 Debug Section")
-    if st.button("Test Backend Connection"):
-        try:
-            response = requests.get(f"{BACKEND_URL}")
-            if response.status_code == 200:
-                st.success(
-                    f"✅ Connected! Backend says: {response.json()['message']}")
-            else:
-                st.error(f"❌ Error: {response.status_code}")
-        except Exception as e:
-            st.error(f"❌ Cannot reach backend: {str(e)}")
