@@ -89,11 +89,14 @@ def _create_rpm_figure(telemetry_data, selected_drivers, color_palette):
             # Sharp drops in RPM typically indicate gear changes
             fig.add_trace(
                 go.Scatter(
-                    x=driver_data["distance"],  # Distance along the circuit (from FastF1)
-                    y=driver_data["rpm"],        # Engine RPM (from FastF1, typically 10k-15k)
+                    # Distance along the circuit (from FastF1)
+                    x=driver_data["distance"],
+                    # Engine RPM (from FastF1, typically 10k-15k)
+                    y=driver_data["rpm"],
                     name=driver,
                     line=dict(color=color_palette[idx], width=2),
-                    mode="lines"
+                    mode="lines",
+                    hovertemplate='Distance: %{x:.0f}m<br>RPM: %{y:.0f}<extra></extra>'
                 )
             )
 

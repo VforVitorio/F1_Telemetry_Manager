@@ -14,10 +14,12 @@ def render_navbar():
     """
     # Theme customization matching styles.py color scheme
     override_theme = {
-        'txc_inactive': '#d1d5db',      # TextColor.SECONDARY (Light gray for inactive)
+        # TextColor.SECONDARY (Light gray for inactive)
+        'txc_inactive': '#d1d5db',
         'menu_background': '#121127',    # Color.PRIMARY_BG (Dark blue-black)
         'txc_active': '#ffffff',         # TextColor.PRIMARY (White for active)
-        'option_active': '#1e1b4b',      # Color.SECONDARY_BG (Dark indigo for hover)
+        # Color.SECONDARY_BG (Dark indigo for hover)
+        'option_active': '#1e1b4b',
         'txc_hover': '#a78bfa'           # Color.ACCENT (Purple for hover text)
     }
 
@@ -51,9 +53,11 @@ def render_navbar():
         </style>
     """, unsafe_allow_html=True)
 
-    # Render navbar with hydralit_components (no menu items, just Home and Logout)
+    # Render navbar with hydralit_components (Comparison link between Home and Logout)
     menu_id = hc.nav_bar(
-        menu_definition=[],  # Empty menu - only Home and Logout buttons
+        menu_definition=[
+            {'id': 'Comparison', 'icon': "fa fa-balance-scale", 'label': "Comparison"}
+        ],
         override_theme=override_theme,
         home_name='Home',
         login_name='Logout',  # This creates the logout button
@@ -62,11 +66,31 @@ def render_navbar():
         hide_streamlit_markers=False
     )
 
-    # Handle logout action
-    if menu_id == 'Logout':
-        st.session_state['authenticated'] = False
-        st.session_state['welcome_shown'] = False
-        st.rerun()
+    # Track menu clicks to avoid re-triggering navigation on re-renders
+    last_menu_id = st.session_state.get('last_navbar_menu_id', None)
+
+    # Only navigate if the menu_id actually changed (new click)
+    if menu_id != last_menu_id:
+        st.session_state['last_navbar_menu_id'] = menu_id
+
+        # Handle logout action
+        if menu_id == 'Logout':
+            st.session_state['authenticated'] = False
+            st.session_state['welcome_shown'] = False
+            st.session_state['current_page'] = 'dashboard'
+            st.rerun()
+
+        # Handle home navigation
+        elif menu_id == 'Home':
+            if st.session_state.get('current_page') != 'dashboard':
+                st.session_state['current_page'] = 'dashboard'
+                st.rerun()
+
+        # Handle comparison navigation
+        elif menu_id == 'Comparison':
+            if st.session_state.get('current_page') != 'comparison':
+                st.session_state['current_page'] = 'comparison'
+                st.rerun()
 
     return menu_id
 

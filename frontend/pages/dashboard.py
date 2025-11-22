@@ -33,37 +33,80 @@ from services.telemetry_service import TelemetryService
 
 def render_custom_css():
     """
-    Apply custom CSS for multiselect driver pills and colored driver names.
+    Apply custom CSS for multiselect driver pills (transparent background, no borders).
     """
-    # Generate CSS rules for each driver to color their names in dropdowns
-    driver_css_rules = []
-    for driver_code, color in DRIVER_COLORS.items():
-        driver_css_rules.append(f"""
-        /* Color for {driver_code} */
-        div[data-baseweb="select"] li[role="option"]:has(div:first-child:contains("{driver_code}")) {{
-            color: {color} !important;
-            font-weight: 600;
-        }}
-        """)
-
-    css_content = f"""
+    css_content = """
         <style>
-        /* Driver name colors in dropdowns */
-        {' '.join(driver_css_rules)}
+        /* Aggressively remove ALL backgrounds from multiselect pills */
+        span[data-baseweb="tag"],
+        span[data-baseweb="tag"] > span,
+        span[data-baseweb="tag"] > span > span,
+        span[data-baseweb="tag"] * {
+            background-color: transparent !important;
+            background: transparent !important;
+            background-image: none !important;
+            border: none !important;
+            box-shadow: none !important;
+            padding: 2px 3px !important;
+            margin-right: 6px !important;
+        }
 
-        /* Multiselect pills with dynamic colors */
-        div[data-baseweb="tag"] {{
-            font-weight: 600;
-        }}
+        /* Target div tags as well */
+        div[data-baseweb="tag"],
+        div[data-baseweb="tag"] > span,
+        div[data-baseweb="tag"] * {
+            background-color: transparent !important;
+            background: transparent !important;
+            background-image: none !important;
+            border: none !important;
+            box-shadow: none !important;
+        }
 
-        /* Style for driver options - make them bold */
-        div[data-baseweb="select"] li {{
-            font-weight: 600;
-        }}
+        /* Hide the close/X button on pills */
+        span[data-baseweb="tag"] svg,
+        div[data-baseweb="tag"] svg {
+            display: none !important;
+        }
+
+        /* Make driver codes bold and slightly larger */
+        span[data-baseweb="tag"] span,
+        div[data-baseweb="tag"] span {
+            font-weight: 700 !important;
+            font-size: 14px !important;
+        }
+
+        /* Style dropdown options */
+        div[data-baseweb="select"] li[role="option"] {
+            font-weight: 600 !important;
+        }
         </style>
     """
 
     st.markdown(css_content, unsafe_allow_html=True)
+
+
+def apply_driver_pill_colors(selected_drivers):
+    """
+    Apply team colors to driver pills based on selection order using nth-of-type.
+
+    Args:
+        selected_drivers (list): List of selected driver codes in order
+    """
+    if not selected_drivers:
+        return
+
+    css = "<style>"
+    for i, driver_code in enumerate(selected_drivers, start=1):
+        color = get_driver_color(driver_code)
+        css += f"""
+        span[data-baseweb="tag"]:nth-of-type({i}) span,
+        div[data-baseweb="tag"]:nth-of-type({i}) span {{
+            color: {color} !important;
+        }}
+        """
+    css += "</style>"
+
+    st.markdown(css, unsafe_allow_html=True)
 
 
 def render_header():
@@ -142,18 +185,58 @@ def render_data_selectors():
         # Year selector - fixed to 2024 only
         selected_year = st.selectbox(
             "YEAR",
-            options=[2024],
+            options=[2024, 2023],
             index=0
         )
 
     with col2:
         # GP selector - load from backend
         gp_options = load_gps_for_year(selected_year)
+        # TODO: Replace with dynamic GPs from backend using FastF1's get_event_schedule()
+        # Example backend implementation:
+        #   - Backend endpoint: GET /api/v1/telemetry/gps?year={year}
+        #   - Uses: fastf1.get_event_schedule(year) to get all events dynamically
+        #   - Returns list of GP names and validates availability per season
+        # Frontend would call: gps = fetch_gps(selected_year)
+        # selected_gp = st.selectbox("GP", options=gps, index=0)
+
+        # Full 2024 F1 Calendar (in chronological order) - HARDCODED for now
         selected_gp = st.selectbox(
             "GP",
             options=gp_options,
+            options=[
+                "Bahrain",           # Sakhir
+                "Saudi Arabia",      # Jeddah Street Circuit
+                "Australia",         # Albert Park (Melbourne)
+                "Japan",             # Suzuka
+                "China",             # Shanghai International Circuit
+                "Miami",             # Miami International Autodrome
+                "Emilia Romagna",    # Imola
+                "Monaco",            # Circuit de Monaco
+                "Canada",            # Circuit Gilles Villeneuve (Montreal)
+                "Spain",             # Circuit de Barcelona-Catalunya
+                "Austria",           # Red Bull Ring (Spielberg)
+                "Britain",           # Silverstone
+                "Hungary",           # Hungaroring (Budapest)
+                "Belgium",           # Spa-Francorchamps
+                "Netherlands",       # Circuit Zandvoort
+                "Italy",             # Monza
+                "Azerbaijan",        # Baku City Circuit
+                "Singapore",         # Marina Bay Street Circuit
+                "United States",     # Circuit of the Americas (COTA, Austin)
+                "Mexico",            # Autódromo Hermanos Rodríguez (Ciudad de México)
+                "Brazil",            # Autódromo José Carlos Pace (Interlagos, São Paulo)
+                "Las Vegas",         # Las Vegas Strip Circuit
+                "Qatar",             # Lusail International Circuit
+                "Abu Dhabi",         # Yas Marina
+            ],
             index=0
         )
+
+        # Validate: China was not held in 2023
+        if selected_year == 2023 and selected_gp == "China":
+            st.error("⚠️ The Chinese Grand Prix was not held in the 2023 season. Please select another GP.")
+            selected_gp = None
 
     with col3:
         # Session selector - load from backend based on year and GP
@@ -164,27 +247,39 @@ def render_data_selectors():
 
         selected_session = st.selectbox(
             "SESSION",
-            options=session_options,
-            index=default_index
+            options=["FP1", "FP2", "FP3", "Q", "R"],
+            index=0
         )
 
     with col4:
-        # Driver selector - load from backend based on year, GP, and session
-        driver_options = load_drivers_for_session(selected_year, selected_gp, selected_session)
+        # TODO: Replace with dynamic drivers based on selected year, GP, and session
+        # drivers = fetch_drivers(selected_year, selected_gp, selected_session)
+        # GET /api/v1/telemetry/drivers?year={year}&gp={gp}&session={session}
 
-        # Try to default to VER if available
-        default_driver = ["VER - Verstappen"] if "VER - Verstappen" in driver_options else [driver_options[0]] if driver_options else []
+        # F1 2024 Complete driver lineup (24 drivers) - codes only
+        driver_options = [
+            "VER", "PER",  # Red Bull
+            "LEC", "SAI",  # Ferrari
+            "HAM", "RUS",  # Mercedes
+            "NOR", "PIA",  # McLaren
+            "ALO", "STR",  # Aston Martin
+            "GAS", "OCO",  # Alpine
+            "ALB", "COL", "SAR",  # Williams
+            "TSU", "RIC", "LAW",  # RB
+            "BOT", "ZHO",  # Sauber
+            "MAG", "HUL", "BEA",  # Haas
+            "DOO",  # Reserve/Test
+        ]
 
         selected_drivers = st.multiselect(
             "DRIVERS",
             options=driver_options,
-            default=default_driver,
+            default=["VER"],
             max_selections=3
         )
 
-        # Extract driver codes and get their official team colors
-        driver_codes = [driver.split(' - ')[0] for driver in selected_drivers]
-        color_palette = [get_driver_color(code) for code in driver_codes]
+        # Get official team colors for selected drivers
+        color_palette = [get_driver_color(code) for code in selected_drivers]
 
     return selected_year, selected_gp, selected_session, selected_drivers, color_palette
 
@@ -225,27 +320,29 @@ def render_lap_graph(selected_year, selected_gp, selected_session, selected_driv
     # Create Plotly figure
     fig = go.Figure()
 
-    # Plot lap times for each driver
-    if lap_times_data:
-        # Group lap times by driver
-        import pandas as pd
-        df = pd.DataFrame(lap_times_data)
+    # TODO: Replace placeholder data with real lap times from backend
+    # for idx, driver in enumerate(selected_drivers):
+    #     driver_data = lap_data[lap_data['driver'] == driver]
+    #     fig.add_trace(go.Scatter(
+    #         x=driver_data['lap_number'],
+    #         y=driver_data['lap_time'],
+    #         mode='lines+markers',
+    #         name=driver,
+    #         line=dict(color=color_palette[idx % len(color_palette)], width=2),
+    #         marker=dict(size=6)
+    #     ))
 
-        for idx, driver_code in enumerate(driver_codes):
-            driver_data = df[df['driver'] == driver_code]
-
-            if not driver_data.empty:
-                fig.add_trace(go.Scatter(
-                    x=driver_data['lap_number'],
-                    y=driver_data['lap_time'],
-                    mode='lines+markers',
-                    name=driver_code,
-                    line=dict(color=color_palette[idx % len(color_palette)], width=2),
-                    marker=dict(size=6)
-                ))
-    else:
-        # Show message if no data
-        st.info("Select drivers to view their lap times")
+    # Add placeholder data for visualization
+    fig.add_trace(go.Scatter(
+        x=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+        y=[92.5, 91.8, 91.2, 90.9, 91.5, 90.7, 91.1, 90.8, 91.3, 90.6],
+        mode='lines+markers',
+        name='Driver 44',
+        line=dict(color=color_palette[0]
+                  if color_palette else Color.ACCENT, width=2),
+        marker=dict(size=6),
+        hovertemplate='Lap: %{x}<br>Time: %{y:.3f}s<extra></extra>'
+    ))
 
     # Configure layout
     fig.update_layout(
@@ -308,10 +405,18 @@ def render_dashboard():
     Main dashboard rendering function.
     Orchestrates all dashboard components in sequence.
     """
+    # Early return if navigating away to avoid unnecessary API calls and rendering
+    if st.session_state.get('current_page') == 'comparison':
+        return  # Don't render dashboard, let main.py handle routing
+
     render_custom_css()
     render_header()
     selected_year, selected_gp, selected_session, selected_drivers, color_palette = render_data_selectors()
-    render_lap_graph(selected_year, selected_gp, selected_session, selected_drivers, color_palette)
+
+    # Apply colors to driver pills based on selection (must be after selectors)
+    apply_driver_pill_colors(selected_drivers)
+
+    render_lap_graph(selected_drivers, color_palette)
     render_control_buttons()
 
     # Apply purple border styling to all subsequent Plotly charts

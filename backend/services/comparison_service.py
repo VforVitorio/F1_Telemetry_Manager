@@ -135,22 +135,18 @@ def optimize_track_layout(x: List[float], y: List[float]) -> Tuple[List[float], 
 def synchronize_telemetry(
     telem1: Dict,
     telem2: Dict,
-    reference_x: List[float],
-    reference_y: List[float],
-    num_points: int = 1000
+    num_points: int = 500
 ) -> Tuple[Dict, Dict]:
     """
     Synchronize telemetry from two drivers to have the same number of points.
 
     Uses interpolation to align data points along distance, ensuring both
     drivers have matching arrays for comparison and animation.
-    Both drivers will share the same reference trajectory (x, y coordinates).
+    Each driver maintains their own trajectory (x, y coordinates).
 
     Args:
         telem1: First driver's telemetry data (dict with 'distance', 'x', 'y', 'speed', etc.)
         telem2: Second driver's telemetry data
-        reference_x: Reference X coordinates for both drivers (optimized circuit)
-        reference_y: Reference Y coordinates for both drivers (optimized circuit)
         num_points: Number of interpolation points (default: 1000)
 
     Returns:
@@ -159,24 +155,26 @@ def synchronize_telemetry(
     max_distance = max(telem1['distance'][-1], telem2['distance'][-1])
     common_distance = np.linspace(0, max_distance, num_points)
 
-    # Both drivers share the same reference trajectory (x, y)
-    # Only their telemetry data (speed, throttle, brake) differs
+    # Each driver keeps their own trajectory (x, y)
+    # Interpolate all telemetry data including coordinates
     sync_telem1 = {
         'distance': common_distance.tolist(),
-        'x': reference_x,
-        'y': reference_y,
+        'x': np.interp(common_distance, telem1['distance'], telem1['x']).tolist(),
+        'y': np.interp(common_distance, telem1['distance'], telem1['y']).tolist(),
         'speed': np.interp(common_distance, telem1['distance'], telem1['speed']).tolist(),
         'throttle': np.interp(common_distance, telem1['distance'], telem1['throttle']).tolist(),
         'brake': np.interp(common_distance, telem1['distance'], telem1['brake']).tolist(),
+        'lap_time': telem1.get('lap_time'),  # Pass through lap time
     }
 
     sync_telem2 = {
         'distance': common_distance.tolist(),
-        'x': reference_x,
-        'y': reference_y,
+        'x': np.interp(common_distance, telem2['distance'], telem2['x']).tolist(),
+        'y': np.interp(common_distance, telem2['distance'], telem2['y']).tolist(),
         'speed': np.interp(common_distance, telem2['distance'], telem2['speed']).tolist(),
         'throttle': np.interp(common_distance, telem2['distance'], telem2['throttle']).tolist(),
         'brake': np.interp(common_distance, telem2['distance'], telem2['brake']).tolist(),
+        'lap_time': telem2.get('lap_time'),  # Pass through lap time
     }
 
     return sync_telem1, sync_telem2
@@ -188,12 +186,12 @@ def calculate_delta_time(telem1: Dict, telem2: Dict) -> List[float]:
     """
     Calculate time delta between two drivers at each point.
 
-    Delta is calculated based on speed differences and accumulated over distance.
-    Positive values = pilot1 ahead, negative = pilot2 ahead.
+    Delta is calculated based on speed differences and scaled to match real lap times.
+    Positive values = pilot1 ahead (faster), negative = pilot2 ahead (faster).
 
     Args:
-        telem1: First driver's synchronized telemetry data
-        telem2: Second driver's synchronized telemetry data
+        telem1: First driver's synchronized telemetry data (includes 'lap_time')
+        telem2: Second driver's synchronized telemetry data (includes 'lap_time')
 
     Returns:
         List of delta values in seconds at each point
@@ -202,16 +200,34 @@ def calculate_delta_time(telem1: Dict, telem2: Dict) -> List[float]:
     speed1 = np.array(telem1['speed'])
     speed2 = np.array(telem2['speed'])
 
+    # Get real lap times (in seconds)
+    lap_time1 = telem1.get('lap_time')
+    lap_time2 = telem2.get('lap_time')
+
     delta_distance = np.diff(distance)
 
     epsilon = 1e-6
     time1 = delta_distance / (speed1[:-1] / 3.6 + epsilon)
     time2 = delta_distance / (speed2[:-1] / 3.6 + epsilon)
 
+    # Calculate relative time difference at each segment
+    # time1 - time2: positive when driver1 is faster (takes less time)
     time_diff = time1 - time2
     cumulative_delta = np.cumsum(time_diff)
-
     delta = np.insert(cumulative_delta, 0, 0.0)
+
+    # Scale delta to match real lap time difference if available
+    if lap_time1 is not None and lap_time2 is not None:
+        calculated_final_delta = delta[-1]
+        real_delta = lap_time1 - lap_time2
+
+        # Scale factor to match reality
+        if abs(calculated_final_delta) > epsilon:
+            scale_factor = real_delta / calculated_final_delta
+            delta = delta * scale_factor
+        else:
+            # If calculated delta is zero, use real delta uniformly
+            delta = np.linspace(0, real_delta, len(delta))
 
     return delta.tolist()
 
@@ -270,7 +286,8 @@ def calculate_microsector_colors(
             # Fallback to driver1 color if no data
             microsector_colors.append(driver1_color)
 
-    logger.info(f"Microsector colors calculated: {len(microsector_colors)} sectors")
+    logger.info(
+        f"Microsector colors calculated: {len(microsector_colors)} sectors")
 
     # Assign the microsector color to all points in that microsector
     point_colors = []
@@ -294,7 +311,7 @@ def prepare_comparison_data(
 
     Performs coordinate optimization, telemetry synchronization, microsector
     analysis, and delta calculation to create a complete dataset ready for
-    visualization with both drivers following the same reference trajectory.
+    visualization with both drivers maintaining their own trajectories.
 
     Args:
         driver1_data: First driver's raw telemetry data
@@ -311,17 +328,22 @@ def prepare_comparison_data(
         driver1_data['y']
     )
 
-    # Both drivers will use the same optimized reference trajectory
-    # No need to rotate driver2's coordinates separately
-    driver1_optimized = {**driver1_data, 'x': optimized_x, 'y': optimized_y}
-    driver2_optimized = driver2_data  # Keep original data for interpolation
+    # Apply same transformation (center + rotate) to driver2's coordinates
+    # This keeps both drivers in the same frame of reference
+    driver2_x_centered, driver2_y_centered = center_coordinates(
+        driver2_data['x'], driver2_data['y'])
+    driver2_x_rotated, driver2_y_rotated = rotate_coordinates(
+        driver2_x_centered, driver2_y_centered, math.radians(rotation))
 
-    # Synchronize telemetry using reference trajectory
+    # Prepare data with transformed coordinates
+    driver1_optimized = {**driver1_data, 'x': optimized_x, 'y': optimized_y}
+    driver2_optimized = {**driver2_data,
+                         'x': driver2_x_rotated, 'y': driver2_y_rotated}
+
+    # Synchronize telemetry (each driver keeps their own trajectory)
     sync_telem1, sync_telem2 = synchronize_telemetry(
         driver1_optimized,
-        driver2_optimized,
-        reference_x=optimized_x,
-        reference_y=optimized_y
+        driver2_optimized
     )
 
     # Calculate time delta between drivers
@@ -335,10 +357,16 @@ def prepare_comparison_data(
         driver2_color
     )
 
+    # Calculate average coordinates to center circuit between both trajectories
+    circuit_x = [(x1 + x2) / 2 for x1,
+                 x2 in zip(sync_telem1['x'], sync_telem2['x'])]
+    circuit_y = [(y1 + y2) / 2 for y1,
+                 y2 in zip(sync_telem1['y'], sync_telem2['y'])]
+
     comparison_data = {
         'circuit': {
-            'x': optimized_x,
-            'y': optimized_y,
+            'x': circuit_x,  # Average of both pilots (centered ideal line)
+            'y': circuit_y,
             'colors': microsector_colors  # Colors for each point
         },
         'pilot1': {

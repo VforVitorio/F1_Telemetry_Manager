@@ -27,12 +27,11 @@ def render_delta_time_graph(comparison_data: Dict) -> None:
         render_loading_spinner()
         return
 
+    pilot1 = comparison_data['pilot1']
+    pilot2 = comparison_data['pilot2']
     delta = comparison_data['delta']
-    distance = comparison_data['pilot1']['distance']
-    pilot1_name = comparison_data['pilot1']['name']
-    pilot2_name = comparison_data['pilot2']['name']
 
-    fig = _create_delta_figure(delta, distance, pilot1_name, pilot2_name)
+    fig = _create_delta_figure(delta, pilot1, pilot2)
     st.plotly_chart(fig, use_container_width=True)
 
 
@@ -44,45 +43,81 @@ def _render_section_title() -> None:
     )
 
 
-def _create_delta_figure(delta: List[float], distance: List[float], pilot1_name: str, pilot2_name: str) -> go.Figure:
+def _create_delta_figure(delta: List[float], pilot1: Dict, pilot2: Dict) -> go.Figure:
     """
     Create Plotly figure for delta time visualization.
 
-    Uses filled area chart with color indicating which driver is ahead.
-    Green area = pilot1 ahead, red area = pilot2 ahead.
+    Shows time delta as two lines - one for each pilot with their respective colors.
+    The faster driver (who finishes with positive delta) is shown as the horizontal reference line.
 
     Args:
         delta: Time differences at each point (seconds)
-        distance: Distance array (meters)
-        pilot1_name: First driver name
-        pilot2_name: Second driver name
+        pilot1: First driver's data including name, color, distance, lap_time
+        pilot2: Second driver's data including name, color, distance, lap_time
 
     Returns:
-        Plotly Figure with colored area chart
+        Plotly Figure with two lines
     """
     fig = go.Figure()
 
-    # Add delta line with filled area
-    fig.add_trace(go.Scatter(
-        x=distance,
-        y=delta,
-        mode='lines',
-        line=dict(color='white', width=2),
-        fill='tozeroy',
-        fillcolor='rgba(67, 255, 100, 0.3)',  # Green for positive
-        name=f'{pilot1_name} ahead',
-        hovertemplate='Distance: %{x:.0f}m<br>Delta: %{y:.3f}s<extra></extra>'
-    ))
+    # Determine who is faster based on actual lap times
+    lap_time1 = pilot1.get('lap_time')
+    lap_time2 = pilot2.get('lap_time')
 
-    # Add zero reference line
-    fig.add_hline(
-        y=0,
-        line_dash="dash",
-        line_color="gray",
-        line_width=1,
-        annotation_text="Even",
-        annotation_position="right"
-    )
+    # If lap times available, use them. Otherwise fallback to final delta
+    if lap_time1 is not None and lap_time2 is not None:
+        pilot1_is_faster = lap_time1 < lap_time2
+    else:
+        # Fallback: use final delta (negative = pilot1 faster)
+        final_delta = delta[-1] if delta else 0
+        pilot1_is_faster = final_delta < 0
+
+    if pilot1_is_faster:
+        # Pilot1 is faster - pilot1 is horizontal reference at 0, pilot2 shows positive delta (slower)
+        # Since delta = time1 - time2, and time1 < time2, delta will be negative
+        # We need to invert to show pilot2 as positive (slower)
+        inverted_delta = [-d for d in delta]
+
+        fig.add_trace(go.Scatter(
+            x=pilot1['distance'],
+            y=[0] * len(pilot1['distance']),
+            mode='lines',
+            line=dict(color=pilot1['color'], width=2),
+            name=pilot1['name'],
+            hovertemplate='Distance: %{x:.0f}m<br>Delta: %{y:.3f}s<extra></extra>'
+        ))
+
+        fig.add_trace(go.Scatter(
+            x=pilot2['distance'],
+            y=inverted_delta,
+            mode='lines',
+            line=dict(color=pilot2['color'], width=2),
+            name=pilot2['name'],
+            hovertemplate='Distance: %{x:.0f}m<br>Delta: %{y:.3f}s<extra></extra>'
+        ))
+    else:
+        # Pilot2 is faster - pilot2 is horizontal reference at 0, pilot1 shows positive delta (slower)
+        # Since delta = time1 - time2, and time1 > time2, delta will be positive
+        # Keep it as is to show pilot1 as positive (slower)
+        inverted_delta = delta
+
+        fig.add_trace(go.Scatter(
+            x=pilot2['distance'],
+            y=[0] * len(pilot2['distance']),
+            mode='lines',
+            line=dict(color=pilot2['color'], width=2),
+            name=pilot2['name'],
+            hovertemplate='Distance: %{x:.0f}m<br>Delta: %{y:.3f}s<extra></extra>'
+        ))
+
+        fig.add_trace(go.Scatter(
+            x=pilot1['distance'],
+            y=inverted_delta,
+            mode='lines',
+            line=dict(color=pilot1['color'], width=2),
+            name=pilot1['name'],
+            hovertemplate='Distance: %{x:.0f}m<br>Delta: %{y:.3f}s<extra></extra>'
+        ))
 
     # Configure layout
     fig.update_layout(

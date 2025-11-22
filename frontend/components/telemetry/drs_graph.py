@@ -98,17 +98,16 @@ def _create_drs_figure(telemetry_data, selected_drivers, color_palette):
         driver_data = telemetry_data[telemetry_data['driver'] == driver]
 
         if not driver_data.empty:
-            # Create filled area chart showing DRS activation zones
-            # Fill indicates where DRS is active (open)
+            # Create line chart showing DRS activation zones
             fig.add_trace(go.Scatter(
-                x=driver_data['distance'],  # Distance along the circuit (from FastF1)
-                y=driver_data['drs'],        # DRS state: 0 = closed, 1 = open (processed from FastF1)
+                # Distance along the circuit (from FastF1)
+                x=driver_data['distance'],
+                # DRS state: 0 = closed, 1 = open (processed from FastF1)
+                y=driver_data['drs'],
                 name=driver,
                 line=dict(color=color_palette[idx], width=2),
-                fill='tozeroy',  # Fill area from zero to the line
-                # Convert hex color to rgba with transparency for filled area
-                fillcolor=f"rgba({int(color_palette[idx][1:3], 16)}, {int(color_palette[idx][3:5], 16)}, {int(color_palette[idx][5:7], 16)}, 0.3)",
-                mode='lines'
+                mode='lines',
+                hovertemplate='Distance: %{x:.0f}m<br>DRS: %{y:.0f}<extra></extra>'
             ))
 
     # Configure layout with dark theme

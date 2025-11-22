@@ -23,6 +23,8 @@ from components.comparison.brake_comparison_graph import render_brake_comparison
 from components.comparison.throttle_comparison_graph import render_throttle_comparison_graph
 from components.common.chart_styles import apply_telemetry_chart_styles
 from components.layout.navbar import show_error_toast
+# Reuse dashboard functions
+from pages.dashboard import apply_driver_pill_colors, render_custom_css
 
 
 BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
@@ -31,10 +33,23 @@ BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
 def render_header():
     """Display page header."""
     st.markdown(
-        "<h1 style='text-align: center;'>CIRCUIT COMPARISON</h1>",
+        "<h1 style='text-align: center;'>DRIVER COMPARISON</h1>",
         unsafe_allow_html=True
     )
     st.markdown("---")
+
+
+def _apply_driver_selectbox_colors(driver1, driver2):
+    """
+    Apply team colors to driver selectboxes based on selected drivers.
+    DISABLED - Not working correctly yet.
+
+    Args:
+        driver1 (str): First driver code (or None)
+        driver2 (str): Second driver code (or None)
+    """
+    # TODO: Fix selectbox coloring - needs different approach
+    pass
 
 
 def fetch_comparison_data(year, gp, session, driver1, driver2):
@@ -80,7 +95,8 @@ def fetch_comparison_data(year, gp, session, driver1, driver2):
             # Check if it's a driver not found error
             if "not found" in error_detail.lower() or "no laps found" in error_detail.lower():
                 # Show error toast for driver not available
-                show_error_toast(f"{error_detail}. Please select another driver or session.")
+                show_error_toast(
+                    f"{error_detail}. Please select another driver or session.")
             else:
                 show_error_toast(f"Data not found: {error_detail}")
         else:
@@ -111,18 +127,30 @@ def render_comparison_page():
 
     year, gp, session, driver1, driver2 = render_comparison_data_selectors()
 
-    st.markdown("---")
+    # Apply pill styles: first remove backgrounds, then apply colors
+    selected_drivers = [d for d in [driver1, driver2] if d is not None]
+    if selected_drivers:
+        render_custom_css()  # Remove backgrounds
+        apply_driver_pill_colors(selected_drivers)  # Apply text colors
+
+    # Add spacing before compare button
+    st.markdown("<br>", unsafe_allow_html=True)
 
     compare_button = render_compare_button()
 
     if compare_button:
-        with st.spinner("Loading comparison data... (may take up to a minute)"):
-            comparison_data = fetch_comparison_data(
-                year, gp, session, driver1, driver2
-            )
+        # Check if all selections are made
+        if not all([year, gp, session, driver1, driver2]):
+            show_error_toast(
+                "Please select all options (Season, GP, Session, and both Drivers)")
+        else:
+            with st.spinner("Loading comparison data... (may take up to a minute)"):
+                comparison_data = fetch_comparison_data(
+                    year, gp, session, driver1, driver2
+                )
 
-        if comparison_data:
-            st.session_state['comparison_data'] = comparison_data
+            if comparison_data:
+                st.session_state['comparison_data'] = comparison_data
 
     # Apply purple border styling to all subsequent Plotly charts
     st.markdown(apply_telemetry_chart_styles(), unsafe_allow_html=True)
