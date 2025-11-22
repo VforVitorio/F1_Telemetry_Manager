@@ -11,6 +11,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) 
 # Standard library imports
 import streamlit as st
 import plotly.graph_objects as go
+import importlib
 
 # Project imports
 from app.styles import Color, TextColor
@@ -25,8 +26,10 @@ from components.telemetry.drs_graph import render_drs_graph
 from components.common.chart_styles import apply_telemetry_chart_styles
 from components.common.link_button import render_link_button
 from components.common.driver_colors import get_driver_color, DRIVER_COLORS
-# TODO: Import telemetry service when backend is ready
-# from services.telemetry_service import fetch_available_years, fetch_gps, fetch_sessions, fetch_drivers, fetch_lap_data
+from utils.data_loaders import load_gps_for_year, load_sessions_for_gp
+import services.telemetry_service
+importlib.reload(services.telemetry_service)
+from services.telemetry_service import TelemetryService
 
 
 def render_custom_css():
@@ -123,75 +126,51 @@ def render_data_selectors():
     Returns:
         tuple: (selected_year, selected_gp, selected_session, selected_drivers, color_palette)
     """
-    # TODO: Replace hardcoded data with backend calls
-    # years = fetch_available_years()  # GET /api/v1/telemetry/years
-    # Use cached data if available to avoid repeated API calls
-
     col1, col2, col3, col4 = st.columns(4)
 
     with col1:
-        # TODO: Replace with dynamic years from backend
-        # selected_year = st.selectbox("YEAR", options=years, index=0)
+        # Year selector - no default selection
+        year_options = [None, 2024, 2023]
         selected_year = st.selectbox(
             "YEAR",
-            options=[2024, 2023],
-            index=0
+            options=year_options,
+            index=0,
+            format_func=lambda x: "-- Select Year --" if x is None else str(x)
         )
 
     with col2:
-        # TODO: Replace with dynamic GPs from backend using FastF1's get_event_schedule()
-        # Example backend implementation:
-        #   - Backend endpoint: GET /api/v1/telemetry/gps?year={year}
-        #   - Uses: fastf1.get_event_schedule(year) to get all events dynamically
-        #   - Returns list of GP names and validates availability per season
-        # Frontend would call: gps = fetch_gps(selected_year)
-        # selected_gp = st.selectbox("GP", options=gps, index=0)
+        # GP selector - only load if year is selected
+        if selected_year is not None:
+            gp_options = [None] + load_gps_for_year(selected_year)
+        else:
+            gp_options = [None]
 
-        # Full 2024 F1 Calendar (in chronological order) - HARDCODED for now
         selected_gp = st.selectbox(
             "GP",
-            options=[
-                "Bahrain",           # Sakhir
-                "Saudi Arabia",      # Jeddah Street Circuit
-                "Australia",         # Albert Park (Melbourne)
-                "Japan",             # Suzuka
-                "China",             # Shanghai International Circuit
-                "Miami",             # Miami International Autodrome
-                "Emilia Romagna",    # Imola
-                "Monaco",            # Circuit de Monaco
-                "Canada",            # Circuit Gilles Villeneuve (Montreal)
-                "Spain",             # Circuit de Barcelona-Catalunya
-                "Austria",           # Red Bull Ring (Spielberg)
-                "Britain",           # Silverstone
-                "Hungary",           # Hungaroring (Budapest)
-                "Belgium",           # Spa-Francorchamps
-                "Netherlands",       # Circuit Zandvoort
-                "Italy",             # Monza
-                "Azerbaijan",        # Baku City Circuit
-                "Singapore",         # Marina Bay Street Circuit
-                "United States",     # Circuit of the Americas (COTA, Austin)
-                "Mexico",            # Autódromo Hermanos Rodríguez (Ciudad de México)
-                "Brazil",            # Autódromo José Carlos Pace (Interlagos, São Paulo)
-                "Las Vegas",         # Las Vegas Strip Circuit
-                "Qatar",             # Lusail International Circuit
-                "Abu Dhabi",         # Yas Marina
-            ],
-            index=0
+            options=gp_options,
+            index=0,
+            format_func=lambda x: "-- Select GP --" if x is None else x,
+            disabled=selected_year is None
         )
 
         # Validate: China was not held in 2023
-        if selected_year == 2023 and selected_gp == "China":
+        if selected_year == 2023 and selected_gp == "Chinese Grand Prix":
             st.error("⚠️ The Chinese Grand Prix was not held in the 2023 season. Please select another GP.")
             selected_gp = None
 
     with col3:
-        # TODO: Replace with dynamic sessions based on selected year and GP
-        # sessions = fetch_sessions(selected_year, selected_gp)  # GET /api/v1/telemetry/sessions?year={year}&gp={gp}
-        # selected_session = st.selectbox("SESSION", options=sessions, index=0)
+        # Session selector - only load if year and GP are selected
+        if selected_year is not None and selected_gp is not None:
+            session_options = [None] + load_sessions_for_gp(selected_year, selected_gp)
+        else:
+            session_options = [None]
+
         selected_session = st.selectbox(
             "SESSION",
-            options=["FP1", "FP2", "FP3", "Q", "R"],
-            index=0
+            options=session_options,
+            index=0,
+            format_func=lambda x: "-- Select Session --" if x is None else x,
+            disabled=selected_year is None or selected_gp is None
         )
 
     with col4:
@@ -217,8 +196,9 @@ def render_data_selectors():
         selected_drivers = st.multiselect(
             "DRIVERS",
             options=driver_options,
-            default=["VER"],
-            max_selections=3
+            default=[],
+            max_selections=3,
+            disabled=selected_year is None or selected_gp is None or selected_session is None
         )
 
         # Get official team colors for selected drivers
@@ -227,59 +207,89 @@ def render_data_selectors():
     return selected_year, selected_gp, selected_session, selected_drivers, color_palette
 
 
-def render_lap_graph(selected_drivers, color_palette):
+def render_lap_graph(selected_year, selected_gp, selected_session, selected_drivers, color_palette):
     """
-    Display lap time graph with Plotly.
+    Display lap time graph with Plotly using real FastF1 data.
 
     Args:
-        selected_drivers (list): List of selected driver identifiers
+        selected_year (int): Selected year
+        selected_gp (str): Selected Grand Prix name
+        selected_session (str): Selected session type
+        selected_drivers (list): List of selected driver codes (e.g., ["VER", "LEC"])
         color_palette (list): List of colors for each driver
     """
     st.markdown("<h2 style='text-align: center;'>LAP CHART</h2>",
                 unsafe_allow_html=True)
 
-    # TODO: Fetch real lap data from backend
-    # lap_data = fetch_lap_data(selected_year, selected_gp, selected_session, selected_drivers)
-    # GET /api/v1/telemetry/laps?year={year}&gp={gp}&session={session}&drivers={drivers}
+    # selected_drivers already contains driver codes (e.g., "VER", "LEC")
+    # No need to split - they're already in the correct format
 
-    # Create empty Plotly figure (placeholder)
+    # Fetch lap times from backend
+    if selected_drivers:
+        with st.spinner("Loading lap times from FastF1..."):
+            success, lap_times_data, error = TelemetryService.get_lap_times(
+                selected_year,
+                selected_gp,
+                selected_session,
+                selected_drivers
+            )
+
+        if not success or not lap_times_data:
+            st.warning(f"Could not load lap times: {error if error else 'No data available'}")
+            lap_times_data = []
+    else:
+        lap_times_data = []
+
+    # Create Plotly figure
     fig = go.Figure()
 
-    # TODO: Replace placeholder data with real lap times from backend
-    # for idx, driver in enumerate(selected_drivers):
-    #     driver_data = lap_data[lap_data['driver'] == driver]
-    #     fig.add_trace(go.Scatter(
-    #         x=driver_data['lap_number'],
-    #         y=driver_data['lap_time'],
-    #         mode='lines+markers',
-    #         name=driver,
-    #         line=dict(color=color_palette[idx % len(color_palette)], width=2),
-    #         marker=dict(size=6)
-    #     ))
+    # Use real lap times data from backend
+    if lap_times_data:
+        # Group lap times by driver
+        from collections import defaultdict
+        driver_laps = defaultdict(lambda: {'lap_numbers': [], 'lap_times': []})
 
-    # Add placeholder data for visualization
-    fig.add_trace(go.Scatter(
-        x=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-        y=[92.5, 91.8, 91.2, 90.9, 91.5, 90.7, 91.1, 90.8, 91.3, 90.6],
-        mode='lines+markers',
-        name='Driver 44',
-        line=dict(color=color_palette[0]
-                  if color_palette else Color.ACCENT, width=2),
-        marker=dict(size=6),
-        hovertemplate='Lap: %{x}<br>Time: %{y:.3f}s<extra></extra>'
-    ))
+        for lap in lap_times_data:
+            driver_code = lap['driver']
+            driver_laps[driver_code]['lap_numbers'].append(lap['lap_number'])
+            driver_laps[driver_code]['lap_times'].append(lap['lap_time'])
+
+        # Add trace for each driver
+        for idx, driver_code in enumerate(selected_drivers):
+            if driver_code in driver_laps:
+                lap_data = driver_laps[driver_code]
+                fig.add_trace(go.Scatter(
+                    x=lap_data['lap_numbers'],
+                    y=lap_data['lap_times'],
+                    mode='lines+markers',
+                    name=driver_code,
+                    line=dict(color=color_palette[idx % len(color_palette)] if color_palette else Color.ACCENT, width=2),
+                    marker=dict(size=6),
+                    hovertemplate=f'{driver_code}<br>Lap: %{{x}}<br>Time: %{{y:.3f}}s<extra></extra>'
+                ))
+    else:
+        # Show message if no data available
+        st.info("No lap data available. Select drivers and ensure backend is running.")
 
     # Configure layout
     fig.update_layout(
-        xaxis_title="time",
-        yaxis_title="lap time",
+        xaxis_title="Lap Number",
+        yaxis_title="Lap Time (seconds)",
         template="plotly_dark",
         height=400,
         margin=dict(l=40, r=40, t=40, b=40),
         plot_bgcolor=Color.PRIMARY_BG,
         paper_bgcolor=Color.PRIMARY_BG,
         font=dict(color=TextColor.PRIMARY),
-        showlegend=True
+        showlegend=True,
+        xaxis=dict(
+            gridcolor='rgba(128, 128, 128, 0.2)',
+            showgrid=True
+        ),
+        yaxis=dict(
+            gridcolor='rgba(128, 128, 128, 0.2)',
+            showgrid=True
+        )
     )
 
     st.plotly_chart(fig, use_container_width=True)
@@ -333,7 +343,7 @@ def render_dashboard():
     # Apply colors to driver pills based on selection (must be after selectors)
     apply_driver_pill_colors(selected_drivers)
 
-    render_lap_graph(selected_drivers, color_palette)
+    render_lap_graph(selected_year, selected_gp, selected_session, selected_drivers, color_palette)
     render_control_buttons()
 
     # Apply purple border styling to all subsequent Plotly charts

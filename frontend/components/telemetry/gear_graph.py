@@ -59,9 +59,10 @@ def render_gear_graph(telemetry_data, selected_drivers, color_palette):
     # Example: telemetry_data = session.laps.pick_driver(driver).get_telemetry()
     # The telemetry data should include: Distance, nGear columns
     # nGear is the gear number: 1-8 (discrete values)
-    # Use mock data if no real data is available
+    # Show empty graph if no real data is available
     if telemetry_data is None or telemetry_data.empty:
-        telemetry_data = _generate_mock_gear_data(selected_drivers)
+        import pandas as pd
+        telemetry_data = pd.DataFrame(columns=['driver', 'distance', 'gear'])
 
     fig = _create_gear_figure(telemetry_data, selected_drivers, color_palette)
     st.plotly_chart(fig, use_container_width=True)
@@ -120,6 +121,10 @@ def _generate_mock_gear_data(selected_drivers):
     Generates mock gear data for visualization testing.
     Simulates realistic F1 gear selection patterns across a circuit.
     """
+    # Return empty DataFrame if no drivers selected
+    if not selected_drivers:
+        return pd.DataFrame(columns=['driver', 'distance', 'gear'])
+
     # Simulate a ~5km circuit with 100 data points
     distance = np.linspace(0, 5000, 100)
     mock_data = []

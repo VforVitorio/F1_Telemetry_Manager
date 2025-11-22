@@ -76,9 +76,10 @@ def render_drs_graph(telemetry_data, selected_drivers, color_palette):
     # Example: telemetry_data = session.laps.pick_driver(driver).get_telemetry()
     # The telemetry data should include: Distance, DRS columns
     # DRS values from FastF1: 0-7 = closed, 8-14 = open (binarized to 0/1)
-    # Use mock data if no real data is available
+    # Show empty graph if no real data is available
     if telemetry_data is None or telemetry_data.empty:
-        telemetry_data = _generate_mock_drs_data(selected_drivers)
+        import pandas as pd
+        telemetry_data = pd.DataFrame(columns=['driver', 'distance', 'drs'])
 
     processed_data = _process_drs_data(telemetry_data)
     fig = _create_drs_figure(processed_data, selected_drivers, color_palette)
@@ -137,6 +138,10 @@ def _generate_mock_drs_data(selected_drivers):
     Simulates realistic F1 DRS patterns with specific DRS zones on straights.
     Returns raw FastF1-style values (0-14) that will be processed by _process_drs_data.
     """
+    # Return empty DataFrame if no drivers selected
+    if not selected_drivers:
+        return pd.DataFrame(columns=['driver', 'distance', 'drs'])
+
     # Simulate a ~5km circuit with 100 data points
     distance = np.linspace(0, 5000, 100)
     mock_data = []

@@ -156,6 +156,10 @@ def _generate_mock_delta_data(selected_drivers):
     Generates mock telemetry data with time information for delta calculation.
     Simulates realistic F1 lap time progression with driver variations.
     """
+    # Return empty DataFrame if no drivers selected
+    if not selected_drivers:
+        return pd.DataFrame(columns=['driver', 'distance', 'time'])
+
     # Simulate a ~5km circuit with 100 data points
     distance = np.linspace(0, 5000, 100)
     mock_data = []
