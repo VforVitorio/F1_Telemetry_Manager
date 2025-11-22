@@ -868,13 +868,24 @@ def _configure_synchronized_layout(
     max_distance = max(pilot1['distance'])
     max_speed = max(max(pilot1['speed']), max(pilot2['speed']))
 
-    # Calculate delta range (min and max values)
-    min_delta = min(delta)
+    # Calculate delta range dynamically based on who is faster
     max_delta = max(delta)
-    # Add 25% padding to delta range to prevent values from being cut off
-    delta_padding = (max_delta - min_delta) * 0.25
-    delta_min_range = min_delta - delta_padding
-    delta_max_range = max_delta + delta_padding
+
+    # Determine who is faster to calculate proper range
+    lap_time1 = pilot1.get('lap_time')
+    lap_time2 = pilot2.get('lap_time')
+    pilot1_is_faster = lap_time1 < lap_time2 if lap_time1 and lap_time2 else True
+
+    if pilot1_is_faster:
+        # pilot2 shows NEGATIVE values (inverted delta below y=0)
+        # Give most space below y=0 (110%), small space above (10%)
+        delta_min_range = -(max_delta * 1.10)
+        delta_max_range = max_delta * 0.10
+    else:
+        # pilot1 shows POSITIVE values (original delta above y=0)
+        # Give most space above y=0 (110%), small space below (10%)
+        delta_min_range = -(max_delta * 0.10)
+        delta_max_range = max_delta * 1.10
 
     # Update layout
     fig.update_layout(
