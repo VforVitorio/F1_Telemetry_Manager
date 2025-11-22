@@ -16,7 +16,10 @@ import httpx
 
 # Project imports
 from components.common.data_selectors import render_comparison_data_selectors
-from components.comparison.synchronized_comparison_animation import render_synchronized_comparison_animation
+from components.comparison.synchronized_comparison_animation import (
+    render_lap_times_info,
+    render_animation_figure
+)
 from components.common.chart_styles import apply_telemetry_chart_styles
 from components.layout.navbar import show_error_toast, show_warning_toast
 # Reuse dashboard functions
@@ -159,8 +162,18 @@ def render_comparison_page():
     comparison_data = st.session_state.get('comparison_data', None)
 
     if comparison_data:
-        # Synchronized comparison animation (circuit + telemetry graphs)
-        render_synchronized_comparison_animation(comparison_data)
+        # Render section title
+        st.markdown(
+            "<h2 style='text-align: center;'>SYNCHRONIZED TELEMETRY ANALYSIS</h2>",
+            unsafe_allow_html=True
+        )
+
+        # Render lap times info boxes immediately
+        render_lap_times_info(comparison_data)
+
+        # Render animation with spinner (heavy operation)
+        with st.spinner("⏳ Rendering animation... Please wait"):
+            render_animation_figure(comparison_data)
     else:
         st.info(
             "👆 Select two drivers, then click COMPARE to view telemetry comparison (fastest laps only)")

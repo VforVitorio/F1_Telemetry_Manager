@@ -34,9 +34,34 @@ def render_synchronized_comparison_animation(comparison_data: Dict) -> None:
         render_loading_spinner()
         return
 
-    # Render lap times info box (reuse from circuit_comparison)
+    # Render lap times info box
+    render_lap_times_info(comparison_data)
+
+    # Render animation figure
+    render_animation_figure(comparison_data)
+
+
+def render_lap_times_info(comparison_data: Dict) -> None:
+    """
+    Render lap times information boxes (public function for use with spinner).
+
+    Shows both drivers' lap times, winner, and qualifying phase info if present.
+
+    Args:
+        comparison_data: Dictionary with pilot1, pilot2, and metadata
+    """
     _render_lap_times_info(comparison_data)
 
+
+def render_animation_figure(comparison_data: Dict) -> None:
+    """
+    Create and render the synchronized animation figure (public function for use with spinner).
+
+    This is the heavy operation that generates all animation frames.
+
+    Args:
+        comparison_data: Dictionary with circuit, pilot1, pilot2, delta data
+    """
     fig = _create_synchronized_figure(comparison_data)
     st.plotly_chart(fig, use_container_width=True)
 
