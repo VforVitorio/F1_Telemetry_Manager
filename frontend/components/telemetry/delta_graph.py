@@ -42,25 +42,17 @@ from components.common.loading import render_loading_spinner
 
 def render_delta_graph(telemetry_data, selected_drivers, color_palette):
     """
-    Renders the delta (time difference) graph for selected drivers
+    Renders the delta (time difference) graph for selected drivers.
+    Note: Delta requires multiple drivers for comparison. Currently shows info message.
     """
     # Add separator before the section
     st.markdown("---")
 
     _render_section_title()
 
-    # TODO: Replace with FastF1 backend call
-    # Example: telemetry_data = session.laps.pick_driver(driver).get_telemetry()
-    # The telemetry data should include: Distance, Time columns
-    # For accurate delta calculation, use: fastf1.utils.delta_time(reference_lap, compare_lap)
-    # Show loading spinner if no data is available
-    if telemetry_data is None or telemetry_data.empty:
-        render_loading_spinner()
-        return
-
-    delta_data = _calculate_deltas(telemetry_data, selected_drivers)
-    fig = _create_delta_figure(delta_data, selected_drivers, color_palette)
-    st.plotly_chart(fig, use_container_width=True)
+    # Delta graph requires comparing multiple drivers' laps
+    # For now, show info message as single-lap telemetry doesn't support delta comparison
+    st.info("👆 Delta comparison requires multiple drivers' telemetry. Select multiple drivers and laps for comparison (coming soon).")
 
 
 def _render_section_title() -> None:
