@@ -18,7 +18,7 @@ import httpx
 from components.common.data_selectors import render_comparison_data_selectors
 from components.comparison.synchronized_comparison_animation import render_synchronized_comparison_animation
 from components.common.chart_styles import apply_telemetry_chart_styles
-from components.layout.navbar import show_error_toast
+from components.layout.navbar import show_error_toast, show_warning_toast
 # Reuse dashboard functions
 from pages.dashboard import apply_driver_pill_colors, render_custom_css
 
@@ -140,6 +140,9 @@ def render_comparison_page():
             show_error_toast(
                 "Please select all options (Season, GP, Session, and both Drivers)")
         else:
+            # Show warning toast about animation loading time
+            show_warning_toast()
+
             with st.spinner("Loading comparison data... (may take up to a minute)"):
                 comparison_data = fetch_comparison_data(
                     year, gp, session, driver1, driver2
