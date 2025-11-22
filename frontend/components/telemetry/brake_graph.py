@@ -37,6 +37,7 @@ import plotly.graph_objects as go
 import pandas as pd
 import numpy as np
 from app.styles import Color, TextColor
+from components.common.loading import render_loading_spinner
 
 
 def _render_section_title() -> None:
@@ -51,25 +52,38 @@ def _render_section_title() -> None:
 
 def render_brake_graph(telemetry_data, selected_drivers, color_palette):
     """
-    Renders the brake graph for selected drivers
+    Renders the brake graph for selected drivers.
+    Shows telemetry data when a lap is selected.
     """
-
-    # Add separator before the section
     st.markdown("---")
-
     _render_section_title()
 
-    # TODO: Replace with FastF1 backend call
-    # Example: telemetry_data = session.laps.pick_driver(driver).get_telemetry()
-    # The telemetry data should include: Distance, Brake columns
-    # Brake can be boolean (0/1) or percentage (0-100%) depending on FastF1 data
-    # Show empty graph if no real data is available
-    if telemetry_data is None or telemetry_data.empty:
-        import pandas as pd
-        telemetry_data = pd.DataFrame(columns=['driver', 'distance', 'brake'])
+    # Convert telemetry_data to DataFrame format if it's a dict from the API
+    if telemetry_data is not None and isinstance(telemetry_data, dict):
+        # Check if we have the required data
+        if 'distance' in telemetry_data and 'brake' in telemetry_data:
+            driver = telemetry_data.get('driver', 'Unknown')
+            distance = telemetry_data.get('distance', [])
+            brake = telemetry_data.get('brake', [])
 
-    fig = _create_brake_figure(telemetry_data, selected_drivers, color_palette)
-    st.plotly_chart(fig, use_container_width=True)
+            # Convert to DataFrame
+            df_data = pd.DataFrame({
+                'driver': [driver] * len(distance),
+                'distance': distance,
+                'brake': brake
+            })
+
+            # Get driver color
+            from components.common.driver_colors import get_driver_color
+            driver_color = get_driver_color(driver)
+
+            fig = _create_brake_figure(df_data, [driver], [driver_color])
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            render_loading_spinner()
+    else:
+        # Show loading spinner when no data is selected
+        render_loading_spinner()
 
 
 def _create_brake_figure(telemetry_data, selected_drivers, color_palette):

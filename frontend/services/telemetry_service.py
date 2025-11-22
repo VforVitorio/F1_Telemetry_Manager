@@ -308,3 +308,81 @@ class TelemetryService:
             error_msg = f"Unexpected error: {str(e)}"
             logger.error(error_msg, exc_info=True)
             return False, None, error_msg
+
+    @staticmethod
+    def get_lap_telemetry(
+        year: int,
+        gp: str,
+        session: str,
+        driver: str,
+        lap_number: int
+    ) -> tuple[bool, Optional[Dict], Optional[str]]:
+        """
+        Fetch telemetry data for a specific lap.
+
+        Args:
+            year: Racing season year (e.g., 2024)
+            gp: Grand Prix name (e.g., 'Spain', 'Belgium')
+            session: Session type ('FP1', 'FP2', 'FP3', 'Q', 'R')
+            driver: Driver code (e.g., 'VER')
+            lap_number: Lap number
+
+        Returns:
+            Tuple of (success: bool, telemetry: dict or None, error: str or None)
+
+            On success, telemetry contains:
+                - driver: Driver code
+                - lap_number: Lap number
+                - distance: List of distance values
+                - speed: List of speed values
+                - throttle: List of throttle values (0-100)
+                - brake: List of brake values (0-100)
+                - rpm: List of RPM values
+                - gear: List of gear values
+                - drs: List of DRS status values
+        """
+        try:
+            params = {
+                'year': year,
+                'gp': gp,
+                'session': session,
+                'driver': driver,
+                'lap_number': lap_number
+            }
+            logger.info(f"Fetching telemetry for: {driver} lap {lap_number} - {year} {gp} {session}")
+
+            response = requests.get(
+                f"{BACKEND_URL}/api/v1/telemetry/lap-telemetry",
+                params=params,
+                timeout=60  # 60 second timeout for telemetry data loading
+            )
+
+            if response.status_code == 200:
+                telemetry_data = response.json()
+                logger.info(f"Successfully fetched telemetry for {driver} lap {lap_number}")
+                return True, telemetry_data, None
+
+            elif response.status_code == 404:
+                error_detail = response.json().get('detail', 'Telemetry not found')
+                logger.warning(f"404 error: {error_detail}")
+                return False, None, error_detail
+
+            else:
+                error_msg = f"Server error: {response.status_code}"
+                logger.error(error_msg)
+                return False, None, error_msg
+
+        except requests.exceptions.Timeout:
+            error_msg = "Request timeout. Telemetry data loading can take time."
+            logger.error(error_msg)
+            return False, None, error_msg
+
+        except requests.exceptions.ConnectionError:
+            error_msg = "Cannot connect to backend server. Is it running?"
+            logger.error(error_msg)
+            return False, None, error_msg
+
+        except Exception as e:
+            error_msg = f"Unexpected error: {str(e)}"
+            logger.error(error_msg, exc_info=True)
+            return False, None, error_msg
