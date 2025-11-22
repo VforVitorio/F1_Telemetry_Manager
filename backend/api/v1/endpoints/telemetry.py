@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, HTTPException
 from backend.services.telemetry.telemetry_service import (
     get_telemetry_data_from_db,
     get_available_gps,
     get_available_sessions,
     get_available_drivers,
-    get_lap_times
+    get_lap_times,
+    get_lap_telemetry
 )
 
 router = APIRouter(prefix="/telemetry", tags=["telemetry"])
@@ -69,3 +70,28 @@ async def get_laps(
     driver_list = drivers.split(",")
     lap_times = get_lap_times(year, gp, session, driver_list)
     return {"lap_times": lap_times}
+
+
+@router.get("/lap-telemetry")
+async def get_lap_telemetry_endpoint(
+    year: int = Query(..., description="Year of the season"),
+    gp: str = Query(..., description="Grand Prix name"),
+    session: str = Query(..., description="Session type (FP1, FP2, FP3, Q, R)"),
+    driver: str = Query(..., description="Driver code"),
+    lap_number: int = Query(..., description="Lap number")
+):
+    """
+    Get telemetry data for a specific lap.
+
+    Returns:
+        Telemetry data including distance, speed, throttle, brake, rpm, gear, and drs
+    """
+    telemetry_data = get_lap_telemetry(year, gp, session, driver, lap_number)
+
+    if not telemetry_data:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No telemetry data found for {driver} lap {lap_number} in {year} {gp} {session}"
+        )
+
+    return telemetry_data

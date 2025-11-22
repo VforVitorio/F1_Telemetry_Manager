@@ -191,3 +191,114 @@ def get_lap_times(year: int, gp: str, session: str, drivers: List[str]) -> List[
         import traceback
         traceback.print_exc()
         return []
+
+
+def get_lap_telemetry(year: int, gp: str, session: str, driver: str, lap_number: int) -> Dict:
+    """
+    Get telemetry data for a specific lap.
+
+    Args:
+        year: Season year
+        gp: GP name
+        session: Session name
+        driver: Driver code
+        lap_number: Lap number to get telemetry for
+
+    Returns:
+        Dict with telemetry data (distance, speed, throttle, brake, rpm, gear, drs)
+    """
+    try:
+        # Load session data
+        session_data = SessionData(year=year, circuit=gp, current_session=session, drivers=[driver])
+
+        # Get the specific lap
+        laps = session_data.get_driver_lap_times(drivers=[driver])
+
+        if laps.empty:
+            print(f"No lap data for {driver} in {year} {gp} {session}")
+            return {}
+
+        # Filter for the specific lap number
+        lap = laps[laps['LapNumber'] == lap_number]
+
+        if lap.empty:
+            print(f"No lap {lap_number} found for {driver}")
+            return {}
+
+        # Get the lap data
+        lap_data = lap.iloc[0]
+
+        # Check if this is a valid lap (not in/out lap)
+        # Skip laps that are pit laps or out laps as they often don't have complete telemetry
+        if pd.notna(lap_data.get('PitInTime')) or pd.notna(lap_data.get('PitOutTime')):
+            print(f"Lap {lap_number} is a pit lap - telemetry may be incomplete")
+            # Continue anyway but user should be aware
+
+        # Try to get telemetry for the lap with error handling
+        # Use get_car_data() instead of get_telemetry() to avoid pandas interpolate issues
+        telemetry = None
+        try:
+            # get_car_data() returns car telemetry without interpolation issues
+            telemetry = lap_data.get_car_data()
+        except AttributeError as e:
+            print(f"AttributeError getting car data for lap {lap_number}: {e}")
+            return {}
+        except Exception as e:
+            print(f"Unexpected error getting car data for lap {lap_number}: {e}")
+            import traceback
+            traceback.print_exc()
+            return {}
+
+        if telemetry is None or telemetry.empty:
+            print(f"No telemetry data for lap {lap_number} of {driver}")
+            return {}
+
+        # Add distance if not present (get_car_data doesn't always include it)
+        if 'Distance' not in telemetry.columns:
+            # Calculate distance from lap start time
+            try:
+                telemetry['Distance'] = telemetry['Time'].dt.total_seconds() * telemetry['Speed'] / 3.6
+                # Make it cumulative
+                telemetry['Distance'] = telemetry['Distance'].cumsum()
+            except Exception as e:
+                print(f"Could not calculate distance for lap {lap_number}: {e}")
+                # If we can't calculate distance, we can't proceed
+                return {}
+
+        # Verify we have minimum required columns
+        required_columns = ['Speed']
+        missing_cols = [col for col in required_columns if col not in telemetry.columns]
+        if missing_cols:
+            print(f"Missing required columns for lap {lap_number}: {missing_cols}")
+            return {}
+
+        # Convert telemetry to dict format
+        # Clean NaN and inf values
+        telemetry_clean = telemetry.fillna(0)
+        telemetry_clean = telemetry_clean.replace([float('inf'), float('-inf')], 0)
+
+        result = {
+            'driver': driver,
+            'lap_number': lap_number,
+            'distance': telemetry_clean['Distance'].tolist() if 'Distance' in telemetry_clean.columns else [],
+            'speed': telemetry_clean['Speed'].tolist() if 'Speed' in telemetry_clean.columns else [],
+            'throttle': telemetry_clean['Throttle'].tolist() if 'Throttle' in telemetry_clean.columns else [],
+            'brake': telemetry_clean['Brake'].tolist() if 'Brake' in telemetry_clean.columns else [],
+            'rpm': telemetry_clean['RPM'].tolist() if 'RPM' in telemetry_clean.columns else [],
+            'gear': telemetry_clean['nGear'].tolist() if 'nGear' in telemetry_clean.columns else [],
+            'drs': telemetry_clean['DRS'].tolist() if 'DRS' in telemetry_clean.columns else [],
+        }
+
+        # Verify we actually got data
+        if not result['distance'] or not result['speed']:
+            print(f"Telemetry data is empty after processing for lap {lap_number}")
+            return {}
+
+        print(f"Telemetry data retrieved for {driver} lap {lap_number}: {len(result['distance'])} data points")
+        return result
+
+    except Exception as e:
+        print(f"Error getting telemetry for {driver} lap {lap_number}: {e}")
+        import traceback
+        traceback.print_exc()
+        return {}

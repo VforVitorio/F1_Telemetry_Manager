@@ -38,6 +38,7 @@ import plotly.graph_objects as go
 import pandas as pd
 import numpy as np
 from app.styles import Color, TextColor
+from components.common.loading import render_loading_spinner
 
 
 def _render_section_title() -> None:
@@ -50,27 +51,38 @@ def _render_section_title() -> None:
 
 def render_throttle_graph(telemetry_data, selected_drivers, color_palette):
     """
-    Renders the throttle graph for selected drivers
+    Renders the throttle graph for selected drivers.
+    Shows telemetry data when a lap is selected.
     """
-
-    # Adding separator before the section
-
     st.markdown("---")
-
     _render_section_title()
 
-    # TODO: Replace with FastF1 backend call
-    # Example: telemetry_data = session.laps.pick_driver(driver).get_telemetry()
-    # The telemetry data should include: Distance, Throttle columns
-    # Throttle is a percentage value (0-100%)
-    # Show empty graph if no real data is available
-    if telemetry_data is None or telemetry_data.empty:
-        import pandas as pd
-        telemetry_data = pd.DataFrame(columns=['driver', 'distance', 'throttle'])
+    # Convert telemetry_data to DataFrame format if it's a dict from the API
+    if telemetry_data is not None and isinstance(telemetry_data, dict):
+        # Check if we have the required data
+        if 'distance' in telemetry_data and 'throttle' in telemetry_data:
+            driver = telemetry_data.get('driver', 'Unknown')
+            distance = telemetry_data.get('distance', [])
+            throttle = telemetry_data.get('throttle', [])
 
-    fig = _create_throttle_figure(
-        telemetry_data, selected_drivers, color_palette)
-    st.plotly_chart(fig, use_container_width=True)
+            # Convert to DataFrame
+            df_data = pd.DataFrame({
+                'driver': [driver] * len(distance),
+                'distance': distance,
+                'throttle': throttle
+            })
+
+            # Get driver color
+            from components.common.driver_colors import get_driver_color
+            driver_color = get_driver_color(driver)
+
+            fig = _create_throttle_figure(df_data, [driver], [driver_color])
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            render_loading_spinner()
+    else:
+        # Show loading spinner when no data is selected
+        render_loading_spinner()
 
 
 def _create_throttle_figure(telemetry_data, selected_drivers, color_palette):
