@@ -224,8 +224,9 @@ def render_lap_graph(selected_year, selected_gp, selected_session, selected_driv
     # selected_drivers already contains driver codes (e.g., "VER", "LEC")
     # No need to split - they're already in the correct format
 
-    # Fetch lap times from backend
-    if selected_drivers:
+    # Fetch lap times from backend only if all required data is selected
+    if (selected_year is not None and selected_gp is not None and
+        selected_session is not None and selected_drivers):
         with st.spinner("Loading lap times from FastF1..."):
             success, lap_times_data, error = TelemetryService.get_lap_times(
                 selected_year,

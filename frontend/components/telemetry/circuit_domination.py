@@ -64,7 +64,8 @@ def render_circuit_domination_section(
     _render_section_title()
 
     # Check if all required data is selected
-    if not all([year, gp, session]) or not selected_drivers or len(selected_drivers) < 2:
+    if (year is None or gp is None or session is None or
+        not selected_drivers or len(selected_drivers) < 2):
         # Show loading spinner waiting for data selection
         render_loading_spinner()
         return
