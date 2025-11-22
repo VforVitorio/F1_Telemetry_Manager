@@ -246,3 +246,79 @@ def show_error_toast(message):
 
     # Render error toast
     st.markdown(toast_html, unsafe_allow_html=True)
+
+
+def show_warning_toast(message="⏳ Loading animation... This may take a moment to render"):
+    """
+    Shows a custom info toast notification with animation.
+    Appears top-right and fades out after 5 seconds.
+    Purple gradient matching app theme with hourglass icon.
+
+    Args:
+        message (str): Info message to display in the toast
+    """
+    toast_html = f"""
+        <style>
+        /* Toast container for info */
+        @keyframes slideInRight {{
+            from {{
+                transform: translateX(100%);
+                opacity: 0;
+            }}
+            to {{
+                transform: translateX(0);
+                opacity: 1;
+            }}
+        }}
+
+        @keyframes slideOutRight {{
+            from {{
+                transform: translateX(0);
+                opacity: 1;
+            }}
+            to {{
+                transform: translateX(100%);
+                opacity: 0;
+            }}
+        }}
+
+        .custom-warning-toast {{
+            position: fixed;
+            top: 80px;
+            right: 20px;
+            background: linear-gradient(135deg, #a78bfa 0%, #8b5cf6 100%);
+            color: white;
+            padding: 1rem 1.5rem;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(167, 139, 250, 0.4);
+            z-index: 10000;
+            font-weight: 600;
+            font-size: 1rem;
+            animation: slideInRight 0.5s ease-out, slideOutRight 0.5s ease-in 4.5s;
+            animation-fill-mode: forwards;
+            max-width: 400px;
+        }}
+
+        .custom-warning-toast-icon {{
+            font-size: 1.5rem;
+            margin-right: 0.5rem;
+        }}
+        </style>
+
+        <div class="custom-warning-toast">
+            {message}
+        </div>
+
+        <script>
+        setTimeout(function() {{
+            const toast = document.querySelector('.custom-warning-toast');
+            if (toast) {{
+                toast.style.animation = 'slideOutRight 0.5s ease-in';
+                setTimeout(() => toast.remove(), 500);
+            }}
+        }}, 5000);
+        </script>
+    """
+
+    # Render info toast
+    st.markdown(toast_html, unsafe_allow_html=True)
