@@ -875,6 +875,9 @@ def _configure_synchronized_layout(
     delta_min_range = -(max_abs_delta * 1.5)
     delta_max_range = max_abs_delta * 1.5
 
+    # Round dtick to nearest 0.25 for clean tick values (0.25, 0.5, 0.75, etc.)
+    delta_dtick = round((max_abs_delta / 2) * 4) / 4
+
     # Update layout
     fig.update_layout(
         template="plotly_dark",
@@ -1001,7 +1004,7 @@ def _configure_synchronized_layout(
         zerolinecolor='gray',
         zerolinewidth=2,
         range=[delta_min_range, delta_max_range],  # Fixed range
-        dtick=max_abs_delta / 2,  # 2 ticks on each side (positive and negative)
+        dtick=delta_dtick,  # Rounded to 0.25 for clean tick values
         row=1, col=2
     )
 
