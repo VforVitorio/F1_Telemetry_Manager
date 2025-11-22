@@ -10,6 +10,7 @@ import streamlit as st
 # Project imports (now work because setup_path configured sys.path)
 from pages.dashboard import render_dashboard
 from pages.comparison import render_comparison_page
+from pages.chat import render_chat_page
 from components.auth.auth_form import render_auth_form
 from components.layout.navbar import render_navbar, show_welcome_toast
 from styles import GLOBAL_CSS
@@ -58,6 +59,8 @@ else:
 
     if current_page == 'comparison':
         render_comparison_page()
+    elif current_page == 'chat':
+        render_chat_page()
     else:
         # Default to dashboard
         render_dashboard()
