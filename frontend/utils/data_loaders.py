@@ -10,6 +10,9 @@ from services.telemetry_service import TelemetryService
 @st.cache_data(ttl=3600)
 def load_gps_for_year(year: int):
     """Load GPs for a specific year with caching."""
+    if year is None:
+        return []
+
     success, gp_list, error = TelemetryService.get_available_gps(year)
     if success and gp_list:
         return gp_list
@@ -23,6 +26,9 @@ def load_gps_for_year(year: int):
 @st.cache_data(ttl=3600)
 def load_sessions_for_gp(year: int, gp: str):
     """Load sessions for a specific GP with caching."""
+    if year is None or gp is None:
+        return []
+
     success, session_list, error = TelemetryService.get_available_sessions(year, gp)
     if success and session_list:
         return session_list
@@ -35,6 +41,9 @@ def load_sessions_for_gp(year: int, gp: str):
 @st.cache_data(ttl=3600)
 def load_drivers_for_session(year: int, gp: str, session: str):
     """Load drivers for a specific session with caching."""
+    if year is None or gp is None or session is None:
+        return []
+
     with st.spinner("Loading drivers from FastF1..."):
         success, driver_list, error = TelemetryService.get_available_drivers(year, gp, session)
 
