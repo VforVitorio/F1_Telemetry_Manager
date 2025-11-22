@@ -53,10 +53,11 @@ def render_navbar():
         </style>
     """, unsafe_allow_html=True)
 
-    # Render navbar with hydralit_components (Comparison link between Home and Logout)
+    # Render navbar with hydralit_components (menu items between Home and Logout)
     menu_id = hc.nav_bar(
         menu_definition=[
-            {'id': 'Comparison', 'icon': "fa fa-balance-scale", 'label': "Comparison"}
+            {'id': 'Comparison', 'icon': "fa fa-balance-scale", 'label': "Comparison"},
+            {'id': 'AI Chat', 'icon': "fa fa-comments", 'label': "AI Chat"}
         ],
         override_theme=override_theme,
         home_name='Home',
@@ -90,6 +91,12 @@ def render_navbar():
         elif menu_id == 'Comparison':
             if st.session_state.get('current_page') != 'comparison':
                 st.session_state['current_page'] = 'comparison'
+                st.rerun()
+
+        # Handle AI chat navigation
+        elif menu_id == 'AI Chat':
+            if st.session_state.get('current_page') != 'chat':
+                st.session_state['current_page'] = 'chat'
                 st.rerun()
 
     return menu_id
