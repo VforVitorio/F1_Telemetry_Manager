@@ -46,9 +46,10 @@ def render_speed_graph(telemety_data, selected_drivers, color_palette):
     # TODO: Replace with FastF1 backend call
     # Example: telemetry_data = session.laps.pick_driver(driver).get_telemetry()
     # The telemetry data should include: Distance, Speed columns
-    # Use mock data if no real data is available
-    if telemety_data is None or telemety_data.empty:
-        telemety_data = _generate_mock_speed_data(selected_drivers)
+    # Show empty graph if no real data is available
+    if telemety_data is None or (hasattr(telemety_data, 'empty') and telemety_data.empty):
+        import pandas as pd
+        telemety_data = pd.DataFrame(columns=['driver', 'distance', 'speed'])
 
     fig = _create_speed_figure(telemety_data, selected_drivers, color_palette)
     st.plotly_chart(fig, use_container_width=True)
@@ -99,6 +100,10 @@ def _generate_mock_speed_data(selected_drivers):
     Generates mock speed data for visualization testing.
     Simulates realistic F1 speed patterns with straights and corners.
     """
+    # Return empty DataFrame if no drivers selected
+    if not selected_drivers:
+        return pd.DataFrame(columns=['driver', 'distance', 'speed'])
+
     # Simulate a ~5km circuit with 100 data points
     distance = np.linspace(0, 5000, 100)
     mock_data = []

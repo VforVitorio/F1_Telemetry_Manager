@@ -26,6 +26,7 @@ from components.telemetry.drs_graph import render_drs_graph
 from components.common.chart_styles import apply_telemetry_chart_styles
 from components.common.link_button import render_link_button
 from components.common.driver_colors import get_driver_color, DRIVER_COLORS
+from utils.data_loaders import load_gps_for_year, load_sessions_for_gp
 import services.telemetry_service
 importlib.reload(services.telemetry_service)
 from services.telemetry_service import TelemetryService
@@ -118,60 +119,6 @@ def render_header():
     st.markdown("---")
 
 
-@st.cache_data(ttl=3600)
-def load_gps_for_year(year: int):
-    """Load GPs for a specific year with caching."""
-    success, gp_list, error = TelemetryService.get_available_gps(year)
-    if success and gp_list:
-        return gp_list
-    if error:
-        st.warning(f"Could not load GPs: {error}. Using default list.")
-    # Fallback list
-    return ["Bahrain Grand Prix", "Saudi Arabian Grand Prix", "Australian Grand Prix",
-            "Japanese Grand Prix", "Chinese Grand Prix"]
-
-
-@st.cache_data(ttl=3600)
-def load_sessions_for_gp(year: int, gp: str):
-    """Load sessions for a specific GP with caching."""
-    success, session_list, error = TelemetryService.get_available_sessions(year, gp)
-    if success and session_list:
-        return session_list
-    if error:
-        st.warning(f"Could not load sessions: {error}. Using default list.")
-    # Fallback list
-    return ["FP1", "FP2", "FP3", "Q", "R"]
-
-
-@st.cache_data(ttl=3600)
-def load_drivers_for_session(year: int, gp: str, session: str):
-    """Load drivers for a specific session with caching."""
-    with st.spinner("Loading drivers from FastF1..."):
-        success, driver_list, error = TelemetryService.get_available_drivers(year, gp, session)
-
-    if success and driver_list:
-        # Format as "CODE - Name"
-        return [f"{d['code']} - {d['name']}" for d in driver_list]
-
-    if error:
-        st.error(f"Could not load drivers: {error}")
-
-    # Fallback: F1 2024 Complete driver lineup
-    return [
-        "VER - Verstappen", "PER - Pérez",  # Red Bull
-        "LEC - Leclerc", "SAI - Sainz",  # Ferrari
-        "HAM - Hamilton", "RUS - Russell",  # Mercedes
-        "NOR - Norris", "PIA - Piastri",  # McLaren
-        "ALO - Alonso", "STR - Stroll",  # Aston Martin
-        "GAS - Gasly", "OCO - Ocon",  # Alpine
-        "ALB - Albon", "COL - Colapinto", "SAR - Sargeant",  # Williams
-        "TSU - Tsunoda", "RIC - Ricciardo", "LAW - Lawson",  # RB
-        "BOT - Bottas", "ZHO - Zhou",  # Sauber
-        "MAG - Magnussen", "HUL - Hülkenberg", "BEA - Bearman",  # Haas
-        "DOO - Doohan",  # Reserve/Test
-    ]
-
-
 def render_data_selectors():
     """
     Render the 4 data selectors (Year, GP, Session, Pilots).
@@ -182,47 +129,48 @@ def render_data_selectors():
     col1, col2, col3, col4 = st.columns(4)
 
     with col1:
-        # Year selector - fixed to 2024 only
+        # Year selector - no default selection
+        year_options = [None, 2024, 2023]
         selected_year = st.selectbox(
             "YEAR",
-            options=[2024, 2023],
-            index=0
+            options=year_options,
+            index=0,
+            format_func=lambda x: "-- Select Year --" if x is None else str(x)
         )
 
     with col2:
-        # GP selector - load from backend
-        gp_options = load_gps_for_year(selected_year)
-        # TODO: Replace with dynamic GPs from backend using FastF1's get_event_schedule()
-        # Example backend implementation:
-        #   - Backend endpoint: GET /api/v1/telemetry/gps?year={year}
-        #   - Uses: fastf1.get_event_schedule(year) to get all events dynamically
-        #   - Returns list of GP names and validates availability per season
-        # Frontend would call: gps = fetch_gps(selected_year)
-        # selected_gp = st.selectbox("GP", options=gps, index=0)
+        # GP selector - only load if year is selected
+        if selected_year is not None:
+            gp_options = [None] + load_gps_for_year(selected_year)
+        else:
+            gp_options = [None]
 
-        # Full 2024 F1 Calendar (in chronological order) - now loaded from backend
         selected_gp = st.selectbox(
             "GP",
             options=gp_options,
-            index=0
+            index=0,
+            format_func=lambda x: "-- Select GP --" if x is None else x,
+            disabled=selected_year is None
         )
 
         # Validate: China was not held in 2023
-        if selected_year == 2023 and selected_gp == "China":
+        if selected_year == 2023 and selected_gp == "Chinese Grand Prix":
             st.error("⚠️ The Chinese Grand Prix was not held in the 2023 season. Please select another GP.")
             selected_gp = None
 
     with col3:
-        # Session selector - load from backend based on year and GP
-        session_options = load_sessions_for_gp(selected_year, selected_gp)
-
-        # Try to default to "R" (Race) if available
-        default_index = session_options.index("R") if "R" in session_options else 0
+        # Session selector - only load if year and GP are selected
+        if selected_year is not None and selected_gp is not None:
+            session_options = [None] + load_sessions_for_gp(selected_year, selected_gp)
+        else:
+            session_options = [None]
 
         selected_session = st.selectbox(
             "SESSION",
             options=session_options,
-            index=default_index
+            index=0,
+            format_func=lambda x: "-- Select Session --" if x is None else x,
+            disabled=selected_year is None or selected_gp is None
         )
 
     with col4:
@@ -248,8 +196,9 @@ def render_data_selectors():
         selected_drivers = st.multiselect(
             "DRIVERS",
             options=driver_options,
-            default=["VER"],
-            max_selections=3
+            default=[],
+            max_selections=3,
+            disabled=selected_year is None or selected_gp is None or selected_session is None
         )
 
         # Get official team colors for selected drivers
