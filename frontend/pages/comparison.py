@@ -16,11 +16,7 @@ import httpx
 
 # Project imports
 from components.common.data_selectors import render_comparison_data_selectors
-from components.comparison.circuit_comparison import render_circuit_comparison
-from components.comparison.delta_time_graph import render_delta_time_graph
-from components.comparison.speed_comparison_graph import render_speed_comparison_graph
-from components.comparison.brake_comparison_graph import render_brake_comparison_graph
-from components.comparison.throttle_comparison_graph import render_throttle_comparison_graph
+from components.comparison.synchronized_comparison_animation import render_synchronized_comparison_animation
 from components.common.chart_styles import apply_telemetry_chart_styles
 from components.layout.navbar import show_error_toast
 # Reuse dashboard functions
@@ -160,28 +156,8 @@ def render_comparison_page():
     comparison_data = st.session_state.get('comparison_data', None)
 
     if comparison_data:
-        # Circuit comparison with animation
-        render_circuit_comparison(comparison_data)
-        st.markdown("---")
-
-        # Telemetry comparison graphs in 2x2 grid
-        # First row: Delta and Speed
-        col1, col2 = st.columns(2)
-
-        with col1:
-            render_delta_time_graph(comparison_data)
-
-        with col2:
-            render_speed_comparison_graph(comparison_data)
-
-        # Second row: Brake and Throttle
-        col3, col4 = st.columns(2)
-
-        with col3:
-            render_brake_comparison_graph(comparison_data)
-
-        with col4:
-            render_throttle_comparison_graph(comparison_data)
+        # Synchronized comparison animation (circuit + telemetry graphs)
+        render_synchronized_comparison_animation(comparison_data)
     else:
         st.info(
             "👆 Select two drivers, then click COMPARE to view telemetry comparison (fastest laps only)")
