@@ -868,24 +868,12 @@ def _configure_synchronized_layout(
     max_distance = max(pilot1['distance'])
     max_speed = max(max(pilot1['speed']), max(pilot2['speed']))
 
-    # Calculate delta range dynamically based on who is faster
-    max_delta = max(delta)
-
-    # Determine who is faster to calculate proper range
-    lap_time1 = pilot1.get('lap_time')
-    lap_time2 = pilot2.get('lap_time')
-    pilot1_is_faster = lap_time1 < lap_time2 if lap_time1 and lap_time2 else True
-
-    if pilot1_is_faster:
-        # pilot2 shows NEGATIVE values (inverted delta below y=0)
-        # Give most space below y=0 (110%), small space above (10%)
-        delta_min_range = -(max_delta * 1.10)
-        delta_max_range = max_delta * 0.10
-    else:
-        # pilot1 shows POSITIVE values (original delta above y=0)
-        # Give most space above y=0 (110%), small space below (10%)
-        delta_min_range = -(max_delta * 0.10)
-        delta_max_range = max_delta * 1.10
+    # Calculate delta range - symmetric approach with 50% margin
+    # Delta array can have both positive and negative values
+    # Need to find the maximum absolute value to cover both extremes
+    max_abs_delta = max(abs(min(delta)), abs(max(delta)))
+    delta_min_range = -(max_abs_delta * 1.5)
+    delta_max_range = max_abs_delta * 1.5
 
     # Update layout
     fig.update_layout(
@@ -1013,6 +1001,7 @@ def _configure_synchronized_layout(
         zerolinecolor='gray',
         zerolinewidth=2,
         range=[delta_min_range, delta_max_range],  # Fixed range
+        dtick=max_abs_delta / 2,  # 2 ticks on each side (positive and negative)
         row=1, col=2
     )
 
