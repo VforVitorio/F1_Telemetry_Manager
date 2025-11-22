@@ -200,36 +200,10 @@ def render_data_selectors():
         # Frontend would call: gps = fetch_gps(selected_year)
         # selected_gp = st.selectbox("GP", options=gps, index=0)
 
-        # Full 2024 F1 Calendar (in chronological order) - HARDCODED for now
+        # Full 2024 F1 Calendar (in chronological order) - now loaded from backend
         selected_gp = st.selectbox(
             "GP",
             options=gp_options,
-            options=[
-                "Bahrain",           # Sakhir
-                "Saudi Arabia",      # Jeddah Street Circuit
-                "Australia",         # Albert Park (Melbourne)
-                "Japan",             # Suzuka
-                "China",             # Shanghai International Circuit
-                "Miami",             # Miami International Autodrome
-                "Emilia Romagna",    # Imola
-                "Monaco",            # Circuit de Monaco
-                "Canada",            # Circuit Gilles Villeneuve (Montreal)
-                "Spain",             # Circuit de Barcelona-Catalunya
-                "Austria",           # Red Bull Ring (Spielberg)
-                "Britain",           # Silverstone
-                "Hungary",           # Hungaroring (Budapest)
-                "Belgium",           # Spa-Francorchamps
-                "Netherlands",       # Circuit Zandvoort
-                "Italy",             # Monza
-                "Azerbaijan",        # Baku City Circuit
-                "Singapore",         # Marina Bay Street Circuit
-                "United States",     # Circuit of the Americas (COTA, Austin)
-                "Mexico",            # Autódromo Hermanos Rodríguez (Ciudad de México)
-                "Brazil",            # Autódromo José Carlos Pace (Interlagos, São Paulo)
-                "Las Vegas",         # Las Vegas Strip Circuit
-                "Qatar",             # Lusail International Circuit
-                "Abu Dhabi",         # Yas Marina
-            ],
             index=0
         )
 
@@ -247,8 +221,8 @@ def render_data_selectors():
 
         selected_session = st.selectbox(
             "SESSION",
-            options=["FP1", "FP2", "FP3", "Q", "R"],
-            index=0
+            options=session_options,
+            index=default_index
         )
 
     with col4:
@@ -292,23 +266,23 @@ def render_lap_graph(selected_year, selected_gp, selected_session, selected_driv
         selected_year (int): Selected year
         selected_gp (str): Selected Grand Prix name
         selected_session (str): Selected session type
-        selected_drivers (list): List of selected driver identifiers (format: "CODE - Name")
+        selected_drivers (list): List of selected driver codes (e.g., ["VER", "LEC"])
         color_palette (list): List of colors for each driver
     """
     st.markdown("<h2 style='text-align: center;'>LAP CHART</h2>",
                 unsafe_allow_html=True)
 
-    # Extract driver codes from the "CODE - Name" format
-    driver_codes = [driver.split(' - ')[0] for driver in selected_drivers]
+    # selected_drivers already contains driver codes (e.g., "VER", "LEC")
+    # No need to split - they're already in the correct format
 
     # Fetch lap times from backend
-    if driver_codes:
+    if selected_drivers:
         with st.spinner("Loading lap times from FastF1..."):
             success, lap_times_data, error = TelemetryService.get_lap_times(
                 selected_year,
                 selected_gp,
                 selected_session,
-                driver_codes
+                selected_drivers
             )
 
         if not success or not lap_times_data:
@@ -320,29 +294,33 @@ def render_lap_graph(selected_year, selected_gp, selected_session, selected_driv
     # Create Plotly figure
     fig = go.Figure()
 
-    # TODO: Replace placeholder data with real lap times from backend
-    # for idx, driver in enumerate(selected_drivers):
-    #     driver_data = lap_data[lap_data['driver'] == driver]
-    #     fig.add_trace(go.Scatter(
-    #         x=driver_data['lap_number'],
-    #         y=driver_data['lap_time'],
-    #         mode='lines+markers',
-    #         name=driver,
-    #         line=dict(color=color_palette[idx % len(color_palette)], width=2),
-    #         marker=dict(size=6)
-    #     ))
+    # Use real lap times data from backend
+    if lap_times_data:
+        # Group lap times by driver
+        from collections import defaultdict
+        driver_laps = defaultdict(lambda: {'lap_numbers': [], 'lap_times': []})
 
-    # Add placeholder data for visualization
-    fig.add_trace(go.Scatter(
-        x=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-        y=[92.5, 91.8, 91.2, 90.9, 91.5, 90.7, 91.1, 90.8, 91.3, 90.6],
-        mode='lines+markers',
-        name='Driver 44',
-        line=dict(color=color_palette[0]
-                  if color_palette else Color.ACCENT, width=2),
-        marker=dict(size=6),
-        hovertemplate='Lap: %{x}<br>Time: %{y:.3f}s<extra></extra>'
-    ))
+        for lap in lap_times_data:
+            driver_code = lap['driver']
+            driver_laps[driver_code]['lap_numbers'].append(lap['lap_number'])
+            driver_laps[driver_code]['lap_times'].append(lap['lap_time'])
+
+        # Add trace for each driver
+        for idx, driver_code in enumerate(selected_drivers):
+            if driver_code in driver_laps:
+                lap_data = driver_laps[driver_code]
+                fig.add_trace(go.Scatter(
+                    x=lap_data['lap_numbers'],
+                    y=lap_data['lap_times'],
+                    mode='lines+markers',
+                    name=driver_code,
+                    line=dict(color=color_palette[idx % len(color_palette)] if color_palette else Color.ACCENT, width=2),
+                    marker=dict(size=6),
+                    hovertemplate=f'{driver_code}<br>Lap: %{{x}}<br>Time: %{{y:.3f}}s<extra></extra>'
+                ))
+    else:
+        # Show message if no data available
+        st.info("No lap data available. Select drivers and ensure backend is running.")
 
     # Configure layout
     fig.update_layout(
@@ -416,7 +394,7 @@ def render_dashboard():
     # Apply colors to driver pills based on selection (must be after selectors)
     apply_driver_pill_colors(selected_drivers)
 
-    render_lap_graph(selected_drivers, color_palette)
+    render_lap_graph(selected_year, selected_gp, selected_session, selected_drivers, color_palette)
     render_control_buttons()
 
     # Apply purple border styling to all subsequent Plotly charts
