@@ -36,6 +36,7 @@ import plotly.graph_objects as go
 import pandas as pd
 import numpy as np
 from app.styles import Color, TextColor
+from components.common.loading import render_loading_spinner
 
 
 def _render_section_title() -> None:
@@ -76,10 +77,10 @@ def render_gear_graph(telemetry_data, selected_drivers, color_palette):
             fig = _create_gear_figure(df_data, [driver], [driver_color])
             st.plotly_chart(fig, use_container_width=True)
         else:
-            st.info("👆 Select a lap using the lap selector above to view gear telemetry")
+            render_loading_spinner()
     else:
-        # Show empty state
-        st.info("👆 Select a lap using the lap selector above to view gear telemetry")
+        # Show loading spinner when no data is selected
+        render_loading_spinner()
 
 
 def _create_gear_figure(telemetry_data, selected_drivers, color_palette):
