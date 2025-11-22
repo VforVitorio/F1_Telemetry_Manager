@@ -164,20 +164,24 @@ def render_comparison_page():
         render_circuit_comparison(comparison_data)
         st.markdown("---")
 
-        # Delta time graph
-        render_delta_time_graph(comparison_data)
-        st.markdown("---")
+        # Telemetry comparison graphs in 2x2 grid
+        # First row: Delta and Speed
+        col1, col2 = st.columns(2)
 
-        # Speed comparison
-        render_speed_comparison_graph(comparison_data)
-        st.markdown("---")
+        with col1:
+            render_delta_time_graph(comparison_data)
 
-        # Brake comparison
-        render_brake_comparison_graph(comparison_data)
-        st.markdown("---")
+        with col2:
+            render_speed_comparison_graph(comparison_data)
 
-        # Throttle comparison
-        render_throttle_comparison_graph(comparison_data)
+        # Second row: Brake and Throttle
+        col3, col4 = st.columns(2)
+
+        with col3:
+            render_brake_comparison_graph(comparison_data)
+
+        with col4:
+            render_throttle_comparison_graph(comparison_data)
     else:
         st.info(
             "👆 Select two drivers, then click COMPARE to view telemetry comparison (fastest laps only)")

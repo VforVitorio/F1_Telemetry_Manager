@@ -122,7 +122,7 @@ def _create_delta_figure(delta: List[float], pilot1: Dict, pilot2: Dict) -> go.F
     # Configure layout
     fig.update_layout(
         template="plotly_dark",
-        height=400,
+        height=350,
         margin=dict(l=40, r=40, t=40, b=40),
         plot_bgcolor=Color.PRIMARY_BG,
         paper_bgcolor=Color.PRIMARY_BG,
