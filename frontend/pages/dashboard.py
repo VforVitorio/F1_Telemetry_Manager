@@ -299,81 +299,103 @@ def render_lap_graph(selected_year, selected_gp, selected_session, selected_driv
     # Display the chart
     st.plotly_chart(fig, use_container_width=True)
 
-    # Add lap selector for telemetry
+    # Add lap selector for telemetry - one lap per driver
     if lap_times_data and selected_drivers:
         st.markdown("<br>", unsafe_allow_html=True)
-        st.markdown("### 📊 Select a lap to view telemetry")
+        st.markdown("### 📊 Select laps for each driver to compare telemetry")
 
-        # Create two columns for driver and lap selection
-        col1, col2, col3 = st.columns([2, 2, 1])
+        # Initialize selected_laps_per_driver if not exists
+        if 'selected_laps_per_driver' not in st.session_state:
+            st.session_state['selected_laps_per_driver'] = {}
 
-        with col1:
-            # Driver selector
-            selected_telemetry_driver = st.selectbox(
-                "Driver",
-                options=selected_drivers,
-                key="telemetry_driver_selector"
-            )
+        # Create a row for each driver
+        lap_selections = {}
+        for driver in selected_drivers:
+            col1, col2, col3 = st.columns([2, 3, 1])
 
-        with col2:
-            # Get lap numbers for selected driver
-            driver_laps = [lap['lap_number'] for lap in lap_times_data
-                           if lap['driver'] == selected_telemetry_driver]
-            driver_laps.sort()
+            with col1:
+                st.markdown(f"**{driver}**")
 
-            if driver_laps:
-                selected_lap_number = st.selectbox(
-                    "Lap Number",
-                    options=driver_laps,
-                    key="telemetry_lap_selector"
-                )
-            else:
-                st.warning("No laps available for this driver")
-                selected_lap_number = None
+            with col2:
+                # Get lap numbers for this driver
+                driver_laps = [lap['lap_number'] for lap in lap_times_data
+                               if lap['driver'] == driver]
+                driver_laps.sort()
 
-        with col3:
-            st.markdown("<br>", unsafe_allow_html=True)
-            load_button = st.button("🔄 LOAD", type="primary", use_container_width=True)
+                if driver_laps:
+                    # Use previous selection if available, otherwise default to first lap
+                    default_lap = st.session_state['selected_laps_per_driver'].get(driver, driver_laps[0])
+                    if default_lap not in driver_laps:
+                        default_lap = driver_laps[0]
+
+                    selected_lap = st.selectbox(
+                        "Lap Number",
+                        options=driver_laps,
+                        index=driver_laps.index(default_lap),
+                        key=f"lap_selector_{driver}",
+                        label_visibility="collapsed"
+                    )
+                    lap_selections[driver] = selected_lap
+                else:
+                    st.warning(f"No laps available")
+                    lap_selections[driver] = None
+
+            with col3:
+                st.markdown("<br>", unsafe_allow_html=True)
+
+        # Load button at the bottom
+        st.markdown("<br>", unsafe_allow_html=True)
+        load_button = st.button("🔄 LOAD ALL TELEMETRY", type="primary", use_container_width=True)
 
         # Load telemetry when button is clicked
-        if load_button and selected_lap_number:
-            # Check if we need to fetch new telemetry
-            current_selection = st.session_state.get('selected_lap', {})
-            if (current_selection.get('driver') != selected_telemetry_driver or
-                current_selection.get('lap_number') != selected_lap_number):
+        if load_button:
+            # Check which laps need to be loaded
+            laps_to_load = []
+            for driver, lap_num in lap_selections.items():
+                if lap_num is not None:
+                    current_lap = st.session_state.get('selected_laps_per_driver', {}).get(driver)
+                    if current_lap != lap_num:
+                        laps_to_load.append((driver, lap_num))
 
-                # Store selected lap in session state
-                st.session_state['selected_lap'] = {
-                    'driver': selected_telemetry_driver,
-                    'lap_number': selected_lap_number,
-                    'year': selected_year,
-                    'gp': selected_gp,
-                    'session': selected_session
-                }
+            # Load telemetry for all selected drivers
+            if lap_selections:
+                telemetry_data_multi = {}
+                all_successful = True
 
-                # Fetch telemetry for the selected lap
-                with st.spinner(f"Loading telemetry for {selected_telemetry_driver} lap {selected_lap_number}..."):
-                    success, telemetry, error = TelemetryService.get_lap_telemetry(
-                        selected_year,
-                        selected_gp,
-                        selected_session,
-                        selected_telemetry_driver,
-                        selected_lap_number
-                    )
+                with st.spinner("Loading telemetry for all drivers..."):
+                    for driver, lap_num in lap_selections.items():
+                        if lap_num is not None:
+                            success, telemetry, error = TelemetryService.get_lap_telemetry(
+                                selected_year,
+                                selected_gp,
+                                selected_session,
+                                driver,
+                                lap_num
+                            )
 
-                if success and telemetry:
-                    st.session_state['telemetry_data'] = telemetry
-                    st.success(f"✅ Loaded telemetry for {selected_telemetry_driver} lap {selected_lap_number}")
+                            if success and telemetry:
+                                telemetry_data_multi[driver] = telemetry
+                            else:
+                                all_successful = False
+                                st.warning(f"⚠️ Could not load telemetry for {driver} lap {lap_num}: {error if error else 'No data'}")
+
+                # Store in session state
+                if telemetry_data_multi:
+                    st.session_state['telemetry_data_multi'] = telemetry_data_multi
+                    st.session_state['selected_laps_per_driver'] = lap_selections
+
+                    if all_successful:
+                        st.success(f"✅ Loaded telemetry for all drivers")
                     st.rerun()
                 else:
-                    error_msg = error if error else 'No telemetry data available'
-                    st.error(f"⚠️ Could not load telemetry: {error_msg}")
-                    st.info("💡 **Tip:** Some laps may not have telemetry data (pit laps, incomplete laps, or data quality issues). Try selecting a different lap.")
+                    st.error("⚠️ Could not load any telemetry data")
+                    st.info("💡 **Tip:** Some laps may not have telemetry data (pit laps, incomplete laps, or data quality issues). Try selecting different laps.")
 
-        # Display current selection
-        if 'selected_lap' in st.session_state:
-            lap_info = st.session_state['selected_lap']
-            st.info(f"📊 Showing telemetry: **{lap_info['driver']}** - Lap **{lap_info['lap_number']}**")
+        # Display current selections
+        if 'selected_laps_per_driver' in st.session_state and st.session_state['selected_laps_per_driver']:
+            selections_text = ", ".join([f"**{driver}** (Lap {lap})"
+                                        for driver, lap in st.session_state['selected_laps_per_driver'].items()])
+            st.info(f"📊 Showing telemetry: {selections_text}")
     else:
         st.info("💡 Select drivers above to view lap telemetry data")
 
@@ -434,11 +456,19 @@ def render_dashboard():
     st.markdown(apply_telemetry_chart_styles(), unsafe_allow_html=True)
 
     # Get telemetry data from session state if available
-    telemetry_data = st.session_state.get('telemetry_data', None)
+    # Use new multi-driver telemetry format
+    telemetry_data_multi = st.session_state.get('telemetry_data_multi', None)
 
     # Circuit Domination Section
+    # Note: Circuit domination uses a single reference driver for now
+    # We pass the first driver's telemetry if available
+    first_driver_telemetry = None
+    if telemetry_data_multi and selected_drivers:
+        first_driver = selected_drivers[0]
+        first_driver_telemetry = telemetry_data_multi.get(first_driver)
+
     render_circuit_domination_section(
-        telemetry_data,
+        first_driver_telemetry,
         selected_drivers,
         color_palette,
         selected_year,
@@ -455,11 +485,11 @@ def render_dashboard():
     )
 
     # Other Graphs Section (stacked vertically)
-    # These graphs will display telemetry data when a lap is selected
-    render_speed_graph(telemetry_data, selected_drivers, color_palette)
-    render_delta_graph(telemetry_data, selected_drivers, color_palette)
-    render_throttle_graph(telemetry_data, selected_drivers, color_palette)
-    render_brake_graph(telemetry_data, selected_drivers, color_palette)
-    render_rmp_graph(telemetry_data, selected_drivers, color_palette)
-    render_gear_graph(telemetry_data, selected_drivers, color_palette)
-    render_drs_graph(telemetry_data, selected_drivers, color_palette)
+    # These graphs will display telemetry data for all selected drivers
+    render_speed_graph(telemetry_data_multi, selected_drivers, color_palette)
+    render_delta_graph(telemetry_data_multi, selected_drivers, color_palette)
+    render_throttle_graph(telemetry_data_multi, selected_drivers, color_palette)
+    render_brake_graph(telemetry_data_multi, selected_drivers, color_palette)
+    render_rmp_graph(telemetry_data_multi, selected_drivers, color_palette)
+    render_gear_graph(telemetry_data_multi, selected_drivers, color_palette)
+    render_drs_graph(telemetry_data_multi, selected_drivers, color_palette)

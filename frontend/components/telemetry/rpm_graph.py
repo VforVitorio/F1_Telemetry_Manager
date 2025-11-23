@@ -48,34 +48,49 @@ def _render_section_title() -> None:
     )
 
 
-def render_rmp_graph(telemetry_data, selected_drivers, color_palette):
+def render_rmp_graph(telemetry_data_multi, selected_drivers, color_palette):
     """
     Renders the RPM graph for selected drivers.
-    Shows telemetry data when a lap is selected.
+    Shows telemetry data when laps are selected.
+
+    Args:
+        telemetry_data_multi: Dict with driver codes as keys and telemetry data as values
+        selected_drivers: List of driver codes
+        color_palette: List of colors for each driver
     """
     st.markdown("---")
     _render_section_title()
 
-    # Convert telemetry_data to DataFrame format if it's a dict from the API
-    if telemetry_data is not None and isinstance(telemetry_data, dict):
-        # Check if we have the required data
-        if 'distance' in telemetry_data and 'rpm' in telemetry_data:
-            driver = telemetry_data.get('driver', 'Unknown')
-            distance = telemetry_data.get('distance', [])
-            rpm = telemetry_data.get('rpm', [])
+    # Convert multi-driver telemetry data to DataFrame format
+    if telemetry_data_multi is not None and isinstance(telemetry_data_multi, dict) and telemetry_data_multi:
+        df_list = []
+        drivers_with_data = []
+        colors_with_data = []
 
-            # Convert to DataFrame
-            df_data = pd.DataFrame({
-                'driver': [driver] * len(distance),
-                'distance': distance,
-                'rpm': rpm
-            })
+        for idx, driver in enumerate(selected_drivers):
+            if driver in telemetry_data_multi:
+                driver_telemetry = telemetry_data_multi[driver]
 
-            # Get driver color
-            from components.common.driver_colors import get_driver_color
-            driver_color = get_driver_color(driver)
+                # Check if we have the required data
+                if 'distance' in driver_telemetry and 'rpm' in driver_telemetry:
+                    distance = driver_telemetry.get('distance', [])
+                    rpm = driver_telemetry.get('rpm', [])
 
-            fig = _create_rpm_figure(df_data, [driver], [driver_color])
+                    # Convert to DataFrame
+                    df_data = pd.DataFrame({
+                        'driver': [driver] * len(distance),
+                        'distance': distance,
+                        'rpm': rpm
+                    })
+                    df_list.append(df_data)
+                    drivers_with_data.append(driver)
+                    if idx < len(color_palette):
+                        colors_with_data.append(color_palette[idx])
+
+        if df_list:
+            # Combine all driver data
+            combined_df = pd.concat(df_list, ignore_index=True)
+            fig = _create_rpm_figure(combined_df, drivers_with_data, colors_with_data)
             st.plotly_chart(fig, use_container_width=True)
         else:
             render_loading_spinner()
