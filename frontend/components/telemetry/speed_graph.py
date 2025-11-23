@@ -33,6 +33,7 @@ import pandas as pd
 import numpy as np
 from app.styles import Color, TextColor
 from components.common.loading import render_loading_spinner
+from components.common.ask_about_button import render_ask_about_button, SPEED_GRAPH_TEMPLATE
 
 
 def render_speed_graph(telemetry_data, selected_drivers, color_palette):
@@ -42,8 +43,6 @@ def render_speed_graph(telemetry_data, selected_drivers, color_palette):
     """
     # Add separator before the section
     st.markdown("---")
-
-    _render_section_title()
 
     # Convert telemetry_data to DataFrame format if it's a dict from the API
     if telemetry_data is not None and isinstance(telemetry_data, dict):
@@ -64,12 +63,20 @@ def render_speed_graph(telemetry_data, selected_drivers, color_palette):
             from components.common.driver_colors import get_driver_color
             driver_color = get_driver_color(driver)
 
+            # Create figure
             fig = _create_speed_figure(df_data, [driver], [driver_color])
+
+            # Render title with compact AI button
+            _render_section_title_with_button(fig, driver, telemetry_data)
+
+            # Display figure
             st.plotly_chart(fig, use_container_width=True)
         else:
+            _render_section_title()
             render_loading_spinner()
     else:
         # Show loading spinner when no data is selected
+        _render_section_title()
         render_loading_spinner()
 
 
@@ -79,6 +86,39 @@ def _render_section_title() -> None:
         "<h3 style='text-align: center;'>SPEED (km/h) </h3>",
         unsafe_allow_html=True
     )
+
+
+def _render_section_title_with_button(fig: go.Figure, driver: str, telemetry_data: dict) -> None:
+    """Renders the section title with compact AI button"""
+    col1, col2 = st.columns([0.95, 0.05])
+
+    with col1:
+        st.markdown(
+            "<h3 style='text-align: center;'>SPEED (km/h) </h3>",
+            unsafe_allow_html=True
+        )
+
+    with col2:
+        # Get context from session state if available
+        selected_lap = st.session_state.get('selected_lap', {})
+        context = {
+            "driver_name": driver,
+            "session_type": selected_lap.get('session', 'Unknown'),
+            "gp_name": selected_lap.get('gp', 'Unknown GP'),
+            "year": str(selected_lap.get('year', '')),
+            "team_name": "Unknown",  # TODO: Get from data
+            "lap_number": str(selected_lap.get('lap_number', '')),
+            "tyre_compound": "Unknown"  # TODO: Get from telemetry if available
+        }
+
+        render_ask_about_button(
+            chart_fig=fig,
+            chart_type="speed_graph",
+            prompt_template=SPEED_GRAPH_TEMPLATE,
+            context=context,
+            compact=True,
+            tooltip="Ask AI to analyze this speed data"
+        )
 
 
 def _create_speed_figure(telemetry_data, selected_drivers, color_palette):

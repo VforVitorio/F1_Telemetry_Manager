@@ -38,6 +38,7 @@ import pandas as pd
 import numpy as np
 from app.styles import Color, TextColor
 from components.common.loading import render_loading_spinner
+from components.common.ask_about_button import render_ask_about_button, TELEMETRY_TEMPLATE
 
 
 def _render_section_title() -> None:
@@ -50,13 +51,43 @@ def _render_section_title() -> None:
     )
 
 
+def _render_section_title_with_button(fig: go.Figure, driver: str, graph_type: str) -> None:
+    """Renders the section title with compact AI button"""
+    col1, col2 = st.columns([0.95, 0.05])
+
+    with col1:
+        st.markdown(
+            "<h3 style='text-align: center;'> BRAKE (%) </h3>",
+            unsafe_allow_html=True
+        )
+
+    with col2:
+        selected_lap = st.session_state.get('selected_lap', {})
+        context = {
+            "graph_type": graph_type,
+            "driver_name": driver,
+            "session_type": selected_lap.get('session', 'Unknown'),
+            "gp_name": selected_lap.get('gp', 'Unknown GP'),
+            "year": str(selected_lap.get('year', '')),
+            "lap_number": str(selected_lap.get('lap_number', ''))
+        }
+
+        render_ask_about_button(
+            chart_fig=fig,
+            chart_type=f"{graph_type}_graph",
+            prompt_template=TELEMETRY_TEMPLATE,
+            context=context,
+            compact=True,
+            tooltip=f"Ask AI to analyze {graph_type} data"
+        )
+
+
 def render_brake_graph(telemetry_data, selected_drivers, color_palette):
     """
     Renders the brake graph for selected drivers.
     Shows telemetry data when a lap is selected.
     """
     st.markdown("---")
-    _render_section_title()
 
     # Convert telemetry_data to DataFrame format if it's a dict from the API
     if telemetry_data is not None and isinstance(telemetry_data, dict):
@@ -77,12 +108,20 @@ def render_brake_graph(telemetry_data, selected_drivers, color_palette):
             from components.common.driver_colors import get_driver_color
             driver_color = get_driver_color(driver)
 
+            # Create figure
             fig = _create_brake_figure(df_data, [driver], [driver_color])
+
+            # Render title with compact AI button
+            _render_section_title_with_button(fig, driver, "brake")
+
+            # Display figure
             st.plotly_chart(fig, use_container_width=True)
         else:
+            _render_section_title()
             render_loading_spinner()
     else:
         # Show loading spinner when no data is selected
+        _render_section_title()
         render_loading_spinner()
 
 

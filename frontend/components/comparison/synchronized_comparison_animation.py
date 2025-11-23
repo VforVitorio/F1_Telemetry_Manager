@@ -11,6 +11,7 @@ from plotly.subplots import make_subplots
 from typing import Dict, List
 from app.styles import Color, TextColor
 from components.common.loading import render_loading_spinner
+from components.common.ask_about_button import render_ask_about_button, COMPARISON_TEMPLATE
 
 
 def render_synchronized_comparison_animation(comparison_data: Dict) -> None:
@@ -63,6 +64,11 @@ def render_animation_figure(comparison_data: Dict) -> None:
         comparison_data: Dictionary with circuit, pilot1, pilot2, delta data
     """
     fig = _create_synchronized_figure(comparison_data)
+
+    # Render header with compact AI button
+    _render_chart_header_with_button(fig, comparison_data)
+
+    # Display figure
     st.plotly_chart(fig, use_container_width=True)
 
 
@@ -72,6 +78,55 @@ def _render_section_title() -> None:
         "<h2 style='text-align: center;'>SYNCHRONIZED TELEMETRY ANALYSIS</h2>",
         unsafe_allow_html=True
     )
+
+
+def _render_chart_header_with_button(fig: go.Figure, comparison_data: Dict) -> None:
+    """Render chart header with compact AI button."""
+    col1, col2 = st.columns([0.97, 0.03])
+
+    with col1:
+        st.markdown(
+            "<h3 style='text-align: left; margin-bottom: 0;'>📊 Synchronized Comparison Chart</h3>",
+            unsafe_allow_html=True
+        )
+
+    with col2:
+        # Extract context from comparison data
+        pilot1 = comparison_data.get('pilot1', {})
+        pilot2 = comparison_data.get('pilot2', {})
+        metadata = comparison_data.get('metadata', {})
+
+        # Format lap times
+        def format_lap_time(seconds: float) -> str:
+            if seconds is None:
+                return "N/A"
+            minutes = int(seconds // 60)
+            remaining_seconds = seconds % 60
+            secs = int(remaining_seconds)
+            millis = int((remaining_seconds - secs) * 1000)
+            return f"{minutes}:{secs:02d}.{millis:03d}"
+
+        context = {
+            "driver1_name": pilot1.get('name', 'Driver 1'),
+            "driver1_team": pilot1.get('team', 'Unknown'),
+            "driver1_lap_time": format_lap_time(pilot1.get('lap_time')),
+            "driver2_name": pilot2.get('name', 'Driver 2'),
+            "driver2_team": pilot2.get('team', 'Unknown'),
+            "driver2_lap_time": format_lap_time(pilot2.get('lap_time')),
+            "time_delta": f"{abs(pilot1.get('lap_time', 0) - pilot2.get('lap_time', 0)):.3f}s",
+            "session_type": metadata.get('session', 'Unknown'),
+            "gp_name": metadata.get('gp', 'Unknown GP'),
+            "year": str(metadata.get('year', ''))
+        }
+
+        render_ask_about_button(
+            chart_fig=fig,
+            chart_type="comparison_telemetry",
+            prompt_template=COMPARISON_TEMPLATE,
+            context=context,
+            compact=True,
+            tooltip="Ask AI to compare these drivers"
+        )
 
 
 def _render_lap_times_info(comparison_data: Dict) -> None:
