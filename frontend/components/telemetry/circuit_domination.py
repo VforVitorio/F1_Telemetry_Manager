@@ -31,6 +31,21 @@ import plotly.graph_objects as go
 from app.styles import Color, TextColor
 from services.telemetry_service import TelemetryService
 from components.common.loading import render_loading_spinner
+from components.common.ask_about_button import render_ask_about_button, CIRCUIT_DOMINATION_TEMPLATE
+
+
+@st.cache_data(ttl=600)  # Cache for 10 minutes
+def _fetch_circuit_domination_cached(year: int, gp: str, session: str, drivers_tuple: tuple):
+    """
+    Cached wrapper for circuit domination API call.
+    Uses tuple for drivers because lists aren't hashable for caching.
+    """
+    return TelemetryService.get_circuit_domination(
+        year=year,
+        gp=gp,
+        session=session,
+        drivers=list(drivers_tuple)
+    )
 
 
 def render_circuit_domination_section(
@@ -60,34 +75,44 @@ def render_circuit_domination_section(
     # Horizontal separator
     st.markdown("---")
 
-    # Render the section title
-    _render_section_title()
-
     # Check if all required data is selected
     if (year is None or gp is None or session is None or
         not selected_drivers or len(selected_drivers) < 2):
+        # Render the section title
+        _render_section_title()
         # Show loading spinner waiting for data selection
         render_loading_spinner()
         return
 
-    # Fetch real data from backend API
+    # Fetch real data from backend API (cached to avoid reloading on page reruns)
     with st.spinner("Loading circuit domination data..."):
-        success, circuit_data, error = TelemetryService.get_circuit_domination(
+        success, circuit_data, error = _fetch_circuit_domination_cached(
             year=year,
             gp=gp,
             session=session,
-            drivers=selected_drivers
+            drivers_tuple=tuple(sorted(selected_drivers))  # Convert to sorted tuple for caching
         )
 
     if success and circuit_data:
-        # Create and render the circuit figure with reduced size
+        # Create the circuit figure
+        fig = _create_circuit_figure(circuit_data)
+
         # Use columns to center and reduce width (50% of page width)
         _, center_container, _ = st.columns([1, 2, 1])
 
         with center_container:
-            fig = _create_circuit_figure(circuit_data)
+            # Render title with AI button inside the centered container
+            _render_section_title_with_button(
+                fig=fig,
+                circuit_data=circuit_data,
+                year=year,
+                gp=gp,
+                session=session
+            )
             st.plotly_chart(fig, use_container_width=True)
     else:
+        # Render the section title
+        _render_section_title()
         # Show error message
         st.error(f"❌ Failed to load circuit data: {error}")
 
@@ -100,6 +125,46 @@ def _render_section_title() -> None:
         "<h2 style='text-align: center;'>CIRCUIT DOMINATION</h2>",
         unsafe_allow_html=True
     )
+
+
+def _render_section_title_with_button(
+    fig: go.Figure,
+    circuit_data: dict,
+    year: int,
+    gp: str,
+    session: str
+) -> None:
+    """
+    Render section title with compact AI button.
+    """
+    col1, col2 = st.columns([0.97, 0.03])
+
+    with col1:
+        st.markdown(
+            "<h2 style='text-align: center;'>CIRCUIT DOMINATION</h2>",
+            unsafe_allow_html=True
+        )
+
+    with col2:
+        # Extract driver information
+        drivers = circuit_data.get('drivers', [])
+        drivers_list = "\n".join([f"- {d['driver']}" for d in drivers])
+
+        context = {
+            "session_type": session,
+            "gp_name": gp,
+            "year": str(year),
+            "drivers_list": drivers_list
+        }
+
+        render_ask_about_button(
+            chart_fig=fig,
+            chart_type="circuit_domination",
+            prompt_template=CIRCUIT_DOMINATION_TEMPLATE,
+            context=context,
+            compact=True,
+            tooltip="Ask AI to analyze circuit domination"
+        )
 
 
 def _create_circuit_figure(circuit_data: dict) -> go.Figure:
