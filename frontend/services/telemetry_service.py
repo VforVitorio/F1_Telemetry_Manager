@@ -59,7 +59,7 @@ class TelemetryService:
             response = requests.get(
                 f"{BACKEND_URL}/api/v1/circuit-domination",
                 params=params,
-                timeout=30  # 30 second timeout for FastF1 data loading
+                timeout=300  # 5 minutes timeout for dashboard (can take long on first load)
             )
 
             if response.status_code == 200:
@@ -115,7 +115,7 @@ class TelemetryService:
             response = requests.get(
                 f"{BACKEND_URL}/api/v1/telemetry/gps",
                 params=params,
-                timeout=10
+                timeout=30  # 30 second timeout
             )
 
             if response.status_code == 200:
@@ -163,7 +163,7 @@ class TelemetryService:
             response = requests.get(
                 f"{BACKEND_URL}/api/v1/telemetry/sessions",
                 params=params,
-                timeout=10
+                timeout=30  # 30 second timeout
             )
 
             if response.status_code == 200:
@@ -219,7 +219,7 @@ class TelemetryService:
             response = requests.get(
                 f"{BACKEND_URL}/api/v1/telemetry/drivers",
                 params=params,
-                timeout=30  # 30 second timeout for FastF1 data loading
+                timeout=60  # 60 second timeout for driver data
             )
 
             if response.status_code == 200:
@@ -280,7 +280,7 @@ class TelemetryService:
             response = requests.get(
                 f"{BACKEND_URL}/api/v1/telemetry/lap-times",
                 params=params,
-                timeout=30  # 30 second timeout for FastF1 data loading
+                timeout=300  # 5 minutes timeout for dashboard (can take long on first load)
             )
 
             if response.status_code == 200:
@@ -354,7 +354,7 @@ class TelemetryService:
             response = requests.get(
                 f"{BACKEND_URL}/api/v1/telemetry/lap-telemetry",
                 params=params,
-                timeout=60  # 60 second timeout for telemetry data loading
+                timeout=300  # 5 minutes timeout for dashboard (can take long)
             )
 
             if response.status_code == 200:
