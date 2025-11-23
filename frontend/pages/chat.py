@@ -13,8 +13,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) 
 
 # Standard library imports
 import streamlit as st
-import base64
-from typing import Optional, Tuple
+from typing import Optional
 
 # Local imports
 from utils.chat_state import (
@@ -29,14 +28,14 @@ from utils.chat_state import (
 )
 from utils.chat_navigation import clear_pending_message
 
-# TODO: Import when components are created
-# from components.chatbot.chat_sidebar import render_chat_sidebar
-# from components.chatbot.chat_history import render_chat_history
-# from components.chatbot.chat_input import render_chat_input
-# from components.chatbot.chat_message import render_chat_message
+# Component imports
+from components.chatbot.chat_sidebar import render_chat_sidebar
+from components.chatbot.chat_history import render_chat_history
+from components.chatbot.chat_input import render_chat_input
+from components.chatbot.chat_message import render_chat_message
 
-# TODO: Import when service is created
-# from services.chat_service import stream_message, get_available_models, check_lm_studio_health
+# Service imports
+from services.chat_service import stream_message, get_available_models, check_lm_studio_health
 
 # Default model configuration (hidden from user)
 DEFAULT_MODEL = "llama3.2-vision"
@@ -50,293 +49,6 @@ def render_header():
         unsafe_allow_html=True
     )
     st.markdown("---")
-
-
-def render_chat_sidebar():
-    """
-    Render the chat sidebar with chat management (NO model parameters).
-
-    TODO: Move to components/chatbot/chat_sidebar.py
-    """
-    st.markdown("### 💬 Strategy Chats")
-
-    # New chat button
-    if st.button("➕ New chat", key="new_chat_btn", use_container_width=True):
-        create_new_chat()
-        st.rerun()
-
-    # Display saved chats
-    chat_names = get_saved_chat_names()
-    if chat_names:
-        st.markdown("#### Chat history")
-        for chat_name in chat_names:
-            # Only show button for chats that aren't the current one
-            if chat_name != st.session_state.get("current_chat_name", None):
-                if st.button(chat_name, key=f"load_{chat_name}", use_container_width=True):
-                    load_chat(chat_name)
-                    st.rerun()
-            else:
-                # Highlight the current chat
-                st.markdown(
-                    f'<div style="background-color: #23234a; padding: 10px; border-radius: 8px; '
-                    f'border: 1px solid #a78bfa; margin: 6px 0;">'
-                    f'<b>➜ {chat_name}</b></div>',
-                    unsafe_allow_html=True
-                )
-
-    st.markdown("")  # Spacing
-
-    # Delete button
-    if st.button("🗑️ Delete current chat", key="delete_chat_btn", use_container_width=True):
-        delete_current_chat()
-        st.rerun()
-
-
-def render_chat_input() -> Tuple[str, Optional[bytes], bool]:
-    """
-    Render the chat input area with integrated drag-and-drop and send button.
-    ChatGPT-style input with file upload support directly in the message box.
-
-    TODO: Move to components/chatbot/chat_input.py
-
-    Returns:
-        (text, image_bytes, send_clicked)
-    """
-    # Container for input area
-    input_col, button_col = st.columns([0.90, 0.10])
-
-    with input_col:
-        # Text input area
-        user_text = st.text_area(
-            label="message_input",
-            value="",
-            key=f"user_text_area_{st.session_state.chat_input_key}",
-            height=10,
-            placeholder="Ask me anything about F1...",
-            label_visibility="collapsed"
-        )
-
-        # File uploader
-        user_image = st.file_uploader(
-            label="📎 Attach image",
-            type=["png", "jpg", "jpeg"],
-            key=f"user_image_uploader_{st.session_state.chat_input_key}",
-            help="Upload or drag & drop a chart or image for analysis"
-        )
-
-    with button_col:
-        # Send button with airplane emoji - same height as textarea
-        send_btn = st.button(
-            "✈️ Send",
-            key="send_btn",
-            type="primary",
-            use_container_width=True,
-            help="Send message"
-        )
-
-    # Read image if uploaded
-    image_bytes = None
-    if user_image is not None:
-        image_bytes = user_image.read()
-
-    return user_text, image_bytes, send_btn
-
-
-def render_chat_message(role: str, msg_type: str, content: any):
-    """
-    Render a single chat message.
-
-    TODO: Move to components/chatbot/chat_message.py
-
-    Args:
-        role: 'user' or 'assistant'
-        msg_type: 'text' or 'image'
-        content: Message content
-    """
-    if msg_type == "text":
-        if role == "user":
-            st.markdown(
-                f'<div class="chat-message user-message">'
-                f'<span class="message-icon">🏎️</span>'
-                f'<div class="message-content"><b>You:</b> {content}</div>'
-                f'</div>',
-                unsafe_allow_html=True
-            )
-        else:
-            st.markdown(
-                f'<div class="chat-message assistant-message">'
-                f'<span class="message-icon">🤖</span>'
-                f'<div class="message-content"><b>Assistant:</b> {content}</div>'
-                f'</div>',
-                unsafe_allow_html=True
-            )
-    elif msg_type == "image":
-        if role == "user":
-            st.markdown(
-                '<div class="chat-message user-message">'
-                '<span class="message-icon">🏎️</span>'
-                '<div class="message-content"><b>Image sent:</b></div>'
-                '</div>',
-                unsafe_allow_html=True
-            )
-        if isinstance(content, bytes):
-            st.image(content, width=400)
-        elif isinstance(content, str):
-            # Assume it's a base64 string
-            try:
-                img_bytes = base64.b64decode(content)
-                st.image(img_bytes, width=400)
-            except Exception:
-                st.error("Could not display image")
-
-
-def render_chat_history():
-    """
-    Render the full chat history.
-
-    TODO: Move to components/chatbot/chat_history.py
-    """
-    # Custom CSS for chat messages (ChatGPT style) and sidebar
-    st.markdown("""
-        <style>
-        /* Sidebar styling - elegant background matching app theme */
-        [data-testid="stSidebar"] {
-            background-color: #1e1b4b !important;
-            border-right: 1px solid #2d2d3a;
-        }
-
-        [data-testid="stSidebar"] > div:first-child {
-            background-color: #1e1b4b !important;
-        }
-
-        /* Sidebar content styling */
-        [data-testid="stSidebar"] .element-container {
-            color: #d1d5db;
-        }
-
-        [data-testid="stSidebar"] h3 {
-            color: #a78bfa !important;
-        }
-
-        [data-testid="stSidebar"] h4 {
-            color: #9ca3af !important;
-        }
-
-        /* Chat messages */
-        .chat-message {
-            display: flex;
-            align-items: flex-start;
-            padding: 16px;
-            margin-bottom: 16px;
-            border-radius: 12px;
-            animation: fadeIn 0.3s ease-in;
-            gap: 12px;
-        }
-
-        .message-icon {
-            font-size: 1.5em;
-            flex-shrink: 0;
-        }
-
-        .message-content {
-            flex: 1;
-            word-wrap: break-word;
-            line-height: 1.6;
-        }
-
-        .user-message {
-            background-color: #23234a;
-            border-left: 3px solid #a78bfa;
-        }
-
-        .assistant-message {
-            background-color: #393e46;
-            border-left: 3px solid #3b82f6;
-        }
-
-        @keyframes fadeIn {
-            from {
-                opacity: 0;
-                transform: translateY(10px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-
-        /* Streamlit file uploader styling */
-        [data-testid="stFileUploader"] {
-            border: 1px dashed #a78bfa;
-            border-radius: 8px;
-            padding: 8px;
-            background-color: #1e1b4b;
-            margin-top: 8px;
-        }
-
-        [data-testid="stFileUploader"] > div {
-            font-size: 0.85rem;
-            color: #9ca3af;
-        }
-
-        [data-testid="stFileUploader"] label {
-            color: #9ca3af !important;
-            font-size: 0.85rem !important;
-        }
-
-        /* Text area styling */
-        textarea {
-            background-color: #1e1b4b !important;
-            border: 1px solid #2d2d3a !important;
-            border-radius: 12px !important;
-            color: #ffffff !important;
-            font-size: 1rem !important;
-            height: 44px !important;
-            min-height: 44px !important;
-            max-height: 44px !important;
-            resize: none !important;
-            padding: 6px 12px !important;
-            line-height: 1.2 !important;
-        }
-
-        textarea:focus {
-            border-color: #a78bfa !important;
-            box-shadow: 0 0 0 1px #a78bfa !important;
-        }
-
-        /* Hide default labels */
-        .stTextArea label {
-            display: none;
-        }
-
-        /* Send button styling - match textarea height */
-        button[kind="primary"] {
-            height: 44px !important;
-            min-height: 44px !important;
-            padding: 0 !important;
-            font-size: 0.9rem !important;
-            display: flex !important;
-            align-items: center !important;
-            justify-content: center !important;
-        }
-        </style>
-    """, unsafe_allow_html=True)
-
-    # Display all messages
-    messages = get_chat_history()
-
-    if not messages:
-        # Empty state
-        st.markdown(
-            '<div style="text-align: center; padding: 40px; color: #9ca3af;">'
-            '<h3 style="color: #a78bfa;">👋 Welcome to F1 Strategy Assistant!</h3>'
-            '<p>Ask me anything about Formula 1, telemetry data, or racing strategy.</p>'
-            '</div>',
-            unsafe_allow_html=True
-        )
-    else:
-        for msg in messages:
-            render_chat_message(msg["role"], msg["type"], msg["content"])
 
 
 def handle_pending_message():
@@ -427,16 +139,10 @@ def check_lm_studio_connection():
     """
     Check if LM Studio is accessible.
 
-    TODO: Implement when chat_service is created
-
     Returns:
         bool: True if connected, False otherwise
     """
-    # TODO: Replace with actual health check
-    # return check_lm_studio_health()
-
-    # Placeholder - assume connected
-    return True
+    return check_lm_studio_health()
 
 
 def render_chat_page():
