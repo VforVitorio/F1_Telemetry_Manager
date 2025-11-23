@@ -36,40 +36,53 @@ from components.common.loading import render_loading_spinner
 from components.common.ask_about_button import render_ask_about_button, SPEED_GRAPH_TEMPLATE
 
 
-def render_speed_graph(telemetry_data, selected_drivers, color_palette):
+def render_speed_graph(telemetry_data_multi, selected_drivers, color_palette):
     """
     Renders the Speed graph for selected drivers.
-    Shows telemetry data when a lap is selected.
+    Shows telemetry data when laps are selected.
+
+    Args:
+        telemetry_data_multi: Dict with driver codes as keys and telemetry data as values
+                             Format: {'VER': {...telemetry...}, 'LEC': {...telemetry...}}
+        selected_drivers: List of driver codes
+        color_palette: List of colors for each driver
     """
     # Add separator before the section
     st.markdown("---")
 
-    # Convert telemetry_data to DataFrame format if it's a dict from the API
-    if telemetry_data is not None and isinstance(telemetry_data, dict):
-        # Check if we have the required data
-        if 'distance' in telemetry_data and 'speed' in telemetry_data:
-            driver = telemetry_data.get('driver', 'Unknown')
-            distance = telemetry_data.get('distance', [])
-            speed = telemetry_data.get('speed', [])
+    _render_section_title()
 
-            # Convert to DataFrame
-            df_data = pd.DataFrame({
-                'driver': [driver] * len(distance),
-                'distance': distance,
-                'speed': speed
-            })
+    # Convert multi-driver telemetry data to DataFrame format
+    if telemetry_data_multi is not None and isinstance(telemetry_data_multi, dict) and telemetry_data_multi:
+        df_list = []
+        drivers_with_data = []
+        colors_with_data = []
 
-            # Get driver color
-            from components.common.driver_colors import get_driver_color
-            driver_color = get_driver_color(driver)
+        for idx, driver in enumerate(selected_drivers):
+            if driver in telemetry_data_multi:
+                driver_telemetry = telemetry_data_multi[driver]
 
-            # Create figure
-            fig = _create_speed_figure(df_data, [driver], [driver_color])
+                # Check if we have the required data
+                if 'distance' in driver_telemetry and 'speed' in driver_telemetry:
+                    distance = driver_telemetry.get('distance', [])
+                    speed = driver_telemetry.get('speed', [])
 
-            # Render title with compact AI button
-            _render_section_title_with_button(fig, driver, telemetry_data)
+                    # Convert to DataFrame
+                    df_data = pd.DataFrame({
+                        'driver': [driver] * len(distance),
+                        'distance': distance,
+                        'speed': speed
+                    })
+                    df_list.append(df_data)
+                    drivers_with_data.append(driver)
+                    if idx < len(color_palette):
+                        colors_with_data.append(color_palette[idx])
 
-            # Display figure
+        if df_list:
+            # Combine all driver data
+            combined_df = pd.concat(df_list, ignore_index=True)
+            fig = _create_speed_figure(
+                combined_df, drivers_with_data, colors_with_data)
             st.plotly_chart(fig, use_container_width=True)
         else:
             _render_section_title()

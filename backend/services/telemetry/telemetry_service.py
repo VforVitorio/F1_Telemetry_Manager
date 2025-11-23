@@ -277,10 +277,21 @@ def get_lap_telemetry(year: int, gp: str, session: str, driver: str, lap_number:
         telemetry_clean = telemetry.fillna(0)
         telemetry_clean = telemetry_clean.replace([float('inf'), float('-inf')], 0)
 
+        # Convert Time to seconds for delta calculation
+        time_seconds = []
+        if 'Time' in telemetry_clean.columns:
+            try:
+                # Time is a timedelta, convert to seconds
+                time_seconds = telemetry_clean['Time'].dt.total_seconds().tolist()
+            except Exception as e:
+                print(f"Could not convert Time to seconds: {e}")
+                time_seconds = []
+
         result = {
             'driver': driver,
             'lap_number': lap_number,
             'distance': telemetry_clean['Distance'].tolist() if 'Distance' in telemetry_clean.columns else [],
+            'time': time_seconds,
             'speed': telemetry_clean['Speed'].tolist() if 'Speed' in telemetry_clean.columns else [],
             'throttle': telemetry_clean['Throttle'].tolist() if 'Throttle' in telemetry_clean.columns else [],
             'brake': telemetry_clean['Brake'].tolist() if 'Brake' in telemetry_clean.columns else [],

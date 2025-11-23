@@ -40,19 +40,69 @@ from components.common.loading import render_loading_spinner
 # delta_time, ref_tel, compare_tel = utils.delta_time(reference_lap, compare_lap)
 
 
-def render_delta_graph(telemetry_data, selected_drivers, color_palette):
+def render_delta_graph(telemetry_data_multi, selected_drivers, color_palette):
     """
     Renders the delta (time difference) graph for selected drivers.
-    Note: Delta requires multiple drivers for comparison. Currently shows info message.
+    Compares time deltas relative to the fastest driver.
+
+    Args:
+        telemetry_data_multi: Dict with driver codes as keys and telemetry data as values
+        selected_drivers: List of driver codes
+        color_palette: List of colors for each driver
     """
     # Add separator before the section
     st.markdown("---")
 
     _render_section_title()
 
-    # Delta graph requires comparing multiple drivers' laps
-    # For now, show info message as single-lap telemetry doesn't support delta comparison
-    st.info("👆 Delta comparison requires multiple drivers' telemetry. Select multiple drivers and laps for comparison (coming soon).")
+    # Convert multi-driver telemetry data to DataFrame format
+    if telemetry_data_multi is not None and isinstance(telemetry_data_multi, dict) and telemetry_data_multi:
+        # Check if we have at least 2 drivers for comparison
+        if len(telemetry_data_multi) < 2:
+            st.info("👆 Delta comparison requires at least 2 drivers' telemetry. Select and load multiple drivers.")
+            return
+
+        df_list = []
+        drivers_with_data = []
+        colors_with_data = []
+
+        for idx, driver in enumerate(selected_drivers):
+            if driver in telemetry_data_multi:
+                driver_telemetry = telemetry_data_multi[driver]
+
+                # Check if we have the required data (time and distance)
+                if 'distance' in driver_telemetry and 'time' in driver_telemetry:
+                    distance = driver_telemetry.get('distance', [])
+                    time = driver_telemetry.get('time', [])
+
+                    # Convert to DataFrame
+                    df_data = pd.DataFrame({
+                        'driver': [driver] * len(distance),
+                        'distance': distance,
+                        'time': time
+                    })
+                    df_list.append(df_data)
+                    drivers_with_data.append(driver)
+                    if idx < len(color_palette):
+                        colors_with_data.append(color_palette[idx])
+
+        if df_list and len(df_list) >= 2:
+            # Combine all driver data
+            combined_df = pd.concat(df_list, ignore_index=True)
+
+            # Calculate deltas relative to fastest driver
+            delta_df = _calculate_deltas(combined_df, drivers_with_data)
+
+            if not delta_df.empty:
+                fig = _create_delta_figure(delta_df, drivers_with_data, colors_with_data)
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                render_loading_spinner()
+        else:
+            st.info("👆 Delta comparison requires at least 2 drivers with valid telemetry data.")
+    else:
+        # Show loading spinner when no data is selected
+        render_loading_spinner()
 
 
 def _render_section_title() -> None:
@@ -67,15 +117,13 @@ def _calculate_deltas(telemetry_data, selected_drivers):
     """
     Calculates time delta for each driver relative to the fastest driver
 
-    TODO: replace with fastf1.utils.delta_time() when backend is integrated.
-    Currently performs manual calculation based on accumulated time
+    Uses interpolation to align data points by distance before calculating deltas.
     """
 
     if telemetry_data is None or telemetry_data.empty:
         return pd.DataFrame()
 
-    # Find fastes driver (reference) - driver with minimum final time
-
+    # Find fastest driver (reference) - driver with minimum final time
     reference_driver = None
     min_time = float("inf")
 
@@ -86,16 +134,32 @@ def _calculate_deltas(telemetry_data, selected_drivers):
             if final_time < min_time:
                 min_time = final_time
                 reference_driver = driver
-    # Calculate delta for each driver
 
+    if reference_driver is None:
+        return pd.DataFrame()
+
+    # Get reference driver data
+    ref_data = telemetry_data[telemetry_data['driver'] == reference_driver].copy()
+    ref_data = ref_data.sort_values('distance')
+
+    # Calculate delta for each driver
     delta_data = []
     for driver in selected_drivers:
         driver_data = telemetry_data[telemetry_data['driver'] == driver].copy()
-        ref_data = telemetry_data[telemetry_data['driver'] == reference_driver]
+        driver_data = driver_data.sort_values('distance')
 
-        # Interpolate reference time at same distance points
-        # For now, simple calculation: delta = driver_time - reference_time
-        driver_data['delta'] = driver_data['time'] - ref_data['time'].values
+        if driver_data.empty:
+            continue
+
+        # Interpolate reference time at driver's distance points
+        ref_time_interpolated = np.interp(
+            driver_data['distance'],
+            ref_data['distance'],
+            ref_data['time']
+        )
+
+        # Calculate delta
+        driver_data['delta'] = driver_data['time'] - ref_time_interpolated
         delta_data.append(driver_data)
 
     return pd.concat(delta_data, ignore_index=True) if delta_data else pd.DataFrame()

@@ -96,42 +96,51 @@ def _process_drs_data(telemetry_data):
     return processed_data
 
 
-def render_drs_graph(telemetry_data, selected_drivers, color_palette):
+def render_drs_graph(telemetry_data_multi, selected_drivers, color_palette):
     """
     Renders the DRS graph for selected drivers.
-    Shows telemetry data when a lap is selected.
+    Shows telemetry data when laps are selected.
+
+    Args:
+        telemetry_data_multi: Dict with driver codes as keys and telemetry data as values
+        selected_drivers: List of driver codes
+        color_palette: List of colors for each driver
     """
     st.markdown("---")
 
-    # Convert telemetry_data to DataFrame format if it's a dict from the API
-    if telemetry_data is not None and isinstance(telemetry_data, dict):
-        # Check if we have the required data
-        if 'distance' in telemetry_data and 'drs' in telemetry_data:
-            driver = telemetry_data.get('driver', 'Unknown')
-            distance = telemetry_data.get('distance', [])
-            drs = telemetry_data.get('drs', [])
+    # Convert multi-driver telemetry data to DataFrame format
+    if telemetry_data_multi is not None and isinstance(telemetry_data_multi, dict) and telemetry_data_multi:
+        df_list = []
+        drivers_with_data = []
+        colors_with_data = []
 
-            # Convert to DataFrame
-            df_data = pd.DataFrame({
-                'driver': [driver] * len(distance),
-                'distance': distance,
-                'drs': drs
-            })
+        for idx, driver in enumerate(selected_drivers):
+            if driver in telemetry_data_multi:
+                driver_telemetry = telemetry_data_multi[driver]
 
-            # Get driver color
-            from components.common.driver_colors import get_driver_color
-            driver_color = get_driver_color(driver)
+                # Check if we have the required data
+                if 'distance' in driver_telemetry and 'drs' in driver_telemetry:
+                    distance = driver_telemetry.get('distance', [])
+                    drs = driver_telemetry.get('drs', [])
 
+                    # Convert to DataFrame
+                    df_data = pd.DataFrame({
+                        'driver': [driver] * len(distance),
+                        'distance': distance,
+                        'drs': drs
+                    })
+                    df_list.append(df_data)
+                    drivers_with_data.append(driver)
+                    if idx < len(color_palette):
+                        colors_with_data.append(color_palette[idx])
+
+        if df_list:
+            # Combine all driver data
+            combined_df = pd.concat(df_list, ignore_index=True)
             # Process DRS data (binarize)
-            processed_data = _process_drs_data(df_data)
-
-            # Create figure
-            fig = _create_drs_figure(processed_data, [driver], [driver_color])
-
-            # Render title with compact AI button
-            _render_section_title_with_button(fig, driver, "DRS")
-
-            # Display figure
+            processed_data = _process_drs_data(combined_df)
+            fig = _create_drs_figure(
+                processed_data, drivers_with_data, colors_with_data)
             st.plotly_chart(fig, use_container_width=True)
         else:
             _render_section_title()
