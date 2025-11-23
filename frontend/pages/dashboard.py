@@ -32,6 +32,19 @@ importlib.reload(services.telemetry_service)
 from services.telemetry_service import TelemetryService
 
 
+# Cached API wrappers to avoid reloading data on page reruns
+@st.cache_data(ttl=600)  # Cache for 10 minutes
+def _fetch_lap_times_cached(year: int, gp: str, session: str, drivers_tuple: tuple):
+    """Cached wrapper for lap times API call."""
+    return TelemetryService.get_lap_times(year, gp, session, list(drivers_tuple))
+
+
+@st.cache_data(ttl=600)  # Cache for 10 minutes
+def _fetch_lap_telemetry_cached(year: int, gp: str, session: str, driver: str, lap_number: int):
+    """Cached wrapper for lap telemetry API call."""
+    return TelemetryService.get_lap_telemetry(year, gp, session, driver, lap_number)
+
+
 def render_custom_css():
     """
     Apply custom CSS for multiselect driver pills (transparent background, no borders).
@@ -229,11 +242,11 @@ def render_lap_graph(selected_year, selected_gp, selected_session, selected_driv
     if (selected_year is not None and selected_gp is not None and
         selected_session is not None and selected_drivers):
         with st.spinner("Loading lap times from FastF1..."):
-            success, lap_times_data, error = TelemetryService.get_lap_times(
+            success, lap_times_data, error = _fetch_lap_times_cached(
                 selected_year,
                 selected_gp,
                 selected_session,
-                selected_drivers
+                tuple(sorted(selected_drivers))  # Convert to sorted tuple for caching
             )
 
         if not success or not lap_times_data:
@@ -351,9 +364,9 @@ def render_lap_graph(selected_year, selected_gp, selected_session, selected_driv
                     'session': selected_session
                 }
 
-                # Fetch telemetry for the selected lap
+                # Fetch telemetry for the selected lap (cached)
                 with st.spinner(f"Loading telemetry for {selected_telemetry_driver} lap {selected_lap_number}..."):
-                    success, telemetry, error = TelemetryService.get_lap_telemetry(
+                    success, telemetry, error = _fetch_lap_telemetry_cached(
                         selected_year,
                         selected_gp,
                         selected_session,
