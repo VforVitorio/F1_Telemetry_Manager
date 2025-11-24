@@ -7,7 +7,7 @@ import streamlit as st
 from services.telemetry_service import TelemetryService
 
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=3600, show_spinner=False)
 def load_gps_for_year(year: int):
     """Load GPs for a specific year with caching."""
     if year is None:
@@ -23,7 +23,7 @@ def load_gps_for_year(year: int):
             "Japanese Grand Prix", "Chinese Grand Prix"]
 
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=3600, show_spinner=False)
 def load_sessions_for_gp(year: int, gp: str):
     """Load sessions for a specific GP with caching."""
     if year is None or gp is None:
@@ -38,7 +38,7 @@ def load_sessions_for_gp(year: int, gp: str):
     return ["FP1", "FP2", "FP3", "Q", "R"]
 
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=3600, show_spinner=False)
 def load_drivers_for_session(year: int, gp: str, session: str):
     """Load drivers for a specific session with caching."""
     if year is None or gp is None or session is None:
