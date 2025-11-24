@@ -21,16 +21,13 @@ def check_lm_studio_health() -> bool:
 
     Returns:
         bool: True if LM Studio is reachable and healthy, False otherwise
-
-    TODO: Implement actual health check when backend is ready
     """
     try:
-        # TODO: Replace with actual API call
-        # response = httpx.get(f"{CHAT_API_BASE}/health", timeout=5.0)
-        # return response.status_code == 200 and response.json().get("lm_studio_reachable", False)
-
-        # Placeholder - assume healthy for now
-        return True
+        response = httpx.get(f"{CHAT_API_BASE}/health", timeout=5.0)
+        if response.status_code == 200:
+            data = response.json()
+            return data.get("lm_studio_reachable", False)
+        return False
     except Exception as e:
         st.error(f"Error checking LM Studio health: {e}")
         return False
@@ -42,16 +39,12 @@ def get_available_models() -> List[str]:
 
     Returns:
         List of model names available in LM Studio
-
-    TODO: Implement actual model listing when backend is ready
     """
     try:
-        # TODO: Replace with actual API call
-        # response = httpx.get(f"{CHAT_API_BASE}/models", timeout=5.0)
-        # return response.json().get("models", [])
-
-        # Placeholder - return default models
-        return ["llama3.2-vision", "bakllava", "llava-v1.6"]
+        response = httpx.get(f"{CHAT_API_BASE}/models", timeout=5.0)
+        if response.status_code == 200:
+            return response.json().get("models", [])
+        return []
     except Exception as e:
         st.error(f"Error fetching models: {e}")
         return []
@@ -78,38 +71,26 @@ async def stream_message(
 
     Yields:
         Chunks of the assistant's response as they arrive
-
-    TODO: Implement actual streaming when backend is ready
     """
     try:
-        # TODO: Replace with actual streaming API call
-        # async with httpx.AsyncClient() as client:
-        #     async with client.stream(
-        #         "POST",
-        #         f"{CHAT_API_BASE}/stream",
-        #         json={
-        #             "text": text,
-        #             "image": image,
-        #             "chat_history": chat_history or [],
-        #             "context": context or {},
-        #             "model": model,
-        #             "temperature": temperature
-        #         },
-        #         timeout=120.0
-        #     ) as response:
-        #         async for chunk in response.aiter_text():
-        #             yield chunk
-
-        # Placeholder - yield a mock response
-        placeholder_response = (
-            f"This is a placeholder streaming response. "
-            f"The actual LLM integration will be implemented when the backend is ready. "
-            f"You asked: '{text}' with model '{model}' at temperature {temperature}."
-        )
-
-        # Simulate streaming by yielding word by word
-        for word in placeholder_response.split():
-            yield word + " "
+        async with httpx.AsyncClient() as client:
+            async with client.stream(
+                "POST",
+                f"{CHAT_API_BASE}/stream",
+                json={
+                    "text": text,
+                    "image": image,
+                    "chat_history": chat_history or [],
+                    "context": context or {},
+                    "model": model,
+                    "temperature": temperature,
+                    "max_tokens": 1000
+                },
+                timeout=120.0
+            ) as response:
+                async for chunk in response.aiter_text():
+                    if chunk:
+                        yield chunk
 
     except Exception as e:
         st.error(f"Error streaming message: {e}")
@@ -137,31 +118,28 @@ def send_message(
 
     Returns:
         Complete assistant response
-
-    TODO: Implement actual API call when backend is ready
     """
     try:
-        # TODO: Replace with actual API call
-        # response = httpx.post(
-        #     f"{CHAT_API_BASE}/message",
-        #     json={
-        #         "text": text,
-        #         "image": image,
-        #         "chat_history": chat_history or [],
-        #         "context": context or {},
-        #         "model": model,
-        #         "temperature": temperature
-        #     },
-        #     timeout=120.0
-        # )
-        # return response.json().get("response", "")
-
-        # Placeholder
-        return (
-            f"This is a placeholder response. "
-            f"The actual LLM integration will be implemented when the backend is ready. "
-            f"You asked: '{text}' with model '{model}' at temperature {temperature}."
+        response = httpx.post(
+            f"{CHAT_API_BASE}/message",
+            json={
+                "text": text,
+                "image": image,
+                "chat_history": chat_history or [],
+                "context": context or {},
+                "model": model,
+                "temperature": temperature,
+                "max_tokens": 1000
+            },
+            timeout=120.0
         )
+
+        if response.status_code == 200:
+            return response.json().get("response", "")
+        else:
+            error_msg = f"Backend returned status {response.status_code}"
+            st.error(error_msg)
+            return f"Error: {error_msg}"
 
     except Exception as e:
         st.error(f"Error sending message: {e}")

@@ -95,8 +95,6 @@ def handle_send_message(text: str, image: Optional[bytes]):
     """
     Handle sending a message to the LLM.
 
-    TODO: Implement streaming response from backend
-
     Args:
         text: User message text
         image: Optional image bytes
@@ -112,27 +110,45 @@ def handle_send_message(text: str, image: Optional[bytes]):
     if image is not None:
         add_message("user", "image", image)
 
-    # TODO: Implement streaming response
-    # For now, show placeholder response
+    # Set streaming state
     st.session_state.chat_streaming = True
 
-    # Placeholder response
-    placeholder_response = (
-        "This is a placeholder response. "
-        "The actual LLM integration will be implemented when the backend is ready. "
-        f"You asked: '{text}' with model '{DEFAULT_MODEL}' at temperature {DEFAULT_TEMPERATURE}."
-    )
+    try:
+        # Get chat history for context
+        history = get_chat_history()
 
-    # Add assistant response
-    add_message("assistant", "text", placeholder_response)
+        # Build context from session state if available
+        context = {}
+        if hasattr(st.session_state, 'chat_context'):
+            context = st.session_state.chat_context
 
-    st.session_state.chat_streaming = False
+        # Get response from backend using send_message (non-streaming for simplicity)
+        from services.chat_service import send_message as chat_send_message
 
-    # Increment input key to clear the input field
-    st.session_state.chat_input_key += 1
+        response = chat_send_message(
+            text=text,
+            image=image,
+            chat_history=history,
+            context=context,
+            model=DEFAULT_MODEL,
+            temperature=DEFAULT_TEMPERATURE
+        )
 
-    # Save current chat
-    save_current_chat()
+        # Add assistant response
+        add_message("assistant", "text", response)
+
+    except Exception as e:
+        st.error(f"Error communicating with LM Studio: {e}")
+        add_message("assistant", "text", f"Error: {str(e)}")
+
+    finally:
+        st.session_state.chat_streaming = False
+
+        # Increment input key to clear the input field
+        st.session_state.chat_input_key += 1
+
+        # Save current chat
+        save_current_chat()
 
 
 def check_lm_studio_connection():
@@ -157,15 +173,15 @@ def render_chat_page():
     handle_pending_message()
 
     # Check LM Studio connection
-    # TODO: Uncomment when service is implemented
-    # if not check_lm_studio_connection():
-    #     st.error("⚠️ Cannot connect to LM Studio. Please ensure:")
-    #     st.markdown("""
-    #     1. LM Studio is running
-    #     2. Local server is started (http://localhost:1234)
-    #     3. A vision-capable model is loaded
-    #     """)
-    #     st.stop()
+    if not check_lm_studio_connection():
+        st.error("⚠️ Cannot connect to LM Studio. Please ensure:")
+        st.markdown("""
+        1. LM Studio is running
+        2. Local server is started (http://localhost:1234)
+        3. A model is loaded
+        4. Backend server is running (http://localhost:8000)
+        """)
+        st.stop()
 
     # Render header
     render_header()
