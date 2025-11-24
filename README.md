@@ -62,6 +62,18 @@
 - Adaptive responses based on user expertise level
 - Screenshot/context attachment system
 
+### 🧠 Intelligent Query Routing (NEW)
+
+The system now features an **AI-powered query routing architecture** that automatically detects the type of user query and routes it to specialized handlers:
+
+- **Basic Query Handler**: Simple F1 concepts and terminology
+- **Technical Query Handler**: Advanced telemetry analysis with performance data
+- **Comparison Query Handler**: Multi-driver statistical comparisons
+- **Report Handler**: Automated conversation summarization
+- **Download Handler**: Data export in CSV/JSON formats
+
+The router uses LLM-based classification to intelligently direct queries, ensuring optimal processing and response quality. See [Testing Guide](TESTING_GUIDE.md) for usage examples.
+
 ---
 
 ## 🏗️ Architecture
@@ -201,7 +213,6 @@ cp .env.example .env
 Terminal 1 - Backend:
 
 ```bash
-
 uvicorn backend.main:app --reload --port 8000
 ```
 
