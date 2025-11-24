@@ -33,13 +33,13 @@ importlib.reload(services.telemetry_service)
 
 
 # Cached API wrappers to avoid reloading data on page reruns
-@st.cache_data(ttl=600)  # Cache for 10 minutes
+@st.cache_data(ttl=600, show_spinner=False)  # Cache for 10 minutes, hide auto spinner
 def _fetch_lap_times_cached(year: int, gp: str, session: str, drivers_tuple: tuple):
     """Cached wrapper for lap times API call."""
     return TelemetryService.get_lap_times(year, gp, session, list(drivers_tuple))
 
 
-@st.cache_data(ttl=600)  # Cache for 10 minutes
+@st.cache_data(ttl=600, show_spinner=False)  # Cache for 10 minutes, hide auto spinner
 def _fetch_lap_telemetry_cached(year: int, gp: str, session: str, driver: str, lap_number: int):
     """Cached wrapper for lap telemetry API call."""
     return TelemetryService.get_lap_telemetry(year, gp, session, driver, lap_number)
@@ -479,51 +479,14 @@ def render_dashboard():
     # (This won't affect the LAP CHART above, only charts rendered after this point)
     st.markdown(apply_telemetry_chart_styles(), unsafe_allow_html=True)
 
-    # Auto-load fastest laps when drivers are selected but no manual selection made
-    if (selected_year and selected_gp and selected_session and selected_drivers and
-            not st.session_state.get('selected_laps_per_driver')):
-
-        # Check if we need to load fastest laps
-        current_drivers_key = f"{selected_year}_{selected_gp}_{selected_session}_{'_'.join(sorted(selected_drivers))}"
-        last_auto_load_key = st.session_state.get('last_auto_load_key')
-
-        # Only auto-load if we haven't already for this selection
-        if last_auto_load_key != current_drivers_key:
-            with st.spinner("Loading fastest laps for comparison..."):
-                telemetry_data_multi = {}
-
-                # Load fastest lap for each driver
-                for driver in selected_drivers:
-                    # Get lap times to find the fastest lap
-                    success, lap_times_data, error = TelemetryService.get_lap_times(
-                        selected_year, selected_gp, selected_session, [driver]
-                    )
-
-                    if success and lap_times_data:
-                        # Find fastest lap
-                        fastest_lap = min(
-                            lap_times_data, key=lambda x: x['lap_time'])
-                        fastest_lap_number = fastest_lap['lap_number']
-
-                        # Load telemetry for fastest lap
-                        success, telemetry, error = TelemetryService.get_lap_telemetry(
-                            selected_year, selected_gp, selected_session,
-                            driver, fastest_lap_number
-                        )
-
-                        if success and telemetry:
-                            telemetry_data_multi[driver] = telemetry
-
-                if telemetry_data_multi:
-                    st.session_state['telemetry_data_multi'] = telemetry_data_multi
-                    st.session_state['last_auto_load_key'] = current_drivers_key
-                    st.info(
-                        "📊 Showing fastest laps for comparison. Use the lap selector below to compare specific laps.")
+    # NOTE: Auto-load of fastest laps has been disabled
+    # Users must manually select laps to view telemetry graphs
 
     # Get telemetry data from session state if available
     # Use new multi-driver telemetry format
     telemetry_data_multi = st.session_state.get('telemetry_data_multi', None)
 
+    # Always render telemetry graphs (they show spinner when no data)
     # Circuit Domination Section
     # Note: Circuit domination uses a single reference driver for now
     # We pass the first driver's telemetry if available
@@ -551,6 +514,7 @@ def render_dashboard():
 
     # Other Graphs Section (stacked vertically)
     # These graphs will display telemetry data for all selected drivers
+    # When telemetry_data_multi is None, graphs show their internal "waiting for data" spinner
     render_speed_graph(telemetry_data_multi, selected_drivers, color_palette)
     render_delta_graph(telemetry_data_multi, selected_drivers, color_palette)
     render_throttle_graph(telemetry_data_multi,
