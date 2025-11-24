@@ -34,7 +34,7 @@ from components.common.loading import render_loading_spinner
 from components.common.ask_about_button import render_ask_about_button, CIRCUIT_DOMINATION_TEMPLATE
 
 
-@st.cache_data(ttl=600)  # Cache for 10 minutes
+@st.cache_data(ttl=600, show_spinner=False)  # Cache for 10 minutes, hide auto spinner
 def _fetch_circuit_domination_cached(year: int, gp: str, session: str, drivers_tuple: tuple):
     """
     Cached wrapper for circuit domination API call.
@@ -75,9 +75,10 @@ def render_circuit_domination_section(
     # Horizontal separator
     st.markdown("---")
 
-    # Check if all required data is selected
+    # Check if all required data is selected and telemetry data exists
     if (year is None or gp is None or session is None or
-        not selected_drivers or len(selected_drivers) < 2):
+        not selected_drivers or len(selected_drivers) < 2 or
+        telemetry_data is None or not telemetry_data):
         # Render the section title
         _render_section_title()
         # Show loading spinner waiting for data selection
