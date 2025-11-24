@@ -1,5 +1,6 @@
 from .fastf1_client import SessionData
 import pandas as pd
+import numpy as np
 import fastf1
 from typing import List, Dict
 
@@ -161,12 +162,87 @@ def get_lap_times(year: int, gp: str, session: str, drivers: List[str]) -> List[
             print(f"No lap data for {year} {gp} {session} with drivers {drivers}")
             return []
 
-        print(f"Found {len(laps)} laps for drivers {drivers}")
+        print(f"Found {len(laps)} total laps for drivers {drivers}")
+
+        # Filter for valid laps with telemetry
+        # Only include laps that:
+        # 1. Have accurate timing (IsAccurate == True)
+        # 2. Have a valid lap time
+        # 3. Are not pit entry laps (PitInTime is NaN)
+        # 4. Are not pit exit laps (PitOutTime is NaN)
+        laps_filtered = laps.loc[
+            (laps['IsAccurate'] == True) &
+            (laps['LapTime'].notna()) &
+            (laps['PitOutTime'].isna()) &
+            (laps['PitInTime'].isna())
+        ]
+
+        print(f"Filtered to {len(laps_filtered)} valid laps (excluded pit laps and inaccurate laps)")
+
+        # Additional filter: Verify each lap has COMPLETE telemetry data for ALL TELEMETRY GRAPHS
+        # This ensures that all telemetry graphs (Speed, Throttle, Brake, RPM, Gear, DRS, Delta)
+        # can be painted for the selected laps.
+        #
+        # NOTE: X, Y (GPS) are NOT required here because:
+        # - Circuit Domination uses its own API endpoint (get_circuit_domination)
+        # - Distance can be calculated from Speed and Time if GPS is missing
+        #
+        # Required columns from FastF1 for telemetry graphs:
+        # - Speed: For speed graph
+        # - Throttle: For throttle graph
+        # - Brake: For brake graph
+        # - RPM: For RPM graph
+        # - nGear: For gear graph (FastF1 uses 'nGear' not 'Gear')
+        # - DRS: For DRS graph
+        # - Time: For delta graph and distance calculation
+
+        REQUIRED_COLUMNS = ['Speed', 'Throttle', 'Brake', 'RPM', 'nGear', 'DRS', 'Time']
+
+        laps_with_complete_telemetry = []
+        for idx, lap_data in laps_filtered.iterrows():
+            try:
+                # Try to get telemetry for this lap
+                telemetry = lap_data.get_car_data()
+
+                # Check if telemetry exists and is not empty
+                if telemetry is None or telemetry.empty:
+                    continue
+
+                # Verify ALL required columns exist
+                missing_columns = [col for col in REQUIRED_COLUMNS if col not in telemetry.columns]
+                if missing_columns:
+                    print(f"Lap {lap_data.get('LapNumber', '?')} for {lap_data.get('Driver', '?')} missing columns: {missing_columns}")
+                    continue
+
+                # Verify each required column has valid data (not all NaN)
+                has_valid_data = True
+                for col in REQUIRED_COLUMNS:
+                    if telemetry[col].isna().all():
+                        print(f"Lap {lap_data.get('LapNumber', '?')} for {lap_data.get('Driver', '?')}: column '{col}' has no valid data")
+                        has_valid_data = False
+                        break
+
+                # Only include lap if all columns have valid data
+                if has_valid_data:
+                    laps_with_complete_telemetry.append(idx)
+
+            except Exception as e:
+                # Skip laps that fail to load telemetry
+                print(f"Skipping lap {lap_data.get('LapNumber', '?')} for {lap_data.get('Driver', '?')}: {e}")
+                continue
+
+        # Filter to only laps with complete telemetry data
+        if laps_with_complete_telemetry:
+            laps_filtered = laps_filtered.loc[laps_with_complete_telemetry]
+            print(f"✓ Verified {len(laps_filtered)} laps have COMPLETE telemetry data for ALL graphs")
+        else:
+            print("⚠ No laps with complete telemetry data found")
+            laps_filtered = pd.DataFrame()  # Empty DataFrame
 
         result = []
 
-        # Iterate through all laps
-        for _, lap in laps.iterrows():
+        # Iterate through filtered laps
+        for _, lap in laps_filtered.iterrows():
             # Convert LapTime to seconds
             lap_time_seconds = None
             if pd.notna(lap.get('LapTime')):
@@ -254,16 +330,61 @@ def get_lap_telemetry(year: int, gp: str, session: str, driver: str, lap_number:
             return {}
 
         # Add distance if not present (get_car_data doesn't always include it)
-        if 'Distance' not in telemetry.columns:
-            # Calculate distance from lap start time
+        # Priority: 1) FastF1's Distance, 2) Calculate from GPS, 3) Calculate from Speed and Time
+        if 'Distance' not in telemetry.columns or telemetry['Distance'].isna().all():
+            # Fallback 1: Calculate from GPS coordinates if available
             try:
-                telemetry['Distance'] = telemetry['Time'].dt.total_seconds() * telemetry['Speed'] / 3.6
-                # Make it cumulative
-                telemetry['Distance'] = telemetry['Distance'].cumsum()
-            except Exception as e:
-                print(f"Could not calculate distance for lap {lap_number}: {e}")
-                # If we can't calculate distance, we can't proceed
-                return {}
+                if 'X' in telemetry.columns and 'Y' in telemetry.columns:
+                    # Filter out NaN values
+                    mask = ~telemetry['X'].isna() & ~telemetry['Y'].isna()
+
+                    if mask.sum() > 0:
+                        # Convert mm to meters
+                        x_m = telemetry.loc[mask, 'X'].to_numpy() / 1000
+                        y_m = telemetry.loc[mask, 'Y'].to_numpy() / 1000
+
+                        # Calculate cumulative distance from GPS coordinates (Euclidean distance)
+                        distances = np.sqrt(np.diff(x_m)**2 + np.diff(y_m)**2)
+                        cumulative_distance = np.insert(np.cumsum(distances), 0, 0)
+
+                        # Assign back to telemetry DataFrame
+                        telemetry.loc[mask, 'Distance'] = cumulative_distance
+                        print(f"✓ Calculated distance from GPS for lap {lap_number}")
+                    else:
+                        # GPS exists but no valid data - try Speed/Time fallback
+                        raise ValueError("No valid GPS data")
+                else:
+                    # No GPS columns - try Speed/Time fallback
+                    raise ValueError("No GPS columns available")
+            except Exception as gps_error:
+                # Fallback 2: Calculate from Speed and Time when GPS is not available
+                print(f"GPS not available for lap {lap_number}, calculating distance from Speed and Time")
+                try:
+                    if 'Speed' in telemetry.columns and 'Time' in telemetry.columns:
+                        # Convert speed from km/h to m/s
+                        speed_ms = telemetry['Speed'] / 3.6
+
+                        # Calculate time differences in seconds
+                        if pd.api.types.is_timedelta64_dtype(telemetry['Time']):
+                            time_seconds = telemetry['Time'].dt.total_seconds()
+                        else:
+                            time_seconds = telemetry['Time']
+
+                        # Calculate distance increments (speed * time_diff)
+                        time_diff = time_seconds.diff().fillna(0)
+                        distance_increments = speed_ms * time_diff
+
+                        # Cumulative distance
+                        telemetry['Distance'] = distance_increments.cumsum()
+                        print(f"✓ Calculated distance from Speed/Time for lap {lap_number}")
+                    else:
+                        print(f"❌ Cannot calculate distance: missing Speed or Time columns for lap {lap_number}")
+                        return {}
+                except Exception as e:
+                    print(f"❌ Could not calculate distance from Speed/Time for lap {lap_number}: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    return {}
 
         # Verify we have minimum required columns
         required_columns = ['Speed']
