@@ -33,6 +33,7 @@ from components.chatbot.chat_sidebar import render_chat_sidebar
 from components.chatbot.chat_history import render_chat_history
 from components.chatbot.chat_input import render_chat_input
 from components.chatbot.chat_message import render_chat_message
+from components.voice.voice_chat import render_voice_chat
 
 # Service imports
 from services.chat_service import stream_message, get_available_models, check_lm_studio_health
@@ -42,12 +43,34 @@ DEFAULT_MODEL = "llama3.2-vision"
 DEFAULT_TEMPERATURE = 0.1  # Low temperature for high confidence in F1 domain
 
 
+def initialize_chat_mode():
+    """Initialize chat mode (text or voice)."""
+    if 'chat_mode' not in st.session_state:
+        st.session_state.chat_mode = "text"  # Default to text mode
+
+
 def render_header():
-    """Display page header."""
+    """Display page header with mode toggle."""
     st.markdown(
         "<h1 style='text-align: center;'>🏎️ F1 STRATEGY ASSISTANT CHAT</h1>",
         unsafe_allow_html=True
     )
+
+    # Mode toggle centered
+    col1, col2, col3 = st.columns([1, 1, 1])
+    with col2:
+        mode = st.radio(
+            "Chat Mode",
+            options=["💬 Text Chat", "🎤 Voice Chat"],
+            index=0 if st.session_state.chat_mode == "text" else 1,
+            horizontal=True,
+            key="chat_mode_toggle",
+            label_visibility="collapsed"
+        )
+
+        # Update session state based on selection
+        st.session_state.chat_mode = "text" if "Text" in mode else "voice"
+
     st.markdown("---")
 
 
@@ -166,48 +189,57 @@ def render_chat_page():
     Main chat page rendering function.
     Orchestrates all chat components and handles user interactions.
     """
+    # Initialize chat mode
+    initialize_chat_mode()
+
     # Initialize chat state
     initialize_chat_state()
 
     # Check for pending messages from other pages
     handle_pending_message()
 
-    # Check LM Studio connection
-    if not check_lm_studio_connection():
-        st.error("⚠️ Cannot connect to LM Studio. Please ensure:")
-        st.markdown("""
-        1. LM Studio is running
-        2. Local server is started (http://localhost:1234)
-        3. A model is loaded
-        4. Backend server is running (http://localhost:8000)
-        """)
-        st.stop()
-
-    # Render header
+    # Render header with mode toggle
     render_header()
 
-    # Sidebar with chat management (NO model parameters)
-    with st.sidebar:
-        render_chat_sidebar()
+    # Check current mode and render accordingly
+    if st.session_state.chat_mode == "voice":
+        # Voice Chat Mode
+        render_voice_chat()
+    else:
+        # Text Chat Mode (original functionality)
+        # Check LM Studio connection
+        if not check_lm_studio_connection():
+            st.error("⚠️ Cannot connect to LM Studio. Please ensure:")
+            st.markdown("""
+            1. LM Studio is running
+            2. Local server is started (http://localhost:1234)
+            3. A model is loaded
+            4. Backend server is running (http://localhost:8000)
+            """)
+            st.stop()
 
-    # Main content area
-    st.markdown("## Chat")
+        # Sidebar with chat management (NO model parameters)
+        with st.sidebar:
+            render_chat_sidebar()
 
-    # Chat history (scrollable area)
-    render_chat_history()
+        # Main content area
+        st.markdown("## Chat")
 
-    # Input area (fixed at bottom visually)
-    st.markdown("<div style='margin-top: 20px;'></div>",
-                unsafe_allow_html=True)
-    text, image, send_clicked = render_chat_input()
+        # Chat history (scrollable area)
+        render_chat_history()
 
-    if send_clicked:
-        handle_send_message(text, image)
-        st.rerun()
+        # Input area (fixed at bottom visually)
+        st.markdown("<div style='margin-top: 20px;'></div>",
+                    unsafe_allow_html=True)
+        text, image, send_clicked = render_chat_input()
 
-    # Show streaming indicator if active
-    if st.session_state.get('chat_streaming', False):
-        st.info("🤖 Assistant is thinking...")
+        if send_clicked:
+            handle_send_message(text, image)
+            st.rerun()
+
+        # Show streaming indicator if active
+        if st.session_state.get('chat_streaming', False):
+            st.info("🤖 Assistant is thinking...")
 
 
 # Entry point
