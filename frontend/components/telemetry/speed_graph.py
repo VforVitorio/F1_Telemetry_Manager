@@ -50,8 +50,6 @@ def render_speed_graph(telemetry_data_multi, selected_drivers, color_palette):
     # Add separator before the section
     st.markdown("---")
 
-    _render_section_title()
-
     # Convert multi-driver telemetry data to DataFrame format
     if telemetry_data_multi is not None and isinstance(telemetry_data_multi, dict) and telemetry_data_multi:
         df_list = []
@@ -83,6 +81,7 @@ def render_speed_graph(telemetry_data_multi, selected_drivers, color_palette):
             combined_df = pd.concat(df_list, ignore_index=True)
             fig = _create_speed_figure(
                 combined_df, drivers_with_data, colors_with_data)
+            _render_section_title_with_button(fig, drivers_with_data[0], telemetry_data_multi[drivers_with_data[0]])
             st.plotly_chart(fig, use_container_width=True)
         else:
             _render_section_title()
@@ -148,7 +147,7 @@ def _create_speed_figure(telemetry_data, selected_drivers, color_palette):
             name=driver,
             line=dict(color=color_palette[idx % len(color_palette)], width=2),
             mode='lines',
-            hovertemplate='Distance: %{x:.0f}m<br>Speed: %{y:.1f} km/h<extra></extra>'
+            hovertemplate='<b>%{fullData.name}</b><br>Distance: %{x:.0f}m<br>Speed: %{y:.1f} km/h<extra></extra>'
         ))
 
     # Configure layout with dark theme
@@ -160,7 +159,8 @@ def _create_speed_figure(telemetry_data, selected_drivers, color_palette):
         margin=dict(l=40, r=40, t=40, b=40),
         plot_bgcolor=Color.PRIMARY_BG,
         paper_bgcolor=Color.PRIMARY_BG,
-        font=dict(color=TextColor.PRIMARY)
+        font=dict(color=TextColor.PRIMARY),
+        hovermode='x unified'  # Show all drivers' info at the same distance point
     )
 
     return fig

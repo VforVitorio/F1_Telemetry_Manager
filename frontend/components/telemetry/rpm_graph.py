@@ -91,7 +91,6 @@ def render_rmp_graph(telemetry_data_multi, selected_drivers, color_palette):
         color_palette: List of colors for each driver
     """
     st.markdown("---")
-    _render_section_title()
 
     # Convert multi-driver telemetry data to DataFrame format
     if telemetry_data_multi is not None and isinstance(telemetry_data_multi, dict) and telemetry_data_multi:
@@ -124,6 +123,7 @@ def render_rmp_graph(telemetry_data_multi, selected_drivers, color_palette):
             combined_df = pd.concat(df_list, ignore_index=True)
             fig = _create_rpm_figure(
                 combined_df, drivers_with_data, colors_with_data)
+            _render_section_title_with_button(fig, drivers_with_data[0], "rpm")
             st.plotly_chart(fig, use_container_width=True)
         else:
             _render_section_title()
@@ -161,7 +161,7 @@ def _create_rpm_figure(telemetry_data, selected_drivers, color_palette):
                     name=driver,
                     line=dict(color=color_palette[idx], width=2),
                     mode="lines",
-                    hovertemplate='Distance: %{x:.0f}m<br>RPM: %{y:.0f}<extra></extra>'
+                    hovertemplate='<b>%{fullData.name}</b><br>Distance: %{x:.0f}m<br>RPM: %{y:.0f}<extra></extra>'
                 )
             )
 

@@ -141,6 +141,7 @@ def render_drs_graph(telemetry_data_multi, selected_drivers, color_palette):
             processed_data = _process_drs_data(combined_df)
             fig = _create_drs_figure(
                 processed_data, drivers_with_data, colors_with_data)
+            _render_section_title_with_button(fig, drivers_with_data[0], "drs")
             st.plotly_chart(fig, use_container_width=True)
         else:
             _render_section_title()
@@ -173,7 +174,7 @@ def _create_drs_figure(telemetry_data, selected_drivers, color_palette):
                 name=driver,
                 line=dict(color=color_palette[idx], width=2),
                 mode='lines',
-                hovertemplate='Distance: %{x:.0f}m<br>DRS: %{y:.0f}<extra></extra>'
+                hovertemplate='<b>%{fullData.name}</b><br>Distance: %{x:.0f}m<br>DRS: %{y:.0f}<extra></extra>'
             ))
 
     # Configure layout with dark theme

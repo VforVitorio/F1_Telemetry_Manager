@@ -34,6 +34,7 @@ import pandas as pd
 import numpy as np
 from app.styles import Color, TextColor
 from components.common.loading import render_loading_spinner
+from components.common.ask_about_button import render_ask_about_button, TELEMETRY_TEMPLATE
 
 # TODO: When integrating backend, use fastf1.utils.delta_time() for accurate delta calculation
 # from fastf1 import utils
@@ -52,8 +53,6 @@ def render_delta_graph(telemetry_data_multi, selected_drivers, color_palette):
     """
     # Add separator before the section
     st.markdown("---")
-
-    _render_section_title()
 
     # Convert multi-driver telemetry data to DataFrame format
     if telemetry_data_multi is not None and isinstance(telemetry_data_multi, dict) and telemetry_data_multi:
@@ -95,6 +94,7 @@ def render_delta_graph(telemetry_data_multi, selected_drivers, color_palette):
 
             if not delta_df.empty:
                 fig = _create_delta_figure(delta_df, drivers_with_data, colors_with_data)
+                _render_section_title_with_button(fig, drivers_with_data, "delta")
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 render_loading_spinner()
@@ -111,6 +111,39 @@ def _render_section_title() -> None:
         "<h3 style='text-align: center;'>DELTA (s)</h3>",
         unsafe_allow_html=True
     )
+
+
+def _render_section_title_with_button(fig: go.Figure, drivers: list, graph_type: str) -> None:
+    """Renders the section title with compact AI button"""
+    col1, col2 = st.columns([0.95, 0.05])
+
+    with col1:
+        st.markdown(
+            "<h3 style='text-align: center;'>DELTA (s)</h3>",
+            unsafe_allow_html=True
+        )
+
+    with col2:
+        # Use first driver for context
+        driver = drivers[0] if drivers else 'Unknown'
+        selected_lap = st.session_state.get('selected_lap', {})
+        context = {
+            "graph_type": graph_type,
+            "driver_name": driver,
+            "session_type": selected_lap.get('session', 'Unknown'),
+            "gp_name": selected_lap.get('gp', 'Unknown GP'),
+            "year": str(selected_lap.get('year', '')),
+            "lap_number": str(selected_lap.get('lap_number', ''))
+        }
+
+        render_ask_about_button(
+            chart_fig=fig,
+            chart_type=f"{graph_type}_graph",
+            prompt_template=TELEMETRY_TEMPLATE,
+            context=context,
+            compact=True,
+            tooltip=f"Ask AI to analyze {graph_type} data"
+        )
 
 
 def _calculate_deltas(telemetry_data, selected_drivers):
@@ -166,13 +199,13 @@ def _calculate_deltas(telemetry_data, selected_drivers):
 
 
 def _create_delta_figure(delta_data, selected_drivers, color_palette):
-    """Creates the Plotly figure for delta visualization with filled area"""
+    """Creates the Plotly figure for delta visualization with line traces"""
     fig = go.Figure()
 
     if delta_data.empty:
         return fig
 
-    # Add a line trace with filled area for each driver
+    # Add a line trace for each driver (no fill)
     for idx, driver in enumerate(selected_drivers):
         driver_data = delta_data[delta_data['driver'] == driver]
 
@@ -182,10 +215,8 @@ def _create_delta_figure(delta_data, selected_drivers, color_palette):
                 y=driver_data['delta'],
                 name=driver,
                 line=dict(color=color_palette[idx], width=2),
-                fill='tozeroy',
-                fillcolor=f"rgba({int(color_palette[idx][1:3], 16)}, {int(color_palette[idx][3:5], 16)}, {int(color_palette[idx][5:7], 16)}, 0.3)",
                 mode='lines',
-                hovertemplate='Distance: %{x:.0f}m<br>Delta: %{y:.3f}s<extra></extra>'
+                hovertemplate='<b>%{fullData.name}</b><br>Distance: %{x:.0f}m<br>Delta: %{y:.3f}s<extra></extra>'
             ))
 
     # Configure layout with dark theme
