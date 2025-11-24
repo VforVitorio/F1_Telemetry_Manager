@@ -209,7 +209,7 @@ Terminal 2 - Frontend:
 
 ```bash
 cd frontend
-streamlit run app/main.py
+streamlit run frontend/app/main.py
 ```
 
 Terminal 3 - LM Studio (optional):
