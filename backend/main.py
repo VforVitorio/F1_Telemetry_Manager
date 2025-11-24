@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from backend.core.config import FRONTEND_URL
-from backend.api.v1.endpoints import auth, circuit_domination, comparison, telemetry, chat
+from backend.api.v1.endpoints import auth, circuit_domination, comparison, telemetry, chat, voice
 
 app = FastAPI(title="F1 Telemetry API")
 
@@ -26,6 +26,9 @@ app.include_router(comparison.router, prefix="/api/v1")
 
 # Add chat router
 app.include_router(chat.router, prefix="/api/v1")
+
+# Add voice router
+app.include_router(voice.router, prefix="/api/v1/voice", tags=["voice"])
 
 
 @app.get("/")
