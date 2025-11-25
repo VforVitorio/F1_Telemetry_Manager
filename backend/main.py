@@ -1,7 +1,15 @@
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from backend.core.config import FRONTEND_URL
 from backend.api.v1.endpoints import auth, circuit_domination, comparison, telemetry, chat, voice
+from backend.core.config import FRONTEND_URL
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi import FastAPI
+import sys
+from pathlib import Path
+
+# Add parent directory to path so 'backend' module can be found
+backend_parent = Path(__file__).resolve().parent.parent
+if str(backend_parent) not in sys.path:
+    sys.path.insert(0, str(backend_parent))
+
 
 app = FastAPI(title="F1 Telemetry API")
 

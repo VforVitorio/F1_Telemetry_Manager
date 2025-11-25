@@ -4,6 +4,11 @@ Speech-to-Text Service using OpenAI Whisper
 Provides accurate audio transcription with local inference.
 """
 
+from backend.core.voice_config import (
+    WHISPER_MODEL,
+    WHISPER_LANGUAGE,
+    WHISPER_DEVICE
+)
 import whisper
 import tempfile
 import os
@@ -17,11 +22,6 @@ backend_dir = Path(__file__).resolve().parent.parent.parent
 if str(backend_dir) not in sys.path:
     sys.path.insert(0, str(backend_dir))
 
-from core.voice_config import (
-    WHISPER_MODEL,
-    WHISPER_LANGUAGE,
-    WHISPER_DEVICE
-)
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +48,8 @@ class STTService:
                 self.model_name,
                 device=WHISPER_DEVICE
             )
-            logger.info(f"✅ Whisper model '{self.model_name}' loaded successfully")
+            logger.info(
+                f"✅ Whisper model '{self.model_name}' loaded successfully")
         except Exception as e:
             logger.error(f"Failed to load Whisper model: {e}")
             raise RuntimeError(f"Failed to load Whisper model: {e}")
@@ -177,7 +178,8 @@ class STTService:
             result = self._transcribe_file(temp_path, language)
 
             # Extract data
-            transcription_data = self._extract_transcription_data(result, language)
+            transcription_data = self._extract_transcription_data(
+                result, language)
 
             logger.info(
                 f"✅ Transcription complete: '{transcription_data['text'][:50]}...' "
