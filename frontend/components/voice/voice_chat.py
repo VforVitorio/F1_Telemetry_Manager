@@ -19,6 +19,7 @@ from utils.audio_utils import (
     format_duration
 )
 from components.voice.voice_input import render_voice_input, render_voice_status
+from components.streamlit_audio_viz import audio_orb
 
 
 def initialize_voice_state():
@@ -31,6 +32,12 @@ def initialize_voice_state():
 
     if 'voice_status' not in st.session_state:
         st.session_state.voice_status = "ready"
+
+    if 'is_recording' not in st.session_state:
+        st.session_state.is_recording = False
+
+    if 'current_audio' not in st.session_state:
+        st.session_state.current_audio = None
 
 
 def add_voice_exchange(
@@ -75,9 +82,10 @@ def render_voice_exchange(exchange: Dict[str, Any], index: int):
         st.markdown("### 👤 You")
         st.markdown(f"**Transcript:** {exchange['transcript']}")
 
-        # User audio player
+        # User audio player (collapsed in expander)
         if exchange.get('user_audio'):
-            st.audio(exchange['user_audio'], format="audio/wav")
+            with st.expander("🎤 Your recording"):
+                st.audio(exchange['user_audio'], format="audio/wav")
 
     st.markdown("---")
 
@@ -203,11 +211,31 @@ def render_voice_chat():
     )
     st.markdown("---")
 
+    # Audio Orb Visualization
+    with st.container():
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            # Determine orb state
+            is_recording = st.session_state.get('is_recording', False)
+            is_processing = st.session_state.get('voice_processing', False)
+
+            # Show orb
+            audio_orb(
+                audio_blob=st.session_state.get('current_audio'),
+                is_recording=is_recording,
+                is_processing=is_processing,
+                theme="dark",  # Force dark theme to match UI
+                key="voice_orb"
+            )
+
     # Voice input section
     with st.container():
-        audio_bytes, send_clicked = render_voice_input()
+        audio_bytes = render_voice_input()
 
-        if send_clicked and audio_bytes:
+        if audio_bytes:
+            st.session_state.current_audio = audio_bytes
+            st.session_state.is_recording = False
+            st.session_state.last_processed_audio = audio_bytes
             handle_voice_message(audio_bytes)
             st.rerun()
 
