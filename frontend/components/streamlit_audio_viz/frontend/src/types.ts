@@ -6,6 +6,7 @@ export interface ComponentProps {
   audioBlob?: Blob | null;
   isRecording: boolean;
   isProcessing: boolean;
+  isPlaying: boolean;
   theme?: 'light' | 'dark';
 }
 
@@ -24,4 +25,4 @@ export interface StreamlitProps {
   disabled: boolean;
 }
 
-export type OrbState = 'idle' | 'recording' | 'processing';
+export type OrbState = 'idle' | 'recording' | 'processing' | 'playing';

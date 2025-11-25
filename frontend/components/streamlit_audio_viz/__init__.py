@@ -32,21 +32,24 @@ def audio_orb(
     audio_blob: Optional[bytes] = None,
     is_recording: bool = False,
     is_processing: bool = False,
+    is_playing: bool = False,
     theme: str = "dark",
     key: Optional[str] = None
 ):
     """
     Display an animated audio orb visualization.
 
-    The orb has three states:
+    The orb has four states:
     - Idle: Gradient orb with floating animation
-    - Recording: Real-time audio visualization with bars
-    - Processing: Pulsing rings animation
+    - Recording: Real-time audio visualization with microphone input
+    - Processing: Pulsing animation while transcribing/thinking
+    - Playing: Audio-reactive animation during TTS playback
 
     Args:
         audio_blob: Raw audio bytes for visualization (optional)
         is_recording: True if currently recording audio
-        is_processing: True if processing (transcription/synthesis)
+        is_processing: True if processing (transcription/LLM/synthesis)
+        is_playing: True if playing back TTS audio
         theme: Color theme ('light' or 'dark')
         key: Unique key for the component
 
@@ -68,12 +71,16 @@ def audio_orb(
 
         # Show processing orb
         audio_orb(is_processing=True, theme="dark")
+
+        # Show playing orb
+        audio_orb(is_playing=True, theme="dark")
         ```
     """
     return _component_func(
         audioBlob=audio_blob,
         isRecording=is_recording,
         isProcessing=is_processing,
+        isPlaying=is_playing,
         theme=theme,
         key=key,
         default=None

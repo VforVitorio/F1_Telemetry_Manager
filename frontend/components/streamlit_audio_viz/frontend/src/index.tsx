@@ -30,7 +30,7 @@ class AudioOrbComponent extends StreamlitComponentBase<StreamlitProps> {
   }
 
   public render(): React.ReactNode {
-    const { audioBlob, isRecording, isProcessing, theme } = this.props.args;
+    const { audioBlob, isRecording, isProcessing, isPlaying, theme } = this.props.args;
 
     // Determine theme from Streamlit or props
     const effectiveTheme = theme || this.props.theme?.base || 'light';
@@ -40,6 +40,7 @@ class AudioOrbComponent extends StreamlitComponentBase<StreamlitProps> {
         audioBlob={audioBlob}
         isRecording={isRecording}
         isProcessing={isProcessing}
+        isPlaying={isPlaying}
         theme={effectiveTheme}
       />
     );

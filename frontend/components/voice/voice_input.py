@@ -18,27 +18,23 @@ def render_voice_input() -> Optional[bytes]:
     Returns:
         audio_bytes: Recorded audio as bytes (None if no recording)
     """
-    st.markdown("### 🎤 Voice Input")
-
-    # Instructions
-    st.info("🎙️ Click the microphone to start recording. Click again to stop and send automatically.")
-
-    # Audio recorder component
-    audio_bytes = audio_recorder(
-        text="Click to record",
-        recording_color="#e74c3c",
-        neutral_color="#3498db",
-        icon_name="microphone",
-        icon_size="2x",
-        key="voice_recorder"
-    )
+    # Audio recorder component - centered in columns
+    col1, col2, col3 = st.columns([1.5, 1, 1.5])
+    with col2:
+        audio_bytes = audio_recorder(
+            text="Click to record",
+            recording_color="#9b59b6",
+            neutral_color="#8e44ad",
+            icon_name="microphone",
+            icon_size="2x",
+            key="voice_recorder"
+        )
 
     # Return audio if recorded (auto-send)
     if audio_bytes:
         # Check if this is new audio (not already processed)
         last_audio = st.session_state.get('last_processed_audio')
         if last_audio != audio_bytes:
-            st.success(f"✅ Recorded {len(audio_bytes)} bytes - Processing...")
             return audio_bytes
 
     return None

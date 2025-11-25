@@ -56,20 +56,20 @@ def render_header():
         unsafe_allow_html=True
     )
 
-    # Mode toggle centered
-    col1, col2, col3 = st.columns([1, 1, 1])
+    # Mode toggle with buttons (like login/register)
+    col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
-        mode = st.radio(
-            "Chat Mode",
-            options=["💬 Text Chat", "🎤 Voice Chat"],
-            index=0 if st.session_state.chat_mode == "text" else 1,
-            horizontal=True,
-            key="chat_mode_toggle",
-            label_visibility="collapsed"
-        )
-
-        # Update session state based on selection
-        st.session_state.chat_mode = "text" if "Text" in mode else "voice"
+        tab_cols = st.columns(2)
+        with tab_cols[0]:
+            if st.button("💬 Text Chat", use_container_width=True,
+                        type="primary" if st.session_state.chat_mode == 'text' else "secondary"):
+                st.session_state.chat_mode = 'text'
+                st.rerun()
+        with tab_cols[1]:
+            if st.button("🎤 Voice Chat", use_container_width=True,
+                        type="primary" if st.session_state.chat_mode == 'voice' else "secondary"):
+                st.session_state.chat_mode = 'voice'
+                st.rerun()
 
     st.markdown("---")
 

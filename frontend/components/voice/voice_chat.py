@@ -39,6 +39,12 @@ def initialize_voice_state():
     if 'current_audio' not in st.session_state:
         st.session_state.current_audio = None
 
+    if 'is_playing' not in st.session_state:
+        st.session_state.is_playing = False
+
+    if 'play_start_time' not in st.session_state:
+        st.session_state.play_start_time = None
+
 
 def add_voice_exchange(
     user_audio: bytes,
@@ -71,46 +77,79 @@ def add_voice_exchange(
 
 def render_voice_exchange(exchange: Dict[str, Any], index: int):
     """
-    Render a single voice exchange in the chat.
+    Render a single voice exchange in the chat with modern bubble design.
 
     Args:
         exchange: Voice exchange dictionary
         index: Exchange index in history
     """
-    # User section
-    with st.container():
-        st.markdown("### 👤 You")
-        st.markdown(f"**Transcript:** {exchange['transcript']}")
+    # User bubble (right side, light purple)
+    st.markdown(f"""
+        <div style='display: flex; justify-content: flex-end; margin-bottom: 10px;'>
+            <div style='
+                background: linear-gradient(135deg, #e8d5f2 0%, #d4b5e8 100%);
+                border-radius: 18px 18px 4px 18px;
+                padding: 12px 16px;
+                max-width: 70%;
+                box-shadow: 0 2px 8px rgba(142, 68, 173, 0.15);
+            '>
+                <div style='font-size: 12px; color: #6b4684; margin-bottom: 4px; font-weight: 600;'>
+                    👤 You
+                </div>
+                <div style='color: #2d1b3d; line-height: 1.5;'>
+                    {exchange['transcript']}
+                </div>
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
 
-        # User audio player (collapsed in expander)
-        if exchange.get('user_audio'):
-            with st.expander("🎤 Your recording"):
-                st.audio(exchange['user_audio'], format="audio/wav")
+    # User audio player (small, inline)
+    if exchange.get('user_audio'):
+        col1, col2 = st.columns([1, 2])
+        with col2:
+            st.audio(exchange['user_audio'], format="audio/wav")
 
-    st.markdown("---")
+    # AI bubble (left side, dark purple)
+    st.markdown(f"""
+        <div style='display: flex; justify-content: flex-start; margin-bottom: 10px; margin-top: 15px;'>
+            <div style='
+                background: linear-gradient(135deg, #8e44ad 0%, #9b59b6 100%);
+                border-radius: 18px 18px 18px 4px;
+                padding: 12px 16px;
+                max-width: 70%;
+                box-shadow: 0 2px 8px rgba(142, 68, 173, 0.3);
+            '>
+                <div style='font-size: 12px; color: #e8d5f2; margin-bottom: 4px; font-weight: 600;'>
+                    🤖 Caronte
+                </div>
+                <div style='color: white; line-height: 1.5;'>
+                    {exchange['response_text']}
+                </div>
+                <div style='font-size: 11px; color: rgba(255, 255, 255, 0.7); margin-top: 8px;'>
+                    ⏱️ {exchange['processing_time']:.2f}s
+                </div>
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
 
-    # Assistant section
-    with st.container():
-        st.markdown("### 🤖 Caronte")
-        st.markdown(exchange['response_text'])
-
-        # Assistant audio player
-        if exchange.get('response_audio'):
+    # AI audio player (small, inline)
+    if exchange.get('response_audio'):
+        col1, col2 = st.columns([2, 1])
+        with col1:
             st.audio(exchange['response_audio'], format="audio/wav")
 
-        # Processing time
-        st.caption(f"⏱️ Processed in {exchange['processing_time']:.2f}s")
-
-    st.markdown("---")
+    # Spacing between exchanges
+    st.markdown("<div style='margin-bottom: 20px;'></div>", unsafe_allow_html=True)
 
 
 def render_voice_history():
     """Render the complete voice chat history."""
     if not st.session_state.voice_history:
-        st.info("💬 No voice messages yet. Record your first question!")
         return
 
-    st.markdown("## 🎙️ Voice Chat History")
+    # Separator and title
+    st.markdown("---")
+    st.markdown("### 💬 Chat History")
 
     # Render exchanges in order
     for idx, exchange in enumerate(st.session_state.voice_history):
@@ -156,6 +195,11 @@ def handle_voice_message(audio_bytes: bytes, filename: str = "recording.wav"):
         )
 
         st.session_state.voice_status = "ready"
+
+        # Set playing state and start playback timer
+        st.session_state.is_playing = True
+        st.session_state.play_start_time = time.time()
+
         st.success("✅ Voice message processed!")
 
     except Exception as e:
@@ -211,6 +255,18 @@ def render_voice_chat():
     )
     st.markdown("---")
 
+    # No automatic timeout - user controls with button
+
+    # Show play button to manually control orb during playback
+    if st.session_state.voice_history and st.session_state.voice_history[-1].get('response_audio'):
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            if not st.session_state.is_playing:
+                if st.button("▶️ Play Response & Animate Orb", use_container_width=True, key="play_response_btn"):
+                    st.session_state.is_playing = True
+                    st.session_state.play_start_time = time.time()
+                    st.rerun()
+
     # Audio Orb Visualization
     with st.container():
         col1, col2, col3 = st.columns([1, 2, 1])
@@ -218,15 +274,45 @@ def render_voice_chat():
             # Determine orb state
             is_recording = st.session_state.get('is_recording', False)
             is_processing = st.session_state.get('voice_processing', False)
+            is_playing = st.session_state.get('is_playing', False)
 
             # Show orb
             audio_orb(
                 audio_blob=st.session_state.get('current_audio'),
                 is_recording=is_recording,
                 is_processing=is_processing,
+                is_playing=is_playing,
                 theme="dark",  # Force dark theme to match UI
                 key="voice_orb"
             )
+
+    # Latest response audio playback
+    if st.session_state.voice_history and st.session_state.is_playing:
+        latest_exchange = st.session_state.voice_history[-1]
+        if latest_exchange.get('response_audio'):
+            with st.container():
+                col1, col2, col3 = st.columns([1, 2, 1])
+                with col2:
+                    st.markdown("### 🔊 Playing Response")
+                    st.audio(
+                        latest_exchange['response_audio'], format="audio/wav")
+
+                    # Inject JavaScript to attempt autoplay
+                    st.markdown("""
+                        <script>
+                        // Attempt to autoplay the audio element
+                        setTimeout(function() {
+                            const audioElements = document.querySelectorAll('audio');
+                            if (audioElements.length > 0) {
+                                const lastAudio = audioElements[audioElements.length - 1];
+                                lastAudio.play().catch(e => {
+                                    console.log('Autoplay blocked by browser:', e);
+                                    // If blocked, user can click play manually
+                                });
+                            }
+                        }, 100);
+                        </script>
+                    """, unsafe_allow_html=True)
 
     # Voice input section
     with st.container():
@@ -234,9 +320,13 @@ def render_voice_chat():
 
         if audio_bytes:
             st.session_state.current_audio = audio_bytes
-            st.session_state.is_recording = False
             st.session_state.last_processed_audio = audio_bytes
-            handle_voice_message(audio_bytes)
+
+            # Process with spinner
+            with st.spinner("Processing audio..."):
+                handle_voice_message(audio_bytes)
+
+            st.session_state.is_recording = False
             st.rerun()
 
     # Status indicator
@@ -244,7 +334,8 @@ def render_voice_chat():
         render_voice_status(st.session_state.voice_status)
 
     # Chat history
-    st.markdown("<div style='margin-top: 30px;'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='margin-top: 30px;'></div>",
+                unsafe_allow_html=True)
     render_voice_history()
 
     # Clear history button

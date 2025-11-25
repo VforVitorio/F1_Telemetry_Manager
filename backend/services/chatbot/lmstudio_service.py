@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 # LM Studio configuration
 LM_STUDIO_URL = "http://localhost:1234/v1/chat/completions"
 LM_STUDIO_MODELS_URL = "http://localhost:1234/v1/models"
-DEFAULT_TIMEOUT = 60
+DEFAULT_TIMEOUT = 180  # Increased to 180s for longer responses
 
 
 class LMStudioError(Exception):

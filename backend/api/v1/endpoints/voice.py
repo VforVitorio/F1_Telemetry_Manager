@@ -22,6 +22,11 @@ from backend.models.voice_models import (
 from backend.services.voice.stt_service import get_stt_service
 from backend.services.voice.tts_service import get_tts_service
 from backend.services.voice.audio_processor import AudioProcessor
+from backend.services.chatbot.lmstudio_service import (
+    send_message as lm_send_message,
+    build_messages,
+    LMStudioError
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -204,23 +209,24 @@ async def synthesize_speech(request: TTSRequest):
     "/voice-chat",
     response_model=VoiceChatResponse,
     summary="Full voice chat flow",
-    description="Complete flow: STT → LLM → TTS (LLM integration pending)"
+    description="Complete flow: STT → LM Studio LLM → TTS"
 )
 async def voice_chat(
     audio: UploadFile = File(...),
     # context is sent as form data, will be parsed manually if needed
 ):
     """
-    Full voice chat flow: STT → LLM → TTS
+    Full voice chat flow: STT → LM Studio LLM → TTS
 
     Args:
         audio: Audio file with user's question
 
     Returns:
-        Transcript, response text, and audio
+        Transcript, LM Studio response text, and synthesized audio
 
     Note:
-        LLM integration (LM Studio) is TODO - currently returns placeholder response
+        Voice chat is currently single-turn (no conversation history).
+        Future enhancement could add multi-turn conversation support.
     """
     _validate_audio_file(audio)
     start_time = time.time()
@@ -236,14 +242,37 @@ async def voice_chat(
 
         logger.info(f"Transcribed: '{user_text}'")
 
-        # Step 2: Get LLM response
-        # TODO: Integrate with existing LM Studio chat service
-        # For now, return a placeholder response
-        response_text = (
-            f"You asked: {user_text}. "
-            f"This is a test response from the voice chat system. "
-            f"Integration with LM Studio is pending."
-        )
+        # Step 2: Get LLM response from LM Studio
+        try:
+            # Build messages array (no chat history for voice chat - single turn)
+            messages = build_messages(
+                user_message=user_text,
+                chat_history=[],  # Voice chat is single-turn for now
+                context={}  # Could add F1 context in future
+            )
+
+            # Send to LM Studio
+            lm_response = lm_send_message(
+                messages=messages,
+                model=None,  # Use default model
+                temperature=0.7,  # Balanced creativity
+                max_tokens=500,  # Reasonable length for TTS
+                stream=False
+            )
+
+            # Extract response content
+            if "choices" in lm_response and len(lm_response["choices"]) > 0:
+                response_text = lm_response["choices"][0]["message"]["content"]
+            else:
+                logger.warning("No response from LM Studio, using fallback")
+                response_text = "I'm sorry, I couldn't generate a response. Please try again."
+
+        except LMStudioError as e:
+            logger.error(f"LM Studio error: {e}")
+            response_text = "I'm having trouble connecting to the language model. Please ensure LM Studio is running."
+        except Exception as e:
+            logger.error(f"Unexpected error with LM Studio: {e}")
+            response_text = "An unexpected error occurred. Please try again."
 
         logger.info(f"Generated response: '{response_text[:50]}...'")
 

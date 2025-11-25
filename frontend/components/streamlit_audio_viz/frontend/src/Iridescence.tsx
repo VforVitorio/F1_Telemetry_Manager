@@ -33,13 +33,14 @@ varying vec2 vUv;
 void main() {
   float mr = min(uResolution.x, uResolution.y);
   vec2 uv = (vUv * 2.0 - 1.0) * uResolution.xy / mr;
-  float d = -uTime * 0.5 * uSpeed;
+  float d = -uTime * 0.8 * uSpeed;
   float a = 0.0;
 
   // Create layered cosine patterns for iridescent effect
-  for (float i = 0.0; i < 8.0; ++i) {
-    a += cos(i - d - a * uv.x);
-    d += sin(uv.y * i + a);
+  // Increased iterations and complexity for more "swirly" movement
+  for (float i = 0.0; i < 10.0; ++i) {
+    a += cos(i - d - a * uv.x + uv.y * 0.5);
+    d += sin(uv.y * i + a + uv.x * 0.5);
   }
 
   // Generate color with flowing patterns

@@ -7,17 +7,23 @@
   display: flex;
   justify-content: center;
   align-items: center;
-  width: 100%;
+  width: calc(100% - 8px); /* Account for border and padding */
   height: 350px;
   position: relative;
-  overflow: hidden;
-  background: linear-gradient(135deg, #121127 0%, #1e1b4b 100%) !important;  /* Same gradient as .stApp */
+  overflow: visible;
+  background: linear-gradient(135deg, #121127 0%, #1e1b4b 100%) !important;
   border-radius: 24px;
+  border: 2px solid #8e44ad; /* Purple border */
+  box-shadow: 0 0 20px rgba(142, 68, 255, 0.2); /* Subtle glow */
+  padding: 8px; /* Larger padding to ensure border is fully visible on all sides */
+  margin: 0 auto; /* Center the container */
+  box-sizing: border-box; /* Include border and padding in width calculation */
 }
 
 .orb-container.light {
   background: #ffffff !important;  /* White for light theme */
   border-radius: 24px;
+  border: 2px solid #8e44ad;
 }
 
 /* Orb wrapper */
