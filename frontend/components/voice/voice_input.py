@@ -6,54 +6,38 @@ Allows users to record audio for voice chat.
 """
 
 import streamlit as st
-from typing import Optional, Tuple
+from typing import Optional
 from audio_recorder_streamlit import audio_recorder
 
 
-def render_voice_input() -> Tuple[Optional[bytes], bool]:
+def render_voice_input() -> Optional[bytes]:
     """
     Render voice input component with microphone recording.
+    Auto-sends when recording is complete.
 
     Returns:
-        Tuple containing:
-        - audio_bytes: Recorded audio as bytes (None if no recording)
-        - send_clicked: Boolean indicating if recording was completed
+        audio_bytes: Recorded audio as bytes (None if no recording)
     """
-    st.markdown("### 🎤 Voice Input")
+    # Audio recorder component - centered in columns
+    col1, col2, col3 = st.columns([1.5, 1, 1.5])
+    with col2:
+        audio_bytes = audio_recorder(
+            text="Click to record",
+            recording_color="#9b59b6",
+            neutral_color="#8e44ad",
+            icon_name="microphone",
+            icon_size="2x",
+            key="voice_recorder"
+        )
 
-    # Instructions
-    st.info("🎙️ Click the microphone to start recording. Click again to stop.")
-
-    # Audio recorder component
-    audio_bytes = audio_recorder(
-        text="Click to record",
-        recording_color="#e74c3c",
-        neutral_color="#3498db",
-        icon_name="microphone",
-        icon_size="2x",
-        key="voice_recorder"
-    )
-
-    # Check if audio was recorded
+    # Return audio if recorded (auto-send)
     if audio_bytes:
-        st.success(f"✅ Recorded {len(audio_bytes)} bytes")
+        # Check if this is new audio (not already processed)
+        last_audio = st.session_state.get('last_processed_audio')
+        if last_audio != audio_bytes:
+            return audio_bytes
 
-        # Show audio player for preview
-        st.audio(audio_bytes, format="audio/wav")
-
-        # Send button
-        col1, col2, col3 = st.columns([1, 1, 1])
-        with col2:
-            send_clicked = st.button(
-                "🚀 Send Voice Message",
-                key="send_voice_btn",
-                type="primary",
-                use_container_width=True
-            )
-
-        return audio_bytes, send_clicked
-
-    return None, False
+    return None
 
 
 def render_voice_status(status: str):

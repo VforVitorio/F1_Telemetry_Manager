@@ -1,0 +1,148 @@
+/**
+ * Audio Orb Visualization Styles
+ * Iridescent WebGL orb with audio reactivity
+ */
+
+.orb-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: calc(100% - 8px); /* Account for border and padding */
+  height: 350px;
+  position: relative;
+  overflow: visible;
+  background: linear-gradient(135deg, #121127 0%, #1e1b4b 100%) !important;
+  border-radius: 24px;
+  border: 2px solid #8e44ad; /* Purple border */
+  box-shadow: 0 0 20px rgba(142, 68, 255, 0.2); /* Subtle glow */
+  padding: 8px; /* Larger padding to ensure border is fully visible on all sides */
+  margin: 0 auto; /* Center the container */
+  box-sizing: border-box; /* Include border and padding in width calculation */
+}
+
+.orb-container.light {
+  background: #ffffff !important;  /* White for light theme */
+  border-radius: 24px;
+  border: 2px solid #8e44ad;
+}
+
+/* Orb wrapper */
+.orb-wrapper {
+  position: relative;
+  width: 200px;
+  height: 200px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+/* Glow effect - purple theme */
+.orb-glow {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(142, 68, 255, 0.8) 0%, transparent 70%);
+  filter: blur(130px);
+  transition: opacity 0.3s ease-out;
+}
+
+.orb-container.dark .orb-glow {
+  background: radial-gradient(circle, rgba(178, 102, 255, 0.9) 0%, transparent 70%);
+}
+
+/* Orb inner container */
+.orb-inner {
+  position: relative;
+  width: 200px;
+  height: 200px;
+  border-radius: 50%;
+  overflow: hidden;
+  box-shadow: 0 0 90px rgba(142, 68, 255, 0.45);
+  transition: transform 0.3s ease-out;
+  background: transparent !important;
+}
+
+.orb-container.dark .orb-inner {
+  box-shadow: 0 0 90px rgba(178, 102, 255, 0.55);
+}
+
+/* WebGL canvas container */
+.orb-inner canvas {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: transparent !important;
+}
+
+.orb-inner > div {
+  background: transparent !important;
+}
+
+/* Error display */
+.orb-error {
+  position: absolute;
+  bottom: -40px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 8px 16px;
+  background: rgba(231, 76, 60, 0.9);
+  color: white;
+  border-radius: 8px;
+  font-size: 12px;
+  white-space: nowrap;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  z-index: 10;
+}
+
+/* State indicator (optional, for debugging) */
+.state-indicator {
+  position: absolute;
+  top: -30px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 5px 10px;
+  background: rgba(0, 0, 0, 0.7);
+  color: white;
+  border-radius: 5px;
+  font-size: 11px;
+  font-family: monospace;
+  white-space: nowrap;
+}
+
+/* Smooth transitions between states */
+.orb-container > * {
+  transition: opacity 0.3s ease-in-out;
+}
+
+/* Responsive sizing */
+@media (max-width: 768px) {
+  .orb-wrapper {
+    width: 150px;
+    height: 150px;
+  }
+
+  .orb-inner {
+    width: 150px;
+    height: 150px;
+  }
+
+  .orb-container {
+    height: 250px;
+  }
+}
+
+/* Animation for smooth state transitions */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.orb-wrapper {
+  animation: fadeIn 0.5s ease-out;
+}
