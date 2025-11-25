@@ -18,11 +18,11 @@ pandas==2.2.0
 # Voice Chat Dependencies
 # Note: openai-whisper is compatible with numpy>=1.17 (our 1.26.4 is fine)
 openai-whisper==20231117
-pyttsx3==2.90
+# Edge TTS for high-quality neural speech synthesis (Microsoft Edge TTS, no pandas dependency)
+edge-tts==7.2.3
+nest-asyncio==1.6.0
 pydub==0.25.1
 soundfile==0.12.1
 aiofiles==23.2.1
 # ffmpeg-python is needed for pydub audio conversion
 ffmpeg-python==0.2.0
-comtypes==1.4.1
-pywin32==306

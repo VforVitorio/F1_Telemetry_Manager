@@ -9,12 +9,12 @@ WHISPER_MODEL = "base"  # Options: tiny, base, small, medium, large
 WHISPER_LANGUAGE = "en"
 WHISPER_DEVICE = "cpu"  # or "cuda" if GPU available
 
-# TTS Configuration (pyttsx3)
-TTS_ENGINE = "pyttsx3"
-TTS_RATE = 175  # Speech rate (words per minute), default ~150-200
+# TTS Configuration (Edge TTS)
+TTS_ENGINE = "edge"  # Using Microsoft Edge TTS
+# Default voice (Andrew - Male, Multilingual)
+TTS_VOICE = "en-US-AndrewMultilingualNeural"
+TTS_RATE = 175  # Speech rate (words per minute), baseline ~175
 TTS_VOLUME = 0.9  # Volume (0.0 to 1.0)
-# David = male English voice
-TTS_VOICE_ID = r"HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Speech\Voices\Tokens\TTS_MS_EN-US_DAVID_11.0"
 
 # Audio Processing
 AUDIO_SAMPLE_RATE = 16000
