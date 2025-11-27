@@ -74,26 +74,27 @@ def navigate_to_chat_with_context(
 
 def plotly_fig_to_base64(
     fig: go.Figure,
-    format: str = "png",
-    width: int = 800,
-    height: int = 500,
-    scale: float = 1.5
+    format: str = "jpeg",  # Changed to JPEG for better compression
+    width: int = 600,      # Reduced from 800
+    height: int = 400,     # Reduced from 500
+    scale: float = 1.0     # Reduced from 1.5 for much smaller files
 ) -> str:
     """
     Convert a Plotly figure to base64 encoded image with data URI format.
 
     Args:
         fig: Plotly figure object
-        format: Image format ('png', 'jpg', 'svg')
-        width: Image width in pixels (reduced default for smaller files)
-        height: Image height in pixels (reduced default for smaller files)
-        scale: Scale factor for higher resolution (reduced to 1.5 for smaller files)
+        format: Image format ('png', 'jpg', 'svg') - JPEG recommended for smaller size
+        width: Image width in pixels (optimized for vision models)
+        height: Image height in pixels (optimized for vision models)
+        scale: Scale factor for resolution (1.0 for smaller files)
 
     Returns:
-        Base64 encoded image string with data URI prefix (data:image/png;base64,...)
+        Base64 encoded image string with data URI prefix (data:image/jpeg;base64,...)
     """
     try:
-        # Convert plotly figure to image bytes with smaller dimensions
+        # Convert plotly figure to image bytes with optimized dimensions
+        # Using JPEG format and lower resolution to reduce token usage
         img_bytes = fig.to_image(
             format=format,
             width=width,
@@ -110,8 +111,10 @@ def plotly_fig_to_base64(
 
         # Log size for debugging
         size_kb = len(data_uri) / 1024
-        if size_kb > 500:  # Warn if image is large
-            st.warning(f"⚠️ Image size is {size_kb:.0f}KB. Large images may cause issues with some models.")
+        st.info(f"📊 Chart image size: {size_kb:.0f}KB (~{int(size_kb * 750)} tokens estimated)")
+
+        if size_kb > 200:  # Warn if image is still large
+            st.warning(f"⚠️ Image is {size_kb:.0f}KB. If the model fails, try increasing Context Length in LM Studio to 32K+")
 
         return data_uri
     except Exception as e:
