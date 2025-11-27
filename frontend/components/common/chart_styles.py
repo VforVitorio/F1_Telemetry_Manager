@@ -31,15 +31,13 @@ def apply_telemetry_chart_styles() -> str:
     return """
     <style>
     /* Target the Plotly chart container with multiple selectors for stronger specificity */
-    div[data-testid="stPlotlyChart"],
-    div[data-testid="stPlotlyChart"] > div,
-    .js-plotly-plot {
+    div[data-testid="stPlotlyChart"] {
         border: 2px solid #a78bfa !important;
         border-radius: 12px !important;
-        padding: 20px !important;
         background-color: #181633 !important;
         margin: 20px 0 !important;
         box-shadow: 0 4px 12px rgba(167, 139, 250, 0.2) !important;
+        overflow: hidden !important;
     }
 
     /* Ensure the inner Plotly elements also respect the background */
