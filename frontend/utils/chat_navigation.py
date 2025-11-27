@@ -75,25 +75,25 @@ def navigate_to_chat_with_context(
 def plotly_fig_to_base64(
     fig: go.Figure,
     format: str = "png",
-    width: int = 1200,
-    height: int = 600,
-    scale: float = 2.0
+    width: int = 800,
+    height: int = 500,
+    scale: float = 1.5
 ) -> str:
     """
-    Convert a Plotly figure to base64 encoded image.
+    Convert a Plotly figure to base64 encoded image with data URI format.
 
     Args:
         fig: Plotly figure object
         format: Image format ('png', 'jpg', 'svg')
-        width: Image width in pixels
-        height: Image height in pixels
-        scale: Scale factor for higher resolution (2.0 = retina)
+        width: Image width in pixels (reduced default for smaller files)
+        height: Image height in pixels (reduced default for smaller files)
+        scale: Scale factor for higher resolution (reduced to 1.5 for smaller files)
 
     Returns:
-        Base64 encoded image string
+        Base64 encoded image string with data URI prefix (data:image/png;base64,...)
     """
     try:
-        # Convert plotly figure to image bytes
+        # Convert plotly figure to image bytes with smaller dimensions
         img_bytes = fig.to_image(
             format=format,
             width=width,
@@ -103,7 +103,17 @@ def plotly_fig_to_base64(
 
         # Encode to base64
         img_b64 = base64.b64encode(img_bytes).decode('utf-8')
-        return img_b64
+
+        # Add data URI prefix for proper multimodal format
+        mime_type = f"image/{format}"
+        data_uri = f"data:{mime_type};base64,{img_b64}"
+
+        # Log size for debugging
+        size_kb = len(data_uri) / 1024
+        if size_kb > 500:  # Warn if image is large
+            st.warning(f"⚠️ Image size is {size_kb:.0f}KB. Large images may cause issues with some models.")
+
+        return data_uri
     except Exception as e:
         st.error(f"Error converting chart to image: {e}")
         return ""

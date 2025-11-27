@@ -92,6 +92,7 @@ class ComparisonQueryHandler(BaseHandler):
             # Build messages with comparison system prompt
             messages = build_messages(
                 user_message=message,
+                image_base64=image,  # Pass image (comparison charts) to build_messages
                 system_prompt=self.system_prompt,
                 chat_history=chat_history,
                 context=context

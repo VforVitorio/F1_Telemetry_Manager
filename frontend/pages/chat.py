@@ -78,6 +78,10 @@ def handle_pending_message():
     """
     Check for and process pending messages from other pages.
     This happens when user clicks "Ask AI about this" from dashboard/comparison.
+
+    Note: This function does NOT send messages synchronously during page load
+    to avoid freezing the UI. Instead, it prepares the message and sets a flag
+    for deferred sending after the UI renders.
     """
     if 'chat_pending_message' not in st.session_state:
         return
@@ -88,24 +92,23 @@ def handle_pending_message():
     if pending.get('new_chat', False):
         create_new_chat(context=pending.get('context'))
 
-    # Add messages to history
-    if 'image' in pending:
-        add_message("user", "image", pending['image'])
+    # Get the text and image from pending
+    text_content = pending.get('prompt') or pending.get('text', '')
+    image_content = pending.get('image')
 
-    if 'prompt' in pending:
-        add_message("user", "text", pending['prompt'])
-    elif 'text' in pending:
-        add_message("user", "text", pending['text'])
+    # Add messages to history WITHOUT sending
+    if image_content:
+        add_message("user", "image", image_content)
+    if text_content:
+        add_message("user", "text", text_content)
 
-    # Auto-send if requested
+    # If auto-send is requested, set a flag for deferred sending
+    # This avoids blocking the page load with a synchronous LLM call
     if pending.get('auto_send', False):
-        # TODO: Implement auto-send functionality
-        # This should call handle_send_message with the pending content
-        st.info("🤖 Processing your question about the chart...")
-
-        # For now, just show a placeholder
-        st.warning(
-            "Auto-send functionality will be implemented when backend is ready")
+        st.session_state.pending_auto_send = {
+            'text': text_content,
+            'image': image_content
+        }
 
     # Clear the pending message
     clear_pending_message()
@@ -114,18 +117,21 @@ def handle_pending_message():
     st.rerun()
 
 
-def handle_send_message(text: str, image: Optional[bytes]):
+def handle_send_message(text: str, image: Optional[str]):
     """
     Handle sending a message to the LLM.
 
     Args:
         text: User message text
-        image: Optional image bytes
+        image: Optional image in base64 data URI format (string)
     """
     # Validate input
     if not text.strip() and image is None:
         st.warning("⚠️ Please enter a message or upload an image.")
         return
+
+    # Store image to send (before adding to history)
+    image_to_send = image
 
     # Add user messages to history
     if text.strip():
@@ -137,20 +143,29 @@ def handle_send_message(text: str, image: Optional[bytes]):
     st.session_state.chat_streaming = True
 
     try:
-        # Get chat history for context
-        history = get_chat_history()
+        # Get chat history for context (excluding current messages we just added)
+        num_messages_added = (1 if text.strip() else 0) + (1 if image else 0)
+        history = get_chat_history()[:-num_messages_added] if num_messages_added > 0 else get_chat_history()
 
         # Build context from session state if available
         context = {}
         if hasattr(st.session_state, 'chat_context'):
             context = st.session_state.chat_context
 
+        # If no image provided explicitly, look for the most recent user image in history
+        # This allows the LLM to see previously uploaded images
+        if image_to_send is None:
+            for msg in reversed(history):
+                if msg.get("role") == "user" and msg.get("type") == "image":
+                    image_to_send = msg.get("content")
+                    break
+
         # Get response from backend using send_message (non-streaming for simplicity)
         from services.chat_service import send_message as chat_send_message
 
         response = chat_send_message(
             text=text,
-            image=image,
+            image=image_to_send,  # Now passing base64 string
             chat_history=history,
             context=context,
             model=DEFAULT_MODEL,
@@ -240,6 +255,22 @@ def render_chat_page():
         # Show streaming indicator if active
         if st.session_state.get('chat_streaming', False):
             st.info("🤖 Assistant is thinking...")
+
+        # Handle deferred auto-send (after UI is rendered)
+        # This is triggered when user clicks "Ask AI" button from other pages
+        if st.session_state.get('pending_auto_send'):
+            auto_send_data = st.session_state.pending_auto_send
+            del st.session_state.pending_auto_send  # Clear flag
+
+            # Show info message
+            st.info("🤖 Analyzing the chart with vision model...")
+
+            # Send the message now that UI is rendered
+            handle_send_message(
+                text=auto_send_data.get('text', ''),
+                image=auto_send_data.get('image')
+            )
+            st.rerun()
 
 
 # Entry point

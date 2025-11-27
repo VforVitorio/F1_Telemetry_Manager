@@ -52,7 +52,7 @@ def get_available_models() -> List[str]:
 
 async def stream_message(
     text: str,
-    image: Optional[bytes] = None,
+    image: Optional[str] = None,
     chat_history: Optional[List[Dict[str, Any]]] = None,
     context: Optional[Dict[str, Any]] = None,
     model: str = "llama3.2-vision",
@@ -63,7 +63,7 @@ async def stream_message(
 
     Args:
         text: User message text
-        image: Optional image bytes (base64 encoded)
+        image: Optional image in base64 data URI format (e.g., data:image/png;base64,...)
         chat_history: Previous chat messages for context
         context: F1 session context (year, GP, session, drivers, etc.)
         model: Model name to use
@@ -86,7 +86,7 @@ async def stream_message(
                     "temperature": temperature,
                     "max_tokens": 1000
                 },
-                timeout=120.0
+                timeout=300.0  # Increased for vision models (matches backend timeout)
             ) as response:
                 async for chunk in response.aiter_text():
                     if chunk:
@@ -99,7 +99,7 @@ async def stream_message(
 
 def send_message(
     text: str,
-    image: Optional[bytes] = None,
+    image: Optional[str] = None,
     chat_history: Optional[List[Dict[str, Any]]] = None,
     context: Optional[Dict[str, Any]] = None,
     model: str = "llama3.2-vision",
@@ -110,7 +110,7 @@ def send_message(
 
     Args:
         text: User message text
-        image: Optional image bytes (base64 encoded)
+        image: Optional image in base64 data URI format (e.g., data:image/png;base64,...)
         chat_history: Previous chat messages for context
         context: F1 session context
         model: Model name to use
@@ -131,7 +131,7 @@ def send_message(
                 "temperature": temperature,
                 "max_tokens": 1000
             },
-            timeout=120.0
+            timeout=300.0  # Increased for vision models (matches backend timeout)
         )
 
         if response.status_code == 200:
