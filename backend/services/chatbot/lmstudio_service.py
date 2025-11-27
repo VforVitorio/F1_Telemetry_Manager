@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 # LM Studio configuration
 LM_STUDIO_URL = "http://localhost:1234/v1/chat/completions"
 LM_STUDIO_MODELS_URL = "http://localhost:1234/v1/models"
-DEFAULT_TIMEOUT = 180  # Increased to 180s for longer responses
+DEFAULT_TIMEOUT = 300  # Increased to 300s (5 min) for vision models
 
 
 class LMStudioError(Exception):
@@ -242,21 +242,23 @@ def stream_message(
 
 def build_messages(
     user_message: str,
+    image_base64: Optional[str] = None,
     system_prompt: Optional[str] = None,
     chat_history: Optional[List[Dict[str, Any]]] = None,
     context: Optional[Dict[str, Any]] = None
-) -> List[Dict[str, str]]:
+) -> List[Dict[str, Any]]:
     """
-    Build the messages array for LM Studio API.
+    Build the messages array for LM Studio API with multimodal support.
 
     Args:
         user_message: The user's message
+        image_base64: Optional base64 encoded image (data URI format)
         system_prompt: System prompt (optional)
         chat_history: Previous messages (optional)
         context: F1 session context to include (optional)
 
     Returns:
-        List of message dicts ready for LM Studio
+        List of message dicts ready for LM Studio (supports multimodal)
     """
     messages = []
 
@@ -289,17 +291,38 @@ def build_messages(
             role = msg.get("role", "")
             content = msg.get("content", "")
 
-            # Only add text messages (skip images for now)
+            # Handle text messages
             if role in ["user", "assistant"] and content:
                 messages.append({
                     "role": role,
                     "content": content
                 })
 
-    # Add current user message
-    messages.append({
-        "role": "user",
-        "content": user_message
-    })
+    # Add current user message (with optional image)
+    if image_base64:
+        # Multimodal message for vision models (OpenAI Vision API format)
+        # This format is compatible with Qwen2-VL and other vision models
+        messages.append({
+            "role": "user",
+            "content": [
+                {
+                    "type": "text",
+                    "text": user_message
+                },
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": image_base64  # Should be in format: data:image/jpeg;base64,...
+                    }
+                }
+            ]
+        })
+        logger.info(f"Built multimodal message with image (size: {len(image_base64)} chars)")
+    else:
+        # Text-only message
+        messages.append({
+            "role": "user",
+            "content": user_message
+        })
 
     return messages

@@ -82,9 +82,10 @@ async def send_chat_message(request: ChatRequest):
         Complete chat response
     """
     try:
-        # Build messages array
+        # Build messages array with multimodal support
         messages = build_messages(
             user_message=request.text,
+            image_base64=request.image,  # Pass image to LLM
             chat_history=request.chat_history,
             context=request.context
         )
@@ -116,7 +117,38 @@ async def send_chat_message(request: ChatRequest):
             )
 
     except LMStudioError as e:
-        logger.error(f"LM Studio error: {e}")
+        logger.error(f"LM Studio error with image: {e}")
+
+        # Retry without image if error contains vision-related keywords
+        if request.image and any(keyword in str(e).lower() for keyword in ['url', 'image', 'vision', 'multimodal']):
+            logger.warning("Retrying without image (model may not support vision)")
+            try:
+                # Retry with text only
+                messages_text_only = build_messages(
+                    user_message=request.text + "\n\n[Note: Image was attached but model doesn't support vision]",
+                    image_base64=None,
+                    chat_history=request.chat_history,
+                    context=request.context
+                )
+
+                response = lm_send_message(
+                    messages=messages_text_only,
+                    model=request.model,
+                    temperature=request.temperature,
+                    max_tokens=request.max_tokens,
+                    stream=False
+                )
+
+                if "choices" in response and len(response["choices"]) > 0:
+                    content = response["choices"][0]["message"]["content"]
+                    return ChatResponse(
+                        response=content + "\n\n⚠️ Note: Image was not processed (vision model required)",
+                        llm_model=response.get("model"),
+                        tokens_used=response.get("usage", {}).get("total_tokens")
+                    )
+            except Exception as retry_error:
+                logger.error(f"Retry without image also failed: {retry_error}")
+
         raise HTTPException(status_code=503, detail=str(e))
     except Exception as e:
         logger.error(f"Error sending message: {e}")
@@ -135,9 +167,10 @@ async def stream_chat_message(request: ChatRequest):
         Streaming response with text chunks
     """
     try:
-        # Build messages array
+        # Build messages array with multimodal support
         messages = build_messages(
             user_message=request.text,
+            image_base64=request.image,  # Pass image to LLM
             chat_history=request.chat_history,
             context=request.context
         )

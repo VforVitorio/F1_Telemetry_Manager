@@ -79,6 +79,7 @@ class BasicQueryHandler(BaseHandler):
             # Build messages with basic query system prompt
             messages = build_messages(
                 user_message=message,
+                image_base64=image,  # Pass image to build_messages
                 system_prompt=self.system_prompt,
                 chat_history=chat_history,
                 context=context
