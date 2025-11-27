@@ -133,6 +133,23 @@ def send_message(
         if model:
             payload["model"] = model
 
+        # Log payload structure (without full base64 to avoid log spam)
+        logger.debug(f"Sending request to LM Studio with {len(messages)} messages")
+        for i, msg in enumerate(messages):
+            role = msg.get("role", "unknown")
+            content = msg.get("content")
+            if isinstance(content, list):
+                logger.debug(f"  Message {i}: role={role}, multimodal with {len(content)} parts")
+                for j, part in enumerate(content):
+                    part_type = part.get("type", "unknown")
+                    if part_type == "image_url":
+                        url = part.get("image_url", {}).get("url", "")
+                        logger.debug(f"    Part {j}: type={part_type}, url_prefix={url[:50]}...")
+                    else:
+                        logger.debug(f"    Part {j}: type={part_type}")
+            else:
+                logger.debug(f"  Message {i}: role={role}, text={str(content)[:100]}...")
+
         response = requests.post(
             LM_STUDIO_URL,
             headers={"Content-Type": "application/json"},

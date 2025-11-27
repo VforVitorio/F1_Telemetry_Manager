@@ -117,15 +117,16 @@ async def send_chat_message(request: ChatRequest):
             )
 
     except LMStudioError as e:
-        logger.error(f"LM Studio error with image: {e}")
+        logger.error(f"LM Studio error: {e}")
 
-        # Retry without image if error contains vision-related keywords
-        if request.image and any(keyword in str(e).lower() for keyword in ['url', 'image', 'vision', 'multimodal']):
-            logger.warning("Retrying without image (model may not support vision)")
+        # Always retry without image if an image was attached
+        # Many vision errors don't have obvious keywords (e.g., "Channel Error")
+        if request.image:
+            logger.warning(f"Image was attached and LM Studio failed - retrying without image. Original error: {e}")
             try:
                 # Retry with text only
                 messages_text_only = build_messages(
-                    user_message=request.text + "\n\n[Note: Image was attached but model doesn't support vision]",
+                    user_message=request.text + "\n\n[Note: Image was attached but the model couldn't process it]",
                     image_base64=None,
                     chat_history=request.chat_history,
                     context=request.context
@@ -142,13 +143,18 @@ async def send_chat_message(request: ChatRequest):
                 if "choices" in response and len(response["choices"]) > 0:
                     content = response["choices"][0]["message"]["content"]
                     return ChatResponse(
-                        response=content + "\n\n⚠️ Note: Image was not processed (vision model required)",
+                        response=content + "\n\n⚠️ Note: The attached image could not be processed. The model may not support vision, or the image format is incompatible.",
                         llm_model=response.get("model"),
                         tokens_used=response.get("usage", {}).get("total_tokens")
                     )
             except Exception as retry_error:
                 logger.error(f"Retry without image also failed: {retry_error}")
+                raise HTTPException(
+                    status_code=503,
+                    detail=f"LM Studio failed with image: {e}. Retry without image also failed: {retry_error}"
+                )
 
+        # No image attached, or retry failed
         raise HTTPException(status_code=503, detail=str(e))
     except Exception as e:
         logger.error(f"Error sending message: {e}")
