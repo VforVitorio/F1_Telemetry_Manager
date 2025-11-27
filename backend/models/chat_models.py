@@ -38,3 +38,11 @@ class HealthResponse(BaseModel):
     lm_studio_reachable: bool
     message: str
     models_available: Optional[int] = None
+
+
+class QueryResponse(BaseModel):
+    """Response model for routed queries."""
+    type: str  # Query type (BASIC_QUERY, TECHNICAL_QUERY, etc.)
+    handler: str  # Handler class name
+    response: str  # The actual response content
+    metadata: Dict[str, Any]  # Additional metadata (processing time, tokens, etc.)

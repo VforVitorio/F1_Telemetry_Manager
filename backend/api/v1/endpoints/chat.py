@@ -21,12 +21,18 @@ from backend.models.chat_models import (
     ChatMessage,
     ChatRequest,
     ChatResponse,
-    HealthResponse
+    HealthResponse,
+    QueryResponse
 )
+from backend.services.chatbot.router import QueryRouter
+from backend.services.chatbot.utils.validators import ValidationError
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/chat", tags=["chat"])
+
+# Initialize the query router (singleton)
+query_router = QueryRouter()
 
 
 @router.get("/health", response_model=HealthResponse)
@@ -160,4 +166,50 @@ async def stream_chat_message(request: ChatRequest):
 
     except Exception as e:
         logger.error(f"Error initializing stream: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/query", response_model=QueryResponse)
+async def process_query(request: ChatRequest):
+    """
+    Process a query with intelligent routing to appropriate handler.
+
+    This endpoint automatically detects the type of query (basic, technical,
+    comparison, report, or download) and routes it to the specialized handler.
+
+    Args:
+        request: Chat request with message, history, and parameters
+
+    Returns:
+        QueryResponse with type, handler, response, and metadata
+    """
+    try:
+        logger.info(f"Received query request: {request.text[:100]}...")
+
+        # Process query through router
+        result = query_router.process_query(
+            text=request.text,
+            image=request.image,
+            chat_history=request.chat_history,
+            context=request.context,
+            model=request.model,
+            temperature=request.temperature,
+            max_tokens=request.max_tokens,
+        )
+
+        logger.info(
+            f"Query processed successfully: type={result['type']}, "
+            f"handler={result['handler']}"
+        )
+
+        return QueryResponse(**result)
+
+    except ValidationError as e:
+        logger.error(f"Validation error: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+    except LMStudioError as e:
+        logger.error(f"LM Studio error: {e}")
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error processing query: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

@@ -26,3 +26,7 @@ soundfile==0.12.1
 aiofiles==23.2.1
 # ffmpeg-python is needed for pydub audio conversion
 ffmpeg-python==0.2.0
+
+# Chat Query Routing Dependencies
+# requests is used for LM Studio HTTP API communication
+requests==2.31.0
