@@ -253,6 +253,17 @@ def render_voice_chat():
         "<h2 style='text-align: center;'>🎤 Voice Chat Mode</h2>",
         unsafe_allow_html=True
     )
+
+    # Description
+    st.markdown(
+        """
+        <p style='text-align: center; color: #a78bfa; font-size: 14px; margin-top: -10px; margin-bottom: 20px;'>
+        Have a casual, conversational discussion about F1 strategies, race analysis, and telemetry insights with our AI assistant.
+        </p>
+        """,
+        unsafe_allow_html=True
+    )
+
     st.markdown("---")
 
     # No automatic timeout - user controls with button
@@ -276,9 +287,19 @@ def render_voice_chat():
             is_processing = st.session_state.get('voice_processing', False)
             is_playing = st.session_state.get('is_playing', False)
 
+            # Get audio blob for visualization
+            # When playing: use response audio for audio-reactive animation
+            # When recording: use current recording audio
+            audio_blob = None
+            if is_playing and st.session_state.voice_history:
+                latest_exchange = st.session_state.voice_history[-1]
+                audio_blob = latest_exchange.get('response_audio')
+            elif is_recording:
+                audio_blob = st.session_state.get('current_audio')
+
             # Show orb
             audio_orb(
-                audio_blob=st.session_state.get('current_audio'),
+                audio_blob=audio_blob,
                 is_recording=is_recording,
                 is_processing=is_processing,
                 is_playing=is_playing,
