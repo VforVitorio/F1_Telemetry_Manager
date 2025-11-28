@@ -25,6 +25,95 @@ def _fetch_lap_telemetry_cached(year: int, gp: str, session: str, driver: str, l
     return TelemetryService.get_lap_telemetry(year, gp, session, driver, lap_number)
 
 
+def _detect_outliers_iqr(lap_times_data):
+    """
+    Detect outliers using IQR (Interquartile Range) method.
+
+    Args:
+        lap_times_data: List of lap time data dictionaries
+
+    Returns:
+        Set of lap indices that are outliers
+    """
+    # Group lap times by driver
+    driver_times = defaultdict(list)
+    lap_indices = {}
+
+    for idx, lap in enumerate(lap_times_data):
+        driver = lap['driver']
+        lap_time = lap['lap_time']
+        driver_times[driver].append(lap_time)
+        lap_indices[(driver, lap['lap_number'])] = idx
+
+    # Detect outliers per driver using IQR
+    outlier_indices = set()
+
+    for driver, times in driver_times.items():
+        if len(times) < 4:  # Need at least 4 data points for IQR
+            continue
+
+        # Calculate Q1, Q3, and IQR
+        times_sorted = sorted(times)
+        n = len(times_sorted)
+        q1_idx = n // 4
+        q3_idx = 3 * n // 4
+
+        q1 = times_sorted[q1_idx]
+        q3 = times_sorted[q3_idx]
+        iqr = q3 - q1
+
+        # Define outlier bounds
+        lower_bound = q1 - 1.5 * iqr
+        upper_bound = q3 + 1.5 * iqr
+
+        # Mark outliers
+        for idx, lap in enumerate(lap_times_data):
+            if lap['driver'] == driver:
+                if lap['lap_time'] < lower_bound or lap['lap_time'] > upper_bound:
+                    outlier_indices.add(idx)
+
+    return outlier_indices
+
+
+def _filter_lap_data(lap_times_data, show_outliers, show_invalid_laps):
+    """
+    Filter lap data based on toggle states.
+
+    Args:
+        lap_times_data: List of lap time data dictionaries
+        show_outliers: Whether to show outlier laps
+        show_invalid_laps: Whether to show invalid laps
+
+    Returns:
+        Filtered list of lap data
+    """
+    # Detect outliers
+    outlier_indices = _detect_outliers_iqr(lap_times_data)
+
+    # Mark outliers in the data
+    for idx in outlier_indices:
+        lap_times_data[idx]['is_outlier'] = True
+
+    # Filter based on toggles
+    filtered_data = []
+    for idx, lap in enumerate(lap_times_data):
+        # Check if lap is an outlier
+        is_outlier = idx in outlier_indices
+
+        # Check if lap is invalid (from backend or outlier)
+        is_invalid = not lap.get('is_accurate', True) or lap.get('is_pit_out_lap', False)
+
+        # Apply filters
+        if not show_outliers and is_outlier:
+            continue
+        if not show_invalid_laps and is_invalid:
+            continue
+
+        filtered_data.append(lap)
+
+    return filtered_data
+
+
 def render_lap_graph(selected_year, selected_gp, selected_session, selected_drivers, color_palette):
     """
     Display lap time graph with Plotly using real FastF1 data.
@@ -65,18 +154,26 @@ def render_lap_graph(selected_year, selected_gp, selected_session, selected_driv
     # Create Plotly figure
     fig = go.Figure()
 
+    # Get filter states from session
+    show_outliers = st.session_state.get('show_outliers', False)
+    show_invalid_laps = st.session_state.get('show_invalid_laps', True)
+
     # Use real lap times data from backend
     if lap_times_data:
-        # Group lap times by driver
-        driver_laps = defaultdict(lambda: {'lap_numbers': [], 'lap_times': [], 'compounds': []})
+        # Filter data based on toggle states
+        filtered_data = _filter_lap_data(lap_times_data, show_outliers, show_invalid_laps)
 
-        for lap in lap_times_data:
+        # Group lap times by driver
+        driver_laps = defaultdict(lambda: {'lap_numbers': [], 'lap_times': [], 'compounds': [], 'is_outlier': []})
+
+        for lap in filtered_data:
             driver_code = lap['driver']
             driver_laps[driver_code]['lap_numbers'].append(lap['lap_number'])
             driver_laps[driver_code]['lap_times'].append(lap['lap_time'])
             # Get compound from lap data, default to 'unknown'
             compound = lap.get('compound', 'unknown')
             driver_laps[driver_code]['compounds'].append(compound)
+            driver_laps[driver_code]['is_outlier'].append(lap.get('is_outlier', False))
 
         # Add trace for each driver
         for idx, driver_code in enumerate(selected_drivers):
@@ -195,6 +292,9 @@ def render_lap_graph(selected_year, selected_gp, selected_session, selected_driv
     _render_lap_selector_section(
         lap_times_data, selected_drivers, selected_year, selected_gp, selected_session
     )
+
+    # Return lap_times_data so control buttons can use it
+    return lap_times_data
 
 
 def _render_tyre_compound_legend(lap_times_data, selected_drivers):
@@ -412,33 +512,132 @@ def _load_telemetry_for_selected_laps(lap_selections, selected_year, selected_gp
             "💡 **Tip:** Some laps may not have telemetry data (pit laps, incomplete laps, or data quality issues). Try selecting different laps.")
 
 
-def render_control_buttons():
+def render_control_buttons(lap_times_data, selected_drivers, selected_year, selected_gp, selected_session):
     """
-    Display control buttons below the graph.
+    Display control buttons below the graph with toggle functionality.
+
+    Args:
+        lap_times_data: List of lap time data dictionaries
+        selected_drivers: List of selected driver codes
+        selected_year: Selected year
+        selected_gp: Selected Grand Prix
+        selected_session: Selected session
     """
     btn_col1, btn_col2, btn_col3 = st.columns(3)
 
     with btn_col1:
-        # TODO: Implement fastest lap selection logic
-        # When clicked, highlight the fastest lap on the graph and update visualization
-        show_fastest = st.button(
-            "CLICK TO SELECT FASTEST LAP", use_container_width=True)
-        # if show_fastest:
-        #     fastest_lap = lap_data['lap_time'].idxmin()
-        #     # Update graph to highlight fastest lap
+        # Fastest lap selection - auto-selects fastest lap for each driver
+        if st.button("🏁 SELECT FASTEST LAPS", use_container_width=True):
+            if lap_times_data and selected_drivers:
+                _select_fastest_laps(lap_times_data, selected_drivers, selected_year, selected_gp, selected_session)
 
     with btn_col2:
-        # TODO: Implement outliers detection and display logic
-        # Use statistical methods (e.g., IQR, Z-score) to identify outliers
-        show_outliers = st.button("SHOW OUTLIERS", use_container_width=True)
-        # if show_outliers:
-        #     outliers = detect_outliers(lap_data)
-        #     # Update graph to show/hide outliers
+        # Toggle outliers visibility
+        if 'show_outliers' not in st.session_state:
+            st.session_state['show_outliers'] = False
+
+        button_text = "HIDE OUTLIERS" if st.session_state['show_outliers'] else "SHOW OUTLIERS"
+        if st.button(button_text, use_container_width=True):
+            st.session_state['show_outliers'] = not st.session_state['show_outliers']
+            st.rerun()
 
     with btn_col3:
-        # TODO: Implement invalid laps filtering logic
-        # Invalid laps = laps with PitIn/PitOut, yellow flags, etc.
-        show_invalid = st.button("SHOW INVALID LAPS", use_container_width=True)
-        # if show_invalid:
-        #     invalid_laps = lap_data[lap_data['is_valid'] == False]
-        #     # Update graph to show/hide invalid laps
+        # Toggle invalid laps visibility
+        if 'show_invalid_laps' not in st.session_state:
+            st.session_state['show_invalid_laps'] = True  # Show by default
+
+        button_text = "HIDE INVALID LAPS" if st.session_state['show_invalid_laps'] else "SHOW INVALID LAPS"
+        if st.button(button_text, use_container_width=True):
+            st.session_state['show_invalid_laps'] = not st.session_state['show_invalid_laps']
+            st.rerun()
+
+    # Display filter status
+    _display_filter_status(lap_times_data)
+
+
+def _display_filter_status(lap_times_data):
+    """
+    Display informational messages about active filters.
+
+    Args:
+        lap_times_data: List of lap time data dictionaries
+    """
+    if not lap_times_data:
+        return
+
+    show_outliers = st.session_state.get('show_outliers', False)
+    show_invalid_laps = st.session_state.get('show_invalid_laps', True)
+
+    # Count outliers and invalid laps
+    outlier_indices = _detect_outliers_iqr(lap_times_data)
+    invalid_count = sum(1 for lap in lap_times_data
+                       if not lap.get('is_accurate', True) or lap.get('is_pit_out_lap', False))
+
+    messages = []
+
+    if show_outliers:
+        messages.append(f"📊 Showing {len(outlier_indices)} outlier laps")
+    else:
+        if len(outlier_indices) > 0:
+            messages.append(f"🚫 Hiding {len(outlier_indices)} outlier laps")
+
+    if not show_invalid_laps:
+        if invalid_count > 0:
+            messages.append(f"🚫 Hiding {invalid_count} invalid laps")
+
+    if messages:
+        st.info(" | ".join(messages))
+
+
+def _select_fastest_laps(lap_times_data, selected_drivers, selected_year, selected_gp, selected_session):
+    """
+    Automatically select the fastest lap for each driver.
+
+    Args:
+        lap_times_data: List of lap time data dictionaries
+        selected_drivers: List of selected driver codes
+        selected_year: Selected year
+        selected_gp: Selected Grand Prix
+        selected_session: Selected session
+    """
+    fastest_laps = {}
+
+    # Find fastest lap for each driver
+    for driver in selected_drivers:
+        driver_laps = [lap for lap in lap_times_data if lap['driver'] == driver]
+        if driver_laps:
+            # Find lap with minimum time
+            fastest_lap = min(driver_laps, key=lambda x: x['lap_time'])
+            fastest_laps[driver] = fastest_lap['lap_number']
+
+    if fastest_laps:
+        # Load telemetry for fastest laps
+        telemetry_data_multi = {}
+        all_successful = True
+
+        with st.spinner("Loading fastest laps telemetry..."):
+            for driver, lap_num in fastest_laps.items():
+                success, telemetry, error = _fetch_lap_telemetry_cached(
+                    selected_year,
+                    selected_gp,
+                    selected_session,
+                    driver,
+                    lap_num
+                )
+
+                if success and telemetry:
+                    telemetry_data_multi[driver] = telemetry
+                else:
+                    all_successful = False
+                    st.warning(f"⚠️ Could not load telemetry for {driver} fastest lap {lap_num}")
+
+        # Store in session state
+        if telemetry_data_multi:
+            st.session_state['telemetry_data_multi'] = telemetry_data_multi
+            st.session_state['selected_laps_per_driver'] = fastest_laps
+
+            if all_successful:
+                st.success(f"✅ Loaded fastest laps for all drivers")
+            st.rerun()
+        else:
+            st.error("⚠️ Could not load any fastest lap telemetry")

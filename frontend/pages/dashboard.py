@@ -58,9 +58,9 @@ def render_dashboard():
     # Apply colors to driver pills based on selection (must be after selectors)
     apply_driver_pill_colors(selected_drivers)
 
-    render_lap_graph(selected_year, selected_gp,
-                     selected_session, selected_drivers, color_palette)
-    render_control_buttons()
+    lap_times_data = render_lap_graph(selected_year, selected_gp,
+                                       selected_session, selected_drivers, color_palette)
+    render_control_buttons(lap_times_data, selected_drivers, selected_year, selected_gp, selected_session)
 
     # Apply purple border styling to all subsequent Plotly charts
     # (This won't affect the LAP CHART above, only charts rendered after this point)
