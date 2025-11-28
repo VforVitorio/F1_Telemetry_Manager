@@ -8,6 +8,7 @@ export interface ComponentProps {
   isProcessing: boolean;
   isPlaying: boolean;
   theme?: 'light' | 'dark';
+  onAudioEnded?: () => void;
 }
 
 export interface StreamlitTheme {

@@ -74,20 +74,27 @@ def navigate_to_chat_with_context(
 
 def plotly_fig_to_base64(
     fig: go.Figure,
-    format: str = "jpeg",  # Changed to JPEG for better compression
-    width: int = 600,      # Reduced from 800
-    height: int = 400,     # Reduced from 500
-    scale: float = 1.0     # Reduced from 1.5 for much smaller files
+    format: str = "jpg",
+    width: int = 768,
+    height: int = 480,
+    scale: float = 1.0
 ) -> str:
     """
     Convert a Plotly figure to base64 encoded image with data URI format.
 
+    Optimized for Qwen3-VL-4B-Instruct:
+    - 768×480 (multiples of 32, required by Qwen3-VL)
+    - Aspect ratio 1.6:1 (ideal for horizontal F1 telemetry charts)
+    - Within optimal detection range (480-2560px)
+    - Minimizes hallucinations while maintaining legibility
+    - Source: https://github.com/QwenLM/Qwen3-VL
+
     Args:
         fig: Plotly figure object
-        format: Image format ('png', 'jpg', 'svg') - JPEG recommended for smaller size
-        width: Image width in pixels (optimized for vision models)
-        height: Image height in pixels (optimized for vision models)
-        scale: Scale factor for resolution (1.0 for smaller files)
+        format: Image format ('jpg' for smaller size, 'png' for quality)
+        width: Image width in pixels (default: 768, multiple of 32)
+        height: Image height in pixels (default: 480, multiple of 32)
+        scale: Scale factor for higher resolution (1.0 = standard, 2.0 = retina)
 
     Returns:
         Base64 encoded image string with data URI prefix (data:image/jpeg;base64,...)
@@ -111,10 +118,12 @@ def plotly_fig_to_base64(
 
         # Log size for debugging
         size_kb = len(data_uri) / 1024
-        st.info(f"📊 Chart image size: {size_kb:.0f}KB (~{int(size_kb * 750)} tokens estimated)")
+        st.info(
+            f"📊 Chart image size: {size_kb:.0f}KB (~{int(size_kb * 750)} tokens estimated)")
 
         if size_kb > 200:  # Warn if image is still large
-            st.warning(f"⚠️ Image is {size_kb:.0f}KB. If the model fails, try increasing Context Length in LM Studio to 32K+")
+            st.warning(
+                f"⚠️ Image is {size_kb:.0f}KB. If the model fails, try increasing Context Length in LM Studio to 32K+")
 
         return data_uri
     except Exception as e:

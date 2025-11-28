@@ -23,13 +23,13 @@ def check_lm_studio_health() -> bool:
         bool: True if LM Studio is reachable and healthy, False otherwise
     """
     try:
-        response = httpx.get(f"{CHAT_API_BASE}/health", timeout=5.0)
+        response = httpx.get(f"{CHAT_API_BASE}/health", timeout=None)
         if response.status_code == 200:
             data = response.json()
             return data.get("lm_studio_reachable", False)
         return False
     except Exception as e:
-        st.error(f"Error checking LM Studio health: {e}")
+        # Silently fail, don't show error
         return False
 
 
@@ -41,7 +41,7 @@ def get_available_models() -> List[str]:
         List of model names available in LM Studio
     """
     try:
-        response = httpx.get(f"{CHAT_API_BASE}/models", timeout=5.0)
+        response = httpx.get(f"{CHAT_API_BASE}/models", timeout=None)
         if response.status_code == 200:
             return response.json().get("models", [])
         return []
@@ -63,7 +63,7 @@ async def stream_message(
 
     Args:
         text: User message text
-        image: Optional image in base64 data URI format (e.g., data:image/png;base64,...)
+        image: Optional image in base64 string or bytes
         chat_history: Previous chat messages for context
         context: F1 session context (year, GP, session, drivers, etc.)
         model: Model name to use
@@ -73,20 +73,29 @@ async def stream_message(
         Chunks of the assistant's response as they arrive
     """
     try:
-        async with httpx.AsyncClient() as client:
+        # Convert image bytes to base64 for JSON serialization
+        import base64
+        image_b64 = None
+        if image:
+            if isinstance(image, bytes):
+                image_b64 = base64.b64encode(image).decode('utf-8')
+            elif isinstance(image, str):
+                # Already base64 encoded
+                image_b64 = image
+
+        async with httpx.AsyncClient(timeout=None) as client:
             async with client.stream(
                 "POST",
                 f"{CHAT_API_BASE}/stream",
                 json={
                     "text": text,
-                    "image": image,
+                    "image": image_b64,
                     "chat_history": chat_history or [],
                     "context": context or {},
                     "model": model,
                     "temperature": temperature,
                     "max_tokens": 1000
-                },
-                timeout=300.0  # Increased for vision models (matches backend timeout)
+                }
             ) as response:
                 async for chunk in response.aiter_text():
                     if chunk:
@@ -110,7 +119,7 @@ def send_message(
 
     Args:
         text: User message text
-        image: Optional image in base64 data URI format (e.g., data:image/png;base64,...)
+        image: Optional image in base64 string or bytes
         chat_history: Previous chat messages for context
         context: F1 session context
         model: Model name to use
@@ -120,18 +129,28 @@ def send_message(
         Complete assistant response
     """
     try:
+        # Convert image bytes to base64 for JSON serialization
+        import base64
+        image_b64 = None
+        if image:
+            if isinstance(image, bytes):
+                image_b64 = base64.b64encode(image).decode('utf-8')
+            elif isinstance(image, str):
+                # Already base64 encoded
+                image_b64 = image
+
         response = httpx.post(
             f"{CHAT_API_BASE}/message",
             json={
                 "text": text,
-                "image": image,
+                "image": image_b64,
                 "chat_history": chat_history or [],
                 "context": context or {},
                 "model": model,
                 "temperature": temperature,
                 "max_tokens": 1000
             },
-            timeout=300.0  # Increased for vision models (matches backend timeout)
+            timeout=None
         )
 
         if response.status_code == 200:

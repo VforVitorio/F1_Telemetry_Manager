@@ -5,7 +5,7 @@ Contains all configuration constants for STT, TTS, and audio processing.
 """
 
 # Whisper Configuration
-WHISPER_MODEL = "base"  # Options: tiny, base, small, medium, large
+WHISPER_MODEL = "small"  # Options: tiny, base, small, medium, large
 WHISPER_LANGUAGE = "en"
 WHISPER_DEVICE = "cpu"  # or "cuda" if GPU available
 

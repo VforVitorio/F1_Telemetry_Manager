@@ -54,7 +54,7 @@ def audio_orb(
         key: Unique key for the component
 
     Returns:
-        Component value (None in this case)
+        Dict with 'audio_ended': True when playback finishes, None otherwise
 
     Example:
         ```python

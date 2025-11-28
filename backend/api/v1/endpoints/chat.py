@@ -82,7 +82,7 @@ async def send_chat_message(request: ChatRequest):
         Complete chat response
     """
     try:
-        # Build messages array with multimodal support
+        # Build messages array with multimodal support for vision models
         messages = build_messages(
             user_message=request.text,
             image_base64=request.image,  # Pass image to LLM
@@ -122,11 +122,13 @@ async def send_chat_message(request: ChatRequest):
         # Always retry without image if an image was attached
         # Many vision errors don't have obvious keywords (e.g., "Channel Error")
         if request.image:
-            logger.warning(f"Image was attached and LM Studio failed - retrying without image. Original error: {e}")
+            logger.warning(
+                f"Image was attached and LM Studio failed - retrying without image. Original error: {e}")
             try:
                 # Retry with text only
                 messages_text_only = build_messages(
-                    user_message=request.text + "\n\n[Note: Image was attached but the model couldn't process it]",
+                    user_message=request.text +
+                    "\n\n[Note: Image was attached but the model couldn't process it]",
                     image_base64=None,
                     chat_history=request.chat_history,
                     context=request.context
@@ -145,7 +147,8 @@ async def send_chat_message(request: ChatRequest):
                     return ChatResponse(
                         response=content + "\n\n⚠️ Note: The attached image could not be processed. The model may not support vision, or the image format is incompatible.",
                         llm_model=response.get("model"),
-                        tokens_used=response.get("usage", {}).get("total_tokens")
+                        tokens_used=response.get(
+                            "usage", {}).get("total_tokens")
                     )
             except Exception as retry_error:
                 logger.error(f"Retry without image also failed: {retry_error}")
@@ -173,7 +176,7 @@ async def stream_chat_message(request: ChatRequest):
         Streaming response with text chunks
     """
     try:
-        # Build messages array with multimodal support
+        # Build messages array with multimodal support for vision models
         messages = build_messages(
             user_message=request.text,
             image_base64=request.image,  # Pass image to LLM

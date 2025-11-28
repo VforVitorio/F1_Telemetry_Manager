@@ -62,12 +62,12 @@ def render_header():
         tab_cols = st.columns(2)
         with tab_cols[0]:
             if st.button("💬 Text Chat", use_container_width=True,
-                        type="primary" if st.session_state.chat_mode == 'text' else "secondary"):
+                         type="primary" if st.session_state.chat_mode == 'text' else "secondary"):
                 st.session_state.chat_mode = 'text'
                 st.rerun()
         with tab_cols[1]:
             if st.button("🎤 Voice Chat", use_container_width=True,
-                        type="primary" if st.session_state.chat_mode == 'voice' else "secondary"):
+                         type="primary" if st.session_state.chat_mode == 'voice' else "secondary"):
                 st.session_state.chat_mode = 'voice'
                 st.rerun()
 
@@ -92,23 +92,39 @@ def handle_pending_message():
     if pending.get('new_chat', False):
         create_new_chat(context=pending.get('context'))
 
-    # Get the text and image from pending
-    text_content = pending.get('prompt') or pending.get('text', '')
-    image_content = pending.get('image')
-
-    # Add messages to history WITHOUT sending
-    if image_content:
-        add_message("user", "image", image_content)
-    if text_content:
-        add_message("user", "text", text_content)
+    # Prepare message text and image
+    message_text = pending.get('prompt') or pending.get('text', '')
+    image_base64 = pending.get('image')
 
     # If auto-send is requested, set a flag for deferred sending
     # This avoids blocking the page load with a synchronous LLM call
     if pending.get('auto_send', False):
-        st.session_state.pending_auto_send = {
-            'text': text_content,
-            'image': image_content
-        }
+        # Convert base64 image to bytes if present
+        import base64
+        image_bytes = None
+        if image_base64:
+            try:
+                # Remove data URI prefix if present before decoding
+                if image_base64.startswith('data:image'):
+                    image_base64 = image_base64.split(',', 1)[1]
+                image_bytes = base64.b64decode(image_base64)
+            except Exception as e:
+                st.error(f"Error decoding image: {e}")
+
+        # Clear pending message before sending (to avoid loops)
+        clear_pending_message()
+
+        # Send the message automatically with processing indicator
+        with st.spinner("🔄 Processing chart analysis request..."):
+            handle_send_message(message_text, image_bytes)
+        return  # Don't rerun here, handle_send_message will do it
+
+    # If not auto-sending, just add to history for display
+    if image_base64:
+        add_message("user", "image", image_base64)
+
+    if message_text:
+        add_message("user", "text", message_text)
 
     # Clear the pending message
     clear_pending_message()
@@ -137,7 +153,13 @@ def handle_send_message(text: str, image: Optional[str]):
     if text.strip():
         add_message("user", "text", text)
     if image is not None:
-        add_message("user", "image", image)
+        # Convert bytes to base64 for storage in history
+        import base64
+        if isinstance(image, bytes):
+            image_b64 = base64.b64encode(image).decode('utf-8')
+            add_message("user", "image", image_b64)
+        else:
+            add_message("user", "image", image)
 
     # Set streaming state
     st.session_state.chat_streaming = True
@@ -145,7 +167,8 @@ def handle_send_message(text: str, image: Optional[str]):
     try:
         # Get chat history for context (excluding current messages we just added)
         num_messages_added = (1 if text.strip() else 0) + (1 if image else 0)
-        history = get_chat_history()[:-num_messages_added] if num_messages_added > 0 else get_chat_history()
+        history = get_chat_history(
+        )[:-num_messages_added] if num_messages_added > 0 else get_chat_history()
 
         # Build context from session state if available
         context = {}
@@ -289,12 +312,15 @@ def render_chat_page():
         text, image, send_clicked = render_chat_input()
 
         if send_clicked:
-            handle_send_message(text, image)
+            # Show processing indicator immediately
+            with st.spinner("🔄 Processing your message..."):
+                handle_send_message(text, image)
             st.rerun()
 
         # Show streaming indicator if active
         if st.session_state.get('chat_streaming', False):
-            st.info("🤖 Assistant is thinking...")
+            with st.spinner("🤖 Assistant is generating response..."):
+                st.empty()  # Placeholder to keep spinner visible
 
         # Handle deferred auto-send (after UI is rendered)
         # This is triggered when user clicks "Ask AI" button from other pages

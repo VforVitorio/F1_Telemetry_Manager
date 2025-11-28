@@ -18,11 +18,31 @@ def render_voice_input() -> Optional[bytes]:
     Returns:
         audio_bytes: Recorded audio as bytes (None if no recording)
     """
+    # Check if currently recording
+    is_recording = st.session_state.get('is_recording', False)
+
+    # Show recording indicator
+    if is_recording:
+        st.markdown(
+            """
+            <div style='text-align: center; color: #9b59b6; font-size: 16px; font-weight: 600; margin-bottom: 10px; animation: pulse 1.5s ease-in-out infinite;'>
+            🎤 Say hello! I'm listening...
+            </div>
+            <style>
+            @keyframes pulse {
+                0%, 100% { opacity: 1; }
+                50% { opacity: 0.6; }
+            }
+            </style>
+            """,
+            unsafe_allow_html=True
+        )
+
     # Audio recorder component - centered in columns
     col1, col2, col3 = st.columns([1.5, 1, 1.5])
     with col2:
         audio_bytes = audio_recorder(
-            text="Click to record",
+            text="Say hello!",  # Changed from "Click to record"
             recording_color="#9b59b6",
             neutral_color="#8e44ad",
             icon_name="microphone",
