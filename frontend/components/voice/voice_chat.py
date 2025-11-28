@@ -266,19 +266,7 @@ def render_voice_chat():
 
     st.markdown("---")
 
-    # No automatic timeout - user controls with button
-
-    # Show play button to manually control orb during playback
-    if st.session_state.voice_history and st.session_state.voice_history[-1].get('response_audio'):
-        col1, col2, col3 = st.columns([1, 2, 1])
-        with col2:
-            if not st.session_state.is_playing:
-                if st.button("▶️ Play Response & Animate Orb", use_container_width=True, key="play_response_btn"):
-                    st.session_state.is_playing = True
-                    st.session_state.play_start_time = time.time()
-                    st.rerun()
-
-    # Audio Orb Visualization
+    # Audio Orb Visualization (auto-plays when response is ready)
     with st.container():
         col1, col2, col3 = st.columns([1, 2, 1])
         with col2:
@@ -297,8 +285,8 @@ def render_voice_chat():
             elif is_recording:
                 audio_blob = st.session_state.get('current_audio')
 
-            # Show orb
-            audio_orb(
+            # Show orb and detect when audio ends
+            orb_result = audio_orb(
                 audio_blob=audio_blob,
                 is_recording=is_recording,
                 is_processing=is_processing,
@@ -306,6 +294,11 @@ def render_voice_chat():
                 theme="dark",  # Force dark theme to match UI
                 key="voice_orb"
             )
+
+            # Auto-stop playing when audio ends (without rerun to avoid page reload)
+            if orb_result and orb_result.get('audio_ended') and is_playing:
+                st.session_state.is_playing = False
+                # Don't rerun - let natural refresh handle it
 
     # Latest response audio playback
     if st.session_state.voice_history and st.session_state.is_playing:
