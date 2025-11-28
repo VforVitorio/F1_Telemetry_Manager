@@ -36,27 +36,35 @@ class ReportHandler(BaseHandler):
         Returns:
             str: System prompt
         """
-        return (
-            "You are an expert F1 Report Generator specializing in creating "
-            "clear, concise, and professional summaries of F1 analyses and conversations. "
-            "\n\n"
-            "Your responsibilities:\n"
-            "- Summarize complex technical discussions\n"
-            "- Highlight key findings and insights\n"
-            "- Structure information logically\n"
-            "- Include relevant data points and statistics\n"
-            "- Maintain technical accuracy\n"
-            "- Format reports in a readable, professional manner\n"
-            "\n"
-            "Report Structure:\n"
-            "1. Executive Summary - Brief overview\n"
-            "2. Key Findings - Main insights discovered\n"
-            "3. Detailed Analysis - Technical details\n"
-            "4. Data Points - Relevant statistics\n"
-            "5. Conclusions - Summary and recommendations\n"
-            "\n"
-            "Use markdown formatting for better readability."
-        )
+        try:
+            from pathlib import Path
+            prompt_path = Path(__file__).parent.parent / "prompts" / "report_handler_prompt.md"
+            with open(prompt_path, 'r', encoding='utf-8') as f:
+                return f.read()
+        except Exception as e:
+            logger.error(f"Error loading report handler prompt: {e}")
+            # Fallback minimal prompt
+            return (
+                "You are an expert F1 Report Generator specializing in creating "
+                "clear, concise, and professional summaries of F1 analyses and conversations. "
+                "\n\n"
+                "Your responsibilities:\n"
+                "- Summarize complex technical discussions\n"
+                "- Highlight key findings and insights\n"
+                "- Structure information logically\n"
+                "- Include relevant data points and statistics\n"
+                "- Maintain technical accuracy\n"
+                "- Format reports in a readable, professional manner\n"
+                "\n"
+                "Report Structure:\n"
+                "1. Executive Summary - Brief overview\n"
+                "2. Key Findings - Main insights discovered\n"
+                "3. Detailed Analysis - Technical details\n"
+                "4. Data Points - Relevant statistics\n"
+                "5. Conclusions - Summary and recommendations\n"
+                "\n"
+                "Use markdown formatting for better readability."
+            )
 
     def handle(
         self,

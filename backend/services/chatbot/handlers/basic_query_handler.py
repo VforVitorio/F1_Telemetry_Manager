@@ -37,20 +37,28 @@ class BasicQueryHandler(BaseHandler):
         Returns:
             str: System prompt
         """
-        return (
-            "You are a knowledgeable F1 Assistant specializing in explaining "
-            "Formula 1 concepts, rules, terminology, and general information to users. "
-            "\n\n"
-            "Your responses should be:\n"
-            "- Clear and easy to understand\n"
-            "- Accurate and up-to-date\n"
-            "- Educational and engaging\n"
-            "- Suitable for both beginners and enthusiasts\n"
-            "\n"
-            "If the user asks about technical data or telemetry, politely inform them "
-            "that you specialize in general F1 knowledge and suggest they ask a more "
-            "specific technical question."
-        )
+        try:
+            from pathlib import Path
+            prompt_path = Path(__file__).parent.parent / "prompts" / "basic_query_prompt.md"
+            with open(prompt_path, 'r', encoding='utf-8') as f:
+                return f.read()
+        except Exception as e:
+            logger.error(f"Error loading basic query prompt: {e}")
+            # Fallback minimal prompt
+            return (
+                "You are a knowledgeable F1 Assistant specializing in explaining "
+                "Formula 1 concepts, rules, terminology, and general information to users. "
+                "\n\n"
+                "Your responses should be:\n"
+                "- Clear and easy to understand\n"
+                "- Accurate and up-to-date\n"
+                "- Educational and engaging\n"
+                "- Suitable for both beginners and enthusiasts\n"
+                "\n"
+                "If the user asks about technical data or telemetry, politely inform them "
+                "that you specialize in general F1 knowledge and suggest they ask a more "
+                "specific technical question."
+            )
 
     def handle(
         self,

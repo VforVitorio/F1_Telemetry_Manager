@@ -144,3 +144,50 @@ def send_message(
     except Exception as e:
         st.error(f"Error sending message: {e}")
         return f"Error: {str(e)}"
+
+
+def generate_report(
+    chat_history: List[Dict[str, Any]],
+    context: Optional[Dict[str, Any]] = None,
+    model: str = "llama3.2-vision",
+) -> Optional[str]:
+    """
+    Generate a report from chat history using the Query Router.
+
+    Args:
+        chat_history: Chat messages to summarize
+        context: F1 session context
+        model: Model name to use
+
+    Returns:
+        Report content in Markdown format, or None if error
+    """
+    if not chat_history or len(chat_history) == 0:
+        st.warning("No chat history to generate report from.")
+        return None
+
+    try:
+        response = httpx.post(
+            f"{CHAT_API_BASE}/query",  # Using the query router endpoint
+            json={
+                "text": "Generate a comprehensive summary report of our conversation",
+                "chat_history": chat_history,
+                "context": context or {},
+                "model": model,
+                "temperature": 0.5,  # Lower temperature for consistent reports
+                "max_tokens": 2000  # Higher for complete reports
+            },
+            timeout=60.0
+        )
+
+        if response.status_code == 200:
+            data = response.json()
+            return data.get("response", "")
+        else:
+            error_msg = f"Backend returned status {response.status_code}"
+            st.error(error_msg)
+            return None
+
+    except Exception as e:
+        st.error(f"Error generating report: {e}")
+        return None
