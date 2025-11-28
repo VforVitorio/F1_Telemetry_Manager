@@ -182,8 +182,8 @@ def render_lap_graph(selected_year, selected_gp, selected_session, selected_driv
     # Display the chart
     st.plotly_chart(fig, use_container_width=True)
 
-    # Display tyre compound legend with images
-    _render_tyre_compound_legend(lap_times_data)
+    # Display tyre compound legend with lap counts per driver
+    _render_tyre_compound_legend(lap_times_data, selected_drivers)
 
     # Add lap selector for telemetry - one lap per driver
     _render_lap_selector_section(
@@ -191,34 +191,47 @@ def render_lap_graph(selected_year, selected_gp, selected_session, selected_driv
     )
 
 
-def _render_tyre_compound_legend(lap_times_data):
+def _render_tyre_compound_legend(lap_times_data, selected_drivers):
     """
-    Display tyre compound legend with images.
+    Display tyre compound legend with lap counts per driver.
 
     Args:
         lap_times_data: List of lap time data dictionaries
+        selected_drivers: List of selected driver codes
     """
     if not lap_times_data:
         return
 
     st.markdown("### 🏎️ Tyre Compounds Used")
 
-    # Get unique compounds from the data
-    compounds_used = set()
-    for lap in lap_times_data:
-        compound = lap.get('compound', 'unknown')
-        if compound != 'unknown':
-            compounds_used.add(compound)
+    # Count laps per driver per compound
+    driver_compound_counts = defaultdict(lambda: defaultdict(int))
 
-    if not compounds_used:
+    for lap in lap_times_data:
+        driver = lap.get('driver')
+        compound = lap.get('compound', 'unknown')
+        if compound != 'unknown' and driver:
+            driver_compound_counts[driver][compound] += 1
+
+    # Get all unique compounds used
+    all_compounds = set()
+    for driver_compounds in driver_compound_counts.values():
+        all_compounds.update(driver_compounds.keys())
+
+    if not all_compounds:
         return
 
-    # Display images in columns
-    cols = st.columns(len(compounds_used))
+    # Sort compounds: soft, medium, hard, intermediate, wet
+    compound_order = ['soft', 'medium', 'hard', 'intermediate', 'inter', 'wet']
+    sorted_compounds = sorted(all_compounds, key=lambda x: compound_order.index(x.lower()) if x.lower() in compound_order else 999)
 
+    # Display compounds and driver usage in a table-like format
     current_dir = os.path.dirname(os.path.abspath(__file__))
 
-    for idx, compound in enumerate(sorted(compounds_used)):
+    # Create columns for each compound
+    cols = st.columns(len(sorted_compounds))
+
+    for idx, compound in enumerate(sorted_compounds):
         with cols[idx]:
             # Map compound to image file
             image_map = {
@@ -231,13 +244,42 @@ def _render_tyre_compound_legend(lap_times_data):
             }
 
             image_file = image_map.get(compound.lower())
+
+            # Center the content
+            st.markdown("<div style='text-align: center;'>", unsafe_allow_html=True)
+
+            # Add image - smaller and centered
             if image_file:
                 image_path = os.path.join(current_dir, '..', '..', 'shared', 'img', image_file)
                 try:
-                    st.image(image_path, caption=compound.capitalize(), width=80)
+                    # Center image with columns
+                    col1, col2, col3 = st.columns([1, 2, 1])
+                    with col2:
+                        st.image(image_path, width=100)
                 except Exception:
                     emoji = get_tyre_emoji(compound)
-                    st.markdown(f"{emoji} **{compound.capitalize()}**")
+                    st.markdown(f"<div style='text-align: center; font-size: 60px; margin-bottom: 10px;'>{emoji}</div>", unsafe_allow_html=True)
+
+            # Compound name - extra large
+            st.markdown(
+                f"<div style='text-align: center; font-weight: bold; font-size: 28px; margin-top: 10px; margin-bottom: 20px;'>"
+                f"{compound.capitalize()}"
+                f"</div>",
+                unsafe_allow_html=True
+            )
+
+            # Lap counts for each driver - extra large text
+            for driver in selected_drivers:
+                lap_count = driver_compound_counts[driver].get(compound, 0)
+                if lap_count > 0:
+                    st.markdown(
+                        f"<div style='text-align: center; font-size: 24px; margin-bottom: 10px;'>"
+                        f"<strong>{driver}:</strong> {lap_count} lap{'s' if lap_count > 1 else ''}"
+                        f"</div>",
+                        unsafe_allow_html=True
+                    )
+
+            st.markdown("</div>", unsafe_allow_html=True)
 
 
 def _render_lap_selector_section(lap_times_data, selected_drivers, selected_year, selected_gp, selected_session):
