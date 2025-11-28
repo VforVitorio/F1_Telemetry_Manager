@@ -35,6 +35,11 @@ class AudioOrbComponent extends StreamlitComponentBase<StreamlitProps> {
     // Determine theme from Streamlit or props
     const effectiveTheme = theme || this.props.theme?.base || 'light';
 
+    // Callback to notify Streamlit when audio ends
+    const onAudioEnded = () => {
+      Streamlit.setComponentValue({ audio_ended: true });
+    };
+
     return (
       <AudioOrb
         audioBlob={audioBlob}
@@ -42,6 +47,7 @@ class AudioOrbComponent extends StreamlitComponentBase<StreamlitProps> {
         isProcessing={isProcessing}
         isPlaying={isPlaying}
         theme={effectiveTheme}
+        onAudioEnded={onAudioEnded}
       />
     );
   }

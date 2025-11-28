@@ -15,12 +15,17 @@ export const AudioOrb: React.FC<ComponentProps> = ({
   isRecording,
   isProcessing,
   isPlaying,
-  theme = 'dark'
+  theme = 'dark',
+  onAudioEnded
 }) => {
   const orbRef = useRef<HTMLDivElement>(null);
   const [currentState, setCurrentState] = useState<OrbState>('idle');
   const { levelRef, ready, error, start, stop } = useAudioLevel();
   const [level, setLevel] = useState(0);
+  const [playbackLevel, setPlaybackLevel] = useState(0);
+  const playbackLevelRef = useRef(0); // Target level from audio analysis
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   // Debug: log all props and state
   console.log('AudioOrb props:', {
@@ -66,15 +71,119 @@ export const AudioOrb: React.FC<ComponentProps> = ({
     return () => cancelAnimationFrame(raf);
   }, [levelRef]);
 
-  // Simulate audio level for playback state
-  // REMOVED: User requested the exact same calm animation as idle, just larger.
-  // So we force simulatedLevel to 0 to avoid any jittery speech patterns.
-  const simulatedLevel = 0;
+  // Update playback level smoothly - EXACT SAME as breathing (proven to work perfectly)
+  useEffect(() => {
+    let raf = 0;
+    const update = () => {
+      setPlaybackLevel(prev => {
+        const target = playbackLevelRef.current;
+        // Use EXACT same smoothing as breathing (0.02) - proven to work without jitter
+        return prev + (target - prev) * 0.02;
+      });
+      raf = requestAnimationFrame(update);
+    };
+    update();
+    return () => cancelAnimationFrame(raf);
+  }, []);
 
-  // Determine effective level
-  // Only use mic level if we are explicitly in 'recording' state.
-  // Otherwise, clamp to 0 to prevent background noise animation when idle or playing.
-  const effectiveLevel = (currentState === 'recording' ? level : 0);
+  // Analyze playback audio when playing TTS response
+  useEffect(() => {
+    // Reset playback level when not playing
+    if (!isPlaying || !audioBlob) {
+      playbackLevelRef.current = 0;
+
+      // Cleanup any existing audio
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
+      if (audioContextRef.current) {
+        audioContextRef.current.close();
+        audioContextRef.current = null;
+      }
+      return;
+    }
+
+    // Create audio context and analyser for playback audio
+    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const analyser = audioContext.createAnalyser();
+    analyser.fftSize = 2048; // Large FFT for smooth analysis
+    analyser.smoothingTimeConstant = 0.95; // High smoothing
+
+    audioContextRef.current = audioContext;
+
+    // Create audio element from blob
+    const blob = new Blob([audioBlob], { type: 'audio/wav' });
+    const url = URL.createObjectURL(blob);
+    const audio = new Audio(url);
+    audioRef.current = audio;
+
+    // Connect audio to analyser
+    const source = audioContext.createMediaElementSource(audio);
+    source.connect(analyser);
+    analyser.connect(audioContext.destination);
+
+    // Auto-stop animation when audio ends
+    audio.addEventListener('ended', () => {
+      console.log('Audio ended - resetting playback level');
+      playbackLevelRef.current = 0;
+      // Notify Streamlit that audio has ended
+      if (onAudioEnded) {
+        onAudioEnded();
+      }
+    });
+
+    // Start playback
+    audio.play().catch(err => console.warn('Audio playback failed:', err));
+
+    // Analyze audio levels - SIMPLE approach like breathing (let useEffect do smoothing)
+    const dataArray = new Uint8Array(analyser.frequencyBinCount);
+    let animationFrame = 0;
+
+    const updatePlaybackLevel = () => {
+      // Only update if audio is still playing
+      if (audio.paused || audio.ended) {
+        playbackLevelRef.current = 0;
+        animationFrame = requestAnimationFrame(updatePlaybackLevel);
+        return;
+      }
+
+      analyser.getByteFrequencyData(dataArray);
+
+      // Calculate average amplitude (focus on mid-low frequencies for voice)
+      const voiceFreqData = dataArray.slice(0, Math.floor(dataArray.length / 6));
+      const average = voiceFreqData.reduce((sum, val) => sum + val, 0) / voiceFreqData.length;
+      const normalized = average / 255;
+
+      // CRITICAL: Attenuate to EXTREME levels (like breathing intensity)
+      // User reports: still trembling - reduce to 5% of original intensity
+      const attenuated = normalized * 0.05; // Reduce to 5% of original (was 0.15)
+
+      // Simply update the ref - let the continuous useEffect do all the smoothing
+      playbackLevelRef.current = attenuated;
+
+      animationFrame = requestAnimationFrame(updatePlaybackLevel);
+    };
+
+    updatePlaybackLevel();
+
+    // Cleanup on unmount or when playback stops
+    return () => {
+      cancelAnimationFrame(animationFrame);
+      audio.pause();
+      audioContext.close();
+      URL.revokeObjectURL(url);
+    };
+  }, [isPlaying, audioBlob]);
+
+  // Determine effective level based on current state
+  // - Recording: use microphone level
+  // - Playing: use playback audio level (NEW: reacts to TTS audio)
+  // - Idle/Processing: use 0 (static breathing animation)
+  const effectiveLevel =
+    currentState === 'recording' ? level :
+    currentState === 'playing' ? playbackLevel :
+    0;
 
   // Time in seconds
   const time = Date.now() / 1000;
@@ -82,67 +191,55 @@ export const AudioOrb: React.FC<ComponentProps> = ({
   // --- Physics / Math Configuration (ULTRA SLOW & FLUID) ---
   
   // Base breathing parameters
-  const BASE_SCALE = 1.0;
+  const BASE_SCALE = 1.1;  // 10% larger orb
   const BASE_FREQ = 0.15; // Extremely slow breathing (6+ seconds per breath)
   const BASE_AMP = 0.06;  // Increased breathing depth (was 0.02)
 
-  // Playback specific boost
-  const PLAYING_SCALE_BOOST = 0.25; // Increase size by 25% when playing
-  const PLAYING_AMP_BOOST = 0.04;   // Deeper breathing when playing
+  // NEW APPROACH: No size changes - only COLOR and MOVEMENT changes when playing
+  // Keep breathing animation constant, change visual appearance through color and shader
 
-  // Voice reaction factors (Significantly reduced for stability)
-  const AMP_FACTOR = 0.1;    // Minimal depth increase
-  const FREQ_FACTOR = 0.05;  // Almost no speed up, keeps it calm
-  const SIZE_FACTOR = 0.15;  // Gentle expansion, no "bouncing"
+  // Main breathing animation (always same - no size reaction to audio)
+  const breathingScale = BASE_SCALE + Math.sin(time * BASE_FREQ * Math.PI * 2) * BASE_AMP;
 
-  // Calculate dynamic parameters
-  const currentFreq = BASE_FREQ + (effectiveLevel * FREQ_FACTOR);
-  
-  // Amplitude: Base + Voice Reaction + Playback Boost
-  const currentAmp = BASE_AMP + (effectiveLevel * AMP_FACTOR) + (currentState === 'playing' ? PLAYING_AMP_BOOST : 0);
+  // --- State Logic - NEW APPROACH ---
+  // Size stays constant (breathing), only color and movement change
 
-  // Base Scale: Base + Voice Expansion + Playback Boost
-  const currentBaseScale = BASE_SCALE + (effectiveLevel * SIZE_FACTOR) + (currentState === 'playing' ? PLAYING_SCALE_BOOST : 0);
-
-  // Main breathing animation
-  const breathingScale = currentBaseScale + Math.sin(time * currentFreq * Math.PI * 2) * currentAmp;
-
-  // --- State Logic ---
-
-  let scale = 1.0;
+  let scale = breathingScale; // Always use breathing scale
   let shaderSpeed = 0.1;
   let shaderAmp = 0.1;
   let glowOpacity = 0.3;
+  let color: [number, number, number] = theme === 'dark'
+    ? [0.7, 0.4, 1.0]  // Purple (idle)
+    : [0.6, 0.3, 0.95];
 
-  // Unified logic: The orb ALWAYS breathes and reacts to audio
-  // We just change the intensity slightly based on state
-  
-  scale = breathingScale;
-  
   if (currentState === 'processing') {
-    // Processing: slightly faster, nervous pulse
-    scale = 1.05 + Math.sin(time * 2.5) * 0.015; // Slower pulse
+    // Processing: nervous pulse with purple color
     shaderSpeed = 0.5;
     shaderAmp = 0.3;
     glowOpacity = 0.5 + Math.sin(time * 2.5) * 0.1;
-  } else {
-    // Recording, Playing, or Idle
-    // Shader reacts to energy - faster base movement
-    shaderSpeed = 0.2 + effectiveLevel * 0.3; 
-    shaderAmp = 0.2 + effectiveLevel * 0.3;
-    glowOpacity = 0.3 + effectiveLevel * 0.4;
-    
-    // Boost glow slightly when playing
-    if (currentState === 'playing') {
-        glowOpacity += 0.2;
-        shaderSpeed += 0.2; // More movement when playing
-    }
-  }
+  } else if (currentState === 'playing') {
+    // Playing: SMOOTH transition to turquoise/cyan tones with more movement
+    // Color shifts from purple [0.7, 0.4, 1.0] to turquoise [0.2, 0.85, 0.95]
+    const turquoiseIntensity = Math.min(playbackLevel * 20, 1); // Smooth 0-1 transition
+    color = theme === 'dark'
+      ? [
+          0.7 - (turquoiseIntensity * 0.5),  // R: 0.7 → 0.2 (much less red)
+          0.4 + (turquoiseIntensity * 0.45), // G: 0.4 → 0.85 (more green for turquoise)
+          1.0 - (turquoiseIntensity * 0.05)  // B: 1.0 → 0.95 (slightly less blue)
+        ]
+      : [0.6, 0.3, 0.95];
 
-  // Purple color theme
-  const color: [number, number, number] = theme === 'dark'
-    ? [0.7, 0.4, 1.0]
-    : [0.6, 0.3, 0.95];
+    // More fluid, wavy movement when speaking - INCREASED waves
+    shaderSpeed = 0.6 + (playbackLevel * 1.0); // Faster shader movement with more waves
+    shaderAmp = 0.6 + (playbackLevel * 0.8);   // More waves/ripples
+    glowOpacity = 0.4 + (playbackLevel * 0.3); // Subtle glow
+  } else if (currentState === 'recording') {
+    // Recording: React to mic input
+    shaderSpeed = 0.2 + level * 0.3;
+    shaderAmp = 0.2 + level * 0.3;
+    glowOpacity = 0.3 + level * 0.4;
+  }
+  // Idle: use default values (already set above)
 
   return (
     <div
