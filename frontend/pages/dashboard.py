@@ -222,6 +222,30 @@ def render_data_selectors():
     return selected_year, selected_gp, selected_session, selected_drivers, color_palette
 
 
+def get_tyre_emoji(compound: str) -> str:
+    """
+    Get emoji representation for tyre compound.
+
+    Args:
+        compound: Tyre compound name (soft, medium, hard, intermediate, wet)
+
+    Returns:
+        Emoji string
+    """
+    compound_lower = compound.lower() if compound else 'unknown'
+
+    emoji_map = {
+        'soft': '🔴',      # Red circle for soft
+        'medium': '🟡',    # Yellow circle for medium
+        'hard': '⚪',      # White circle for hard
+        'intermediate': '🟢',  # Green circle for intermediate
+        'inter': '🟢',     # Alternative name
+        'wet': '🔵'        # Blue circle for wet
+    }
+
+    return emoji_map.get(compound_lower, '⚫')  # Black circle for unknown
+
+
 def render_lap_graph(selected_year, selected_gp, selected_session, selected_drivers, color_palette):
     """
     Display lap time graph with Plotly using real FastF1 data.
@@ -266,17 +290,38 @@ def render_lap_graph(selected_year, selected_gp, selected_session, selected_driv
     if lap_times_data:
         # Group lap times by driver
         from collections import defaultdict
-        driver_laps = defaultdict(lambda: {'lap_numbers': [], 'lap_times': []})
+        driver_laps = defaultdict(lambda: {'lap_numbers': [], 'lap_times': [], 'compounds': []})
 
         for lap in lap_times_data:
             driver_code = lap['driver']
             driver_laps[driver_code]['lap_numbers'].append(lap['lap_number'])
             driver_laps[driver_code]['lap_times'].append(lap['lap_time'])
+            # Get compound from lap data, default to 'unknown'
+            compound = lap.get('compound', 'unknown')
+            driver_laps[driver_code]['compounds'].append(compound)
 
         # Add trace for each driver
         for idx, driver_code in enumerate(selected_drivers):
             if driver_code in driver_laps:
                 lap_data = driver_laps[driver_code]
+
+                # Create custom hover text with tyre info
+                hover_texts = []
+                for i, (lap_num, lap_time, compound) in enumerate(zip(
+                    lap_data['lap_numbers'],
+                    lap_data['lap_times'],
+                    lap_data['compounds']
+                )):
+                    compound_display = compound.capitalize() if compound != 'unknown' else 'Unknown'
+                    emoji = get_tyre_emoji(compound)
+
+                    hover_text = (
+                        f"<b>{driver_code}</b><br>"
+                        f"Lap: {lap_num}<br>"
+                        f"Time: {lap_time:.3f}s<br>"
+                        f"Tyre: {emoji} {compound_display}"
+                    )
+                    hover_texts.append(hover_text)
 
                 fig.add_trace(go.Scatter(
                     x=lap_data['lap_numbers'],
@@ -286,7 +331,8 @@ def render_lap_graph(selected_year, selected_gp, selected_session, selected_driv
                     line=dict(color=color_palette[idx % len(
                         color_palette)] if color_palette else Color.ACCENT, width=2),
                     marker=dict(size=6),
-                    hovertemplate=f'{driver_code}<br>Lap: %{{x}}<br>Time: %{{y:.3f}}s<extra></extra>',
+                    hovertemplate='%{text}<extra></extra>',
+                    text=hover_texts,
                     customdata=[[driver_code] for _ in lap_data['lap_numbers']]
                 ))
     else:
@@ -316,6 +362,44 @@ def render_lap_graph(selected_year, selected_gp, selected_session, selected_driv
 
     # Display the chart
     st.plotly_chart(fig, use_container_width=True)
+
+    # Display tyre compound legend with images
+    if lap_times_data:
+        st.markdown("### 🏎️ Tyre Compounds Used")
+
+        # Get unique compounds from the data
+        compounds_used = set()
+        for lap in lap_times_data:
+            compound = lap.get('compound', 'unknown')
+            if compound != 'unknown':
+                compounds_used.add(compound)
+
+        if compounds_used:
+            # Display images in columns
+            cols = st.columns(len(compounds_used))
+
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+
+            for idx, compound in enumerate(sorted(compounds_used)):
+                with cols[idx]:
+                    # Map compound to image file
+                    image_map = {
+                        'soft': 'soft.png',
+                        'medium': 'medium.png',
+                        'hard': 'hard.png',
+                        'intermediate': 'inter.png',
+                        'inter': 'inter.png',
+                        'wet': 'wet.png'
+                    }
+
+                    image_file = image_map.get(compound.lower())
+                    if image_file:
+                        image_path = os.path.join(current_dir, '..', 'shared', 'img', image_file)
+                        try:
+                            st.image(image_path, caption=compound.capitalize(), width=80)
+                        except Exception as e:
+                            emoji = get_tyre_emoji(compound)
+                            st.markdown(f"{emoji} **{compound.capitalize()}**")
 
     # Add lap selector for telemetry - one lap per driver
     if lap_times_data and selected_drivers:
