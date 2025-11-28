@@ -88,24 +88,35 @@ def handle_pending_message():
     if pending.get('new_chat', False):
         create_new_chat(context=pending.get('context'))
 
-    # Add messages to history
-    if 'image' in pending:
-        add_message("user", "image", pending['image'])
-
-    if 'prompt' in pending:
-        add_message("user", "text", pending['prompt'])
-    elif 'text' in pending:
-        add_message("user", "text", pending['text'])
+    # Prepare message text and image
+    message_text = pending.get('prompt') or pending.get('text', '')
+    image_base64 = pending.get('image')
 
     # Auto-send if requested
     if pending.get('auto_send', False):
-        # TODO: Implement auto-send functionality
-        # This should call handle_send_message with the pending content
-        st.info("🤖 Processing your question about the chart...")
+        # Convert base64 image to bytes if present
+        import base64
+        image_bytes = None
+        if image_base64:
+            try:
+                image_bytes = base64.b64decode(image_base64)
+            except Exception as e:
+                st.error(f"Error decoding image: {e}")
 
-        # For now, just show a placeholder
-        st.warning(
-            "Auto-send functionality will be implemented when backend is ready")
+        # Clear pending message before sending (to avoid loops)
+        clear_pending_message()
+
+        # Send the message automatically with processing indicator
+        with st.spinner("🔄 Processing chart analysis request..."):
+            handle_send_message(message_text, image_bytes)
+        return  # Don't rerun here, handle_send_message will do it
+
+    # If not auto-sending, just add to history for display
+    if image_base64:
+        add_message("user", "image", image_base64)
+
+    if message_text:
+        add_message("user", "text", message_text)
 
     # Clear the pending message
     clear_pending_message()
@@ -131,7 +142,13 @@ def handle_send_message(text: str, image: Optional[bytes]):
     if text.strip():
         add_message("user", "text", text)
     if image is not None:
-        add_message("user", "image", image)
+        # Convert bytes to base64 for storage in history
+        import base64
+        if isinstance(image, bytes):
+            image_b64 = base64.b64encode(image).decode('utf-8')
+            add_message("user", "image", image_b64)
+        else:
+            add_message("user", "image", image)
 
     # Set streaming state
     st.session_state.chat_streaming = True
@@ -234,12 +251,15 @@ def render_chat_page():
         text, image, send_clicked = render_chat_input()
 
         if send_clicked:
-            handle_send_message(text, image)
+            # Show processing indicator immediately
+            with st.spinner("🔄 Processing your message..."):
+                handle_send_message(text, image)
             st.rerun()
 
         # Show streaming indicator if active
         if st.session_state.get('chat_streaming', False):
-            st.info("🤖 Assistant is thinking...")
+            with st.spinner("🤖 Assistant is generating response..."):
+                st.empty()  # Placeholder to keep spinner visible
 
 
 # Entry point

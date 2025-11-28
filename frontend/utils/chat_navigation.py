@@ -74,20 +74,27 @@ def navigate_to_chat_with_context(
 
 def plotly_fig_to_base64(
     fig: go.Figure,
-    format: str = "png",
-    width: int = 1200,
-    height: int = 600,
-    scale: float = 2.0
+    format: str = "jpg",
+    width: int = 768,
+    height: int = 480,
+    scale: float = 1.0
 ) -> str:
     """
     Convert a Plotly figure to base64 encoded image.
 
+    Optimized for Qwen3-VL-4B-Instruct:
+    - 768×480 (multiples of 32, required by Qwen3-VL)
+    - Aspect ratio 1.6:1 (ideal for horizontal F1 telemetry charts)
+    - Within optimal detection range (480-2560px)
+    - Minimizes hallucinations while maintaining legibility
+    - Source: https://github.com/QwenLM/Qwen3-VL
+
     Args:
         fig: Plotly figure object
-        format: Image format ('png', 'jpg', 'svg')
-        width: Image width in pixels
-        height: Image height in pixels
-        scale: Scale factor for higher resolution (2.0 = retina)
+        format: Image format ('jpg' for smaller size, 'png' for quality)
+        width: Image width in pixels (default: 768, multiple of 32)
+        height: Image height in pixels (default: 480, multiple of 32)
+        scale: Scale factor for higher resolution (1.0 = standard, 2.0 = retina)
 
     Returns:
         Base64 encoded image string
