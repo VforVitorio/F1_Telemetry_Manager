@@ -246,6 +246,21 @@ def get_tyre_emoji(compound: str) -> str:
     return emoji_map.get(compound_lower, '⚫')  # Black circle for unknown
 
 
+def format_laptime_axis(seconds):
+    """
+    Convert seconds to MM:SS.mmm format for axis labels.
+
+    Args:
+        seconds (float): Time in seconds
+
+    Returns:
+        str: Formatted time string (e.g., "1:23.456")
+    """
+    minutes = int(seconds // 60)
+    remaining_seconds = seconds % 60
+    return f"{minutes}:{remaining_seconds:06.3f}"
+
+
 def render_lap_graph(selected_year, selected_gp, selected_session, selected_drivers, color_palette):
     """
     Display lap time graph with Plotly using real FastF1 data.
@@ -315,10 +330,12 @@ def render_lap_graph(selected_year, selected_gp, selected_session, selected_driv
                     compound_display = compound.capitalize() if compound != 'unknown' else 'Unknown'
                     emoji = get_tyre_emoji(compound)
 
+                    # Format lap time as MM:SS.mmm for hover
+                    formatted_time = format_laptime_axis(lap_time)
                     hover_text = (
                         f"<b>{driver_code}</b><br>"
                         f"Lap: {lap_num}<br>"
-                        f"Time: {lap_time:.3f}s<br>"
+                        f"Time: {formatted_time}<br>"
                         f"Tyre: {emoji} {compound_display}"
                     )
                     hover_texts.append(hover_text)
@@ -339,13 +356,55 @@ def render_lap_graph(selected_year, selected_gp, selected_session, selected_driv
         # Show message if no data available
         st.info("No lap data available. Select drivers and ensure backend is running.")
 
+    # Prepare custom tick formatting for y-axis (MM:SS.mmm format)
+    yaxis_config = dict(
+        gridcolor='rgba(128, 128, 128, 0.2)',
+        showgrid=True
+    )
+
+    if lap_times_data:
+        # Get the current y-axis range
+        y_values = [lap['lap_time'] for lap in lap_times_data]
+        if y_values:
+            y_min = min(y_values)
+            y_max = max(y_values)
+
+            # Generate tick values (approximately 5-8 ticks)
+            tick_range = y_max - y_min
+            tick_interval = tick_range / 6  # Approximately 6 intervals
+
+            # Round tick_interval to a nice number
+            if tick_interval < 1:
+                tick_interval = 0.5
+            elif tick_interval < 2:
+                tick_interval = 1
+            elif tick_interval < 5:
+                tick_interval = 2
+            else:
+                tick_interval = 5
+
+            # Generate tick values
+            first_tick = (int(y_min / tick_interval)) * tick_interval
+            tick_vals = []
+            tick_texts = []
+            current_tick = first_tick
+            while current_tick <= y_max + tick_interval:
+                tick_vals.append(current_tick)
+                tick_texts.append(format_laptime_axis(current_tick))
+                current_tick += tick_interval
+
+            # Add custom ticks to yaxis config
+            yaxis_config['tickmode'] = 'array'
+            yaxis_config['tickvals'] = tick_vals
+            yaxis_config['ticktext'] = tick_texts
+
     # Configure layout
     fig.update_layout(
         xaxis_title="Lap Number",
-        yaxis_title="Lap Time (seconds)",
+        yaxis_title="Lap Time",
         template="plotly_dark",
         height=400,
-        margin=dict(l=40, r=40, t=40, b=40),
+        margin=dict(l=60, r=40, t=40, b=40),
         plot_bgcolor=Color.PRIMARY_BG,
         paper_bgcolor=Color.PRIMARY_BG,
         font=dict(color=TextColor.PRIMARY),
@@ -354,10 +413,7 @@ def render_lap_graph(selected_year, selected_gp, selected_session, selected_driv
             gridcolor='rgba(128, 128, 128, 0.2)',
             showgrid=True
         ),
-        yaxis=dict(
-            gridcolor='rgba(128, 128, 128, 0.2)',
-            showgrid=True
-        )
+        yaxis=yaxis_config
     )
 
     # Display the chart
