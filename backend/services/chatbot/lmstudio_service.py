@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 # LM Studio configuration
 LM_STUDIO_URL = "http://localhost:1234/v1/chat/completions"
 LM_STUDIO_MODELS_URL = "http://localhost:1234/v1/models"
-DEFAULT_TIMEOUT = 180  # Increased to 180s for longer responses
+DEFAULT_TIMEOUT = None  # No timeout - wait indefinitely for response
 
 
 class LMStudioError(Exception):
@@ -240,23 +240,90 @@ def stream_message(
         raise LMStudioError(f"Error streaming from LM Studio: {str(e)}")
 
 
+def _compress_chat_history(chat_history: List[Dict[str, Any]]) -> str:
+    """
+    Compress chat history by summarizing older messages.
+    Emulates Claude Code's memory compression strategy.
+
+    Args:
+        chat_history: List of message dicts to compress
+
+    Returns:
+        Compressed summary string
+    """
+    # Build conversation text
+    conversation = []
+    for msg in chat_history:
+        role = msg.get("role", "")
+        content = msg.get("content", "")
+        if role == "user":
+            conversation.append(f"User: {content}")
+        elif role == "assistant":
+            conversation.append(f"Assistant: {content}")
+
+    conversation_text = "\n\n".join(conversation)
+
+    # Create compression prompt
+    summary_prompt = f"""Please provide a concise summary of the following conversation history.
+Focus on key facts, decisions, and context that would be relevant for continuing this F1 telemetry analysis discussion.
+Be brief but preserve important technical details.
+
+Conversation:
+{conversation_text}
+
+Summary:"""
+
+    # Send compression request to LM Studio
+    try:
+        compression_messages = [
+            {"role": "system", "content": "You are a helpful assistant that summarizes conversations concisely."},
+            {"role": "user", "content": summary_prompt}
+        ]
+
+        response = send_message(
+            messages=compression_messages,
+            temperature=0.3,  # Lower temperature for factual summary
+            max_tokens=300,   # Keep summary short
+            stream=False
+        )
+
+        if "choices" in response and len(response["choices"]) > 0:
+            summary = response["choices"][0]["message"]["content"]
+            logger.info(f"Compressed {len(chat_history)} messages into summary")
+            return summary
+        else:
+            # Fallback: simple truncation
+            return "Previous conversation context compressed."
+
+    except Exception as e:
+        logger.error(f"Failed to compress history: {e}")
+        return "Previous conversation context compressed."
+
+
 def build_messages(
     user_message: str,
     system_prompt: Optional[str] = None,
     chat_history: Optional[List[Dict[str, Any]]] = None,
-    context: Optional[Dict[str, Any]] = None
-) -> List[Dict[str, str]]:
+    context: Optional[Dict[str, Any]] = None,
+    image_base64: Optional[str] = None
+) -> List[Dict[str, Any]]:
     """
-    Build the messages array for LM Studio API.
+    Build the messages array for LM Studio API with smart history compression.
+
+    Limits chat history to last 5 interactions (10 messages).
+    When exceeding 5 interactions, compresses the first 4 into a summary.
+
+    Supports multimodal messages for vision models using OpenAI-compatible format.
 
     Args:
         user_message: The user's message
         system_prompt: System prompt (optional)
         chat_history: Previous messages (optional)
         context: F1 session context to include (optional)
+        image_base64: Base64 encoded image for vision models (optional)
 
     Returns:
-        List of message dicts ready for LM Studio
+        List of message dicts ready for LM Studio (with multimodal support)
     """
     messages = []
 
@@ -283,23 +350,72 @@ def build_messages(
         "content": system_prompt
     })
 
-    # Add chat history
+    # Process chat history with compression
     if chat_history:
-        for msg in chat_history:
-            role = msg.get("role", "")
-            content = msg.get("content", "")
+        # Filter to only text messages (skip images)
+        text_history = [
+            msg for msg in chat_history
+            if msg.get("role") in ["user", "assistant"] and msg.get("content")
+        ]
 
-            # Only add text messages (skip images for now)
-            if role in ["user", "assistant"] and content:
+        # Limit to last 5 interactions (10 messages: 5 user + 5 assistant)
+        MAX_INTERACTIONS = 5
+        MAX_MESSAGES = MAX_INTERACTIONS * 2  # user + assistant pairs
+
+        if len(text_history) > MAX_MESSAGES:
+            # Compress first 4 interactions (8 messages)
+            messages_to_compress = text_history[:8]
+            recent_messages = text_history[8:]  # Keep last interaction
+
+            # Generate summary
+            summary = _compress_chat_history(messages_to_compress)
+
+            # Add summary as system message
+            messages.append({
+                "role": "system",
+                "content": f"[Previous conversation summary]: {summary}"
+            })
+
+            # Add recent messages
+            for msg in recent_messages:
                 messages.append({
-                    "role": role,
-                    "content": content
+                    "role": msg.get("role"),
+                    "content": msg.get("content")
                 })
 
-    # Add current user message
-    messages.append({
-        "role": "user",
-        "content": user_message
-    })
+            logger.info(f"Compressed chat history: {len(messages_to_compress)} messages → summary + {len(recent_messages)} recent")
+        else:
+            # No compression needed, add all history
+            for msg in text_history:
+                messages.append({
+                    "role": msg.get("role"),
+                    "content": msg.get("content")
+                })
+
+    # Add current user message (with multimodal support for vision models)
+    if image_base64:
+        # Use OpenAI-compatible multimodal format for vision models
+        # Format: https://platform.openai.com/docs/guides/vision
+        messages.append({
+            "role": "user",
+            "content": [
+                {
+                    "type": "text",
+                    "text": user_message
+                },
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:image/jpeg;base64,{image_base64}"
+                    }
+                }
+            ]
+        })
+    else:
+        # Text-only message
+        messages.append({
+            "role": "user",
+            "content": user_message
+        })
 
     return messages

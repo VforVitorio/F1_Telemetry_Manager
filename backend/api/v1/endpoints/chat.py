@@ -76,11 +76,12 @@ async def send_chat_message(request: ChatRequest):
         Complete chat response
     """
     try:
-        # Build messages array
+        # Build messages array (with image support for vision models)
         messages = build_messages(
             user_message=request.text,
             chat_history=request.chat_history,
-            context=request.context
+            context=request.context,
+            image_base64=request.image
         )
 
         # Send to LM Studio
@@ -129,11 +130,12 @@ async def stream_chat_message(request: ChatRequest):
         Streaming response with text chunks
     """
     try:
-        # Build messages array
+        # Build messages array (with image support for vision models)
         messages = build_messages(
             user_message=request.text,
             chat_history=request.chat_history,
-            context=request.context
+            context=request.context,
+            image_base64=request.image
         )
 
         # Create a generator that yields chunks
