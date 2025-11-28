@@ -253,11 +253,19 @@ def get_lap_times(year: int, gp: str, session: str, drivers: List[str]) -> List[
                     pass
 
             if lap_time_seconds:
+                # Get compound (tyre type) - convert to lowercase for consistency
+                compound = lap.get('Compound', 'UNKNOWN')
+                if pd.notna(compound):
+                    compound = str(compound).lower()
+                else:
+                    compound = 'unknown'
+
                 result.append({
                     'driver': lap['Driver'],
                     'lap_number': int(lap['LapNumber']),
                     'lap_time': lap_time_seconds,
-                    'is_valid': bool(lap.get('IsPersonalBest', False))
+                    'is_valid': bool(lap.get('IsPersonalBest', False)),
+                    'compound': compound
                 })
 
         print(f"Lap times found: {len(result)} laps for {len(drivers)} drivers")
