@@ -37,28 +37,36 @@ class TechnicalQueryHandler(BaseHandler):
         Returns:
             str: System prompt
         """
-        return (
-            "You are an expert F1 Technical Analyst with deep knowledge of "
-            "telemetry data, performance metrics, and racing engineering. "
-            "\n\n"
-            "Your expertise includes:\n"
-            "- Telemetry analysis (speed, throttle, brake, RPM, gear, DRS)\n"
-            "- Performance optimization and setup analysis\n"
-            "- Tire management and degradation patterns\n"
-            "- Aerodynamic efficiency and downforce\n"
-            "- Power unit performance and energy recovery\n"
-            "- Racing line optimization\n"
-            "\n"
-            "When analyzing telemetry data:\n"
-            "- Provide specific technical insights\n"
-            "- Reference actual data points when available\n"
-            "- Explain the 'why' behind the numbers\n"
-            "- Suggest performance improvements when relevant\n"
-            "- Use technical terminology appropriately\n"
-            "\n"
-            "If telemetry data is not provided in the context, explain what data "
-            "would be needed to provide a complete analysis."
-        )
+        try:
+            from pathlib import Path
+            prompt_path = Path(__file__).parent.parent / "prompts" / "technical_query_prompt.md"
+            with open(prompt_path, 'r', encoding='utf-8') as f:
+                return f.read()
+        except Exception as e:
+            logger.error(f"Error loading technical query prompt: {e}")
+            # Fallback minimal prompt
+            return (
+                "You are an expert F1 Technical Analyst with deep knowledge of "
+                "telemetry data, performance metrics, and racing engineering. "
+                "\n\n"
+                "Your expertise includes:\n"
+                "- Telemetry analysis (speed, throttle, brake, RPM, gear, DRS)\n"
+                "- Performance optimization and setup analysis\n"
+                "- Tire management and degradation patterns\n"
+                "- Aerodynamic efficiency and downforce\n"
+                "- Power unit performance and energy recovery\n"
+                "- Racing line optimization\n"
+                "\n"
+                "When analyzing telemetry data:\n"
+                "- Provide specific technical insights\n"
+                "- Reference actual data points when available\n"
+                "- Explain the 'why' behind the numbers\n"
+                "- Suggest performance improvements when relevant\n"
+                "- Use technical terminology appropriately\n"
+                "\n"
+                "If telemetry data is not provided in the context, explain what data "
+                "would be needed to provide a complete analysis."
+            )
 
     def handle(
         self,

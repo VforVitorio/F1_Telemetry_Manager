@@ -36,7 +36,7 @@ from components.chatbot.chat_message import render_chat_message
 from components.voice.voice_chat import render_voice_chat
 
 # Service imports
-from services.chat_service import stream_message, get_available_models, check_lm_studio_health
+from services.chat_service import stream_message, get_available_models, check_lm_studio_health, generate_report
 
 # Default model configuration (hidden from user)
 DEFAULT_MODEL = "llama3.2-vision"
@@ -199,6 +199,43 @@ def check_lm_studio_connection():
     return check_lm_studio_health()
 
 
+def render_report_button():
+    """Render the report download button."""
+    chat_history = get_chat_history()
+
+    # Only show if there's chat history with at least 2 messages (user + assistant)
+    if len(chat_history) >= 2:
+        col1, col2, col3 = st.columns([2, 1, 2])
+        with col2:
+            if st.button("📄 Download Report", use_container_width=True, type="secondary"):
+                with st.spinner("Generating report..."):
+                    # Get context if available
+                    context = st.session_state.get('chat_context', {})
+
+                    # Generate report
+                    report_content = generate_report(
+                        chat_history=chat_history,
+                        context=context
+                    )
+
+                    if report_content:
+                        # Prepare filename
+                        from datetime import datetime
+                        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                        filename = f"f1_chat_report_{timestamp}.md"
+
+                        # Show download button
+                        st.download_button(
+                            label="⬇️ Download Markdown Report",
+                            data=report_content,
+                            file_name=filename,
+                            mime="text/markdown",
+                            use_container_width=True,
+                            key=f"download_{timestamp}"
+                        )
+                        st.success("✅ Report generated successfully!")
+
+
 def render_chat_page():
     """
     Main chat page rendering function.
@@ -239,6 +276,9 @@ def render_chat_page():
 
         # Main content area
         st.markdown("## Chat")
+
+        # Report download button (appears when there's chat history)
+        render_report_button()
 
         # Chat history (scrollable area)
         render_chat_history()
