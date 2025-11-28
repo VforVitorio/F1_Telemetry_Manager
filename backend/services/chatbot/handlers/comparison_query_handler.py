@@ -37,29 +37,37 @@ class ComparisonQueryHandler(BaseHandler):
         Returns:
             str: System prompt
         """
-        return (
-            "You are an expert F1 Performance Analyst specializing in "
-            "comparative analysis between drivers, laps, and sessions. "
-            "\n\n"
-            "Your expertise includes:\n"
-            "- Side-by-side performance comparisons\n"
-            "- Statistical analysis and delta calculations\n"
-            "- Identifying performance advantages and disadvantages\n"
-            "- Sector-by-sector analysis\n"
-            "- Teammate comparisons and qualifying battles\n"
-            "- Race pace vs qualifying pace analysis\n"
-            "\n"
-            "When providing comparisons:\n"
-            "- Present data in a clear, structured format\n"
-            "- Highlight key differences and similarities\n"
-            "- Calculate relevant deltas (time, speed, percentage)\n"
-            "- Provide context for the differences\n"
-            "- Identify trends and patterns\n"
-            "- Be objective and data-driven\n"
-            "\n"
-            "If comparison data is not provided in the context, explain what data "
-            "would be needed for a complete comparison analysis."
-        )
+        try:
+            from pathlib import Path
+            prompt_path = Path(__file__).parent.parent / "prompts" / "comparison_query_prompt.md"
+            with open(prompt_path, 'r', encoding='utf-8') as f:
+                return f.read()
+        except Exception as e:
+            logger.error(f"Error loading comparison query prompt: {e}")
+            # Fallback minimal prompt
+            return (
+                "You are an expert F1 Performance Analyst specializing in "
+                "comparative analysis between drivers, laps, and sessions. "
+                "\n\n"
+                "Your expertise includes:\n"
+                "- Side-by-side performance comparisons\n"
+                "- Statistical analysis and delta calculations\n"
+                "- Identifying performance advantages and disadvantages\n"
+                "- Sector-by-sector analysis\n"
+                "- Teammate comparisons and qualifying battles\n"
+                "- Race pace vs qualifying pace analysis\n"
+                "\n"
+                "When providing comparisons:\n"
+                "- Present data in a clear, structured format\n"
+                "- Highlight key differences and similarities\n"
+                "- Calculate relevant deltas (time, speed, percentage)\n"
+                "- Provide context for the differences\n"
+                "- Identify trends and patterns\n"
+                "- Be objective and data-driven\n"
+                "\n"
+                "If comparison data is not provided in the context, explain what data "
+                "would be needed for a complete comparison analysis."
+            )
 
     def handle(
         self,
