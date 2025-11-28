@@ -161,22 +161,28 @@ def render_lap_graph(selected_year, selected_gp, selected_session, selected_driv
             yaxis_config['tickvals'] = tick_vals
             yaxis_config['ticktext'] = tick_texts
 
+    # Add font size to yaxis config
+    yaxis_config['tickfont'] = dict(size=16)
+
     # Configure layout
     fig.update_layout(
         xaxis_title="Lap Number",
         yaxis_title="Lap Time",
         template="plotly_dark",
         height=400,
-        margin=dict(l=60, r=40, t=40, b=40),
+        margin=dict(l=70, r=40, t=40, b=50),
         plot_bgcolor=Color.PRIMARY_BG,
         paper_bgcolor=Color.PRIMARY_BG,
         font=dict(color=TextColor.PRIMARY),
         showlegend=True,
         xaxis=dict(
             gridcolor='rgba(128, 128, 128, 0.2)',
-            showgrid=True
+            showgrid=True,
+            tickfont=dict(size=16)
         ),
-        yaxis=yaxis_config
+        yaxis=yaxis_config,
+        xaxis_title_font=dict(size=18),
+        yaxis_title_font=dict(size=18)
     )
 
     # Display the chart
