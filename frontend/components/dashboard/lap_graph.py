@@ -487,7 +487,7 @@ def render_control_buttons(lap_times_data, selected_drivers, selected_year, sele
 
     with btn_col1:
         # Fastest lap selection - auto-selects fastest lap for each driver
-        if st.button("🏁 SELECT FASTEST LAPS", width="stretch"):
+        if st.button("🏁 SELECT FASTEST LAPS", use_container_width=True):
             if lap_times_data and selected_drivers:
                 _select_fastest_laps(lap_times_data, selected_drivers, selected_year, selected_gp, selected_session)
 
@@ -497,7 +497,7 @@ def render_control_buttons(lap_times_data, selected_drivers, selected_year, sele
             st.session_state['show_outliers'] = False
 
         button_text = "HIDE OUTLIERS" if st.session_state['show_outliers'] else "SHOW OUTLIERS"
-        if st.button(button_text, width="stretch"):
+        if st.button(button_text, use_container_width=True):
             st.session_state['show_outliers'] = not st.session_state['show_outliers']
             st.rerun()
 
@@ -507,7 +507,7 @@ def render_control_buttons(lap_times_data, selected_drivers, selected_year, sele
             st.session_state['show_invalid_laps'] = True  # Show by default
 
         button_text = "HIDE INVALID LAPS" if st.session_state['show_invalid_laps'] else "SHOW INVALID LAPS"
-        if st.button(button_text, width="stretch"):
+        if st.button(button_text, use_container_width=True):
             st.session_state['show_invalid_laps'] = not st.session_state['show_invalid_laps']
             st.rerun()
 
