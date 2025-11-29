@@ -8,7 +8,7 @@ allowing users to send charts and context from other pages.
 import streamlit as st
 import plotly.graph_objects as go
 import base64
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any
 from datetime import datetime
 
 

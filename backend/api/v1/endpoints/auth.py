@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, status, Depends
+from fastapi import APIRouter, HTTPException, Depends
 from backend.core.security import get_supabase_client, get_current_user
 from supabase import Client
 from backend.models.models import SignInRequest, SignUpRequest

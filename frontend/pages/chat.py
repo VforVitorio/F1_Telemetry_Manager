@@ -22,9 +22,6 @@ from utils.chat_state import (
     get_chat_history,
     save_current_chat,
     create_new_chat,
-    delete_current_chat,
-    load_chat,
-    get_saved_chat_names
 )
 from utils.chat_navigation import clear_pending_message
 from utils.report_storage import save_report
@@ -33,11 +30,10 @@ from utils.report_storage import save_report
 from components.chatbot.chat_sidebar import render_chat_sidebar
 from components.chatbot.chat_history import render_chat_history
 from components.chatbot.chat_input import render_chat_input
-from components.chatbot.chat_message import render_chat_message
 from components.voice.voice_chat import render_voice_chat
 
 # Service imports
-from services.chat_service import stream_message, get_available_models, check_lm_studio_health, generate_report
+from services.chat_service import check_lm_studio_health, generate_report
 
 # Default model configuration (hidden from user)
 DEFAULT_MODEL = "llama3.2-vision"

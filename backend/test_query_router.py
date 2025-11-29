@@ -92,37 +92,30 @@ def test_router_structure():
 
     try:
         from backend.services.chatbot.router import QueryRouter
-        from backend.services.chatbot.handlers import (
-            BasicQueryHandler,
-            TechnicalQueryHandler,
-            ComparisonQueryHandler,
-            ReportHandler,
-            DownloadHandler,
-        )
 
-        print("\n✅ All imports successful\n")
+        print("\nAll imports successful\n")
 
         # Initialize router
         router = QueryRouter()
-        print("✅ QueryRouter initialized")
+        print("QueryRouter initialized")
 
         # Check handlers
-        print(f"✅ Handlers registered: {len(router.handlers)}")
+        print(f"Handlers registered: {len(router.handlers)}")
 
         for query_type, handler in router.handlers.items():
             print(f"  - {query_type.value}: {handler.__class__.__name__}")
 
-        print("\n✅ Router structure is valid!")
+        print("\nRouter structure is valid!")
 
     except Exception as e:
-        print(f"\n❌ Error testing router structure: {e}")
+        print(f"\nError testing router structure: {e}")
         import traceback
         traceback.print_exc()
 
 
 def main():
     """Run all tests."""
-    print("\n🚀 Starting Query Router Tests\n")
+    print("\nStarting Query Router Tests\n")
 
     # Test 1: Router structure
     test_router_structure()
@@ -145,7 +138,7 @@ def main():
         print("\nSkipping LM Studio test.")
 
     print("\n" + "=" * 60)
-    print("✅ ALL TESTS COMPLETED")
+    print("ALL TESTS COMPLETED")
     print("=" * 60)
 
 
