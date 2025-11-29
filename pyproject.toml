@@ -1,32 +1,58 @@
 [project]
-
 name = "f1-telemetry-manager"
-
 version = "0.1.0"
-
 description = "F1 telemetry Dashboard"
-
 readme = "README.md"
 authors = [
     {name = "Víctor Vega Sobral", email = "https://www.linkedin.com/in/victorvegasobral/"},
     {name = "Santiago Souto Ortega", email = "https://www.linkedin.com/in/santiagosoutoortega/"}
-
 ]
 
 requires-python = ">=3.11"
+
 dependencies = [
-    "fastapi",
-    "uvicorn[standard]",
-    "supabase",
-    "python-dotenv",
-    "pydantic[email]",
-    "fastf1"
+    "fastapi==0.109.0",
+    "python-multipart==0.0.9",
+    "uvicorn==0.27.0",
+    "pydantic==2.5.0",
+    "pydantic[email]==2.5.0",
+    "python-jose[cryptography]==3.3.0",
+    "passlib[bcrypt]==1.7.4",
+    "bcrypt==4.0.1",
+    "supabase==2.10.0",
+    "realtime==2.0.5",
+    "python-dotenv==1.0.0",
+    "fastf1==3.4.0",
+    "numpy==1.26.4",
+    "pandas==2.2.0",
+
+    # Voice Chat
+    "openai-whisper==20231117",
+    "edge-tts==7.2.3",
+    "nest-asyncio==1.6.0",
+    "pydub==0.25.1",
+    "soundfile==0.12.1",
+    "aiofiles==23.2.1",
+    "ffmpeg-python==0.2.0",
+
+    # Chat Query Routing
+    "requests==2.31.0",
+    "plotly==5.18.0",
+    "httpx==0.26.0",
+    "streamlit>=1.31.0",
+    "streamlit-shadcn-ui>=0.1.0",
+    "streamlit-lottie>=0.0.5",
+    "kaleido==0.2.1",
+    "hydralit_components",
+
+    # Voice UI
+    "audio-recorder-streamlit==0.0.10"
 ]
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=7.0.0",
-    "pytest-asyncio>=0.21.0",
+    "pytest==8.4.2",
+    "pytest-asyncio==0.23.2",
     "pytest-cov>=4.0.0",
     "httpx>=0.24.0"
 ]
