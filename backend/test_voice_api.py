@@ -62,7 +62,7 @@ def test_get_voices():
 
 def test_tts():
     """Test text-to-speech endpoint."""
-    print_header("🔊 Testing Text-to-Speech (TTS)")
+    print_header("Testing Text-to-Speech (TTS)")
 
     payload = {
         "text": "Hello, I am Caronte, your Formula 1 strategy assistant.",
@@ -86,8 +86,8 @@ def test_tts():
             f.write(response.content)
 
         print(f"✅ Generated {len(response.content)} bytes of audio")
-        print(f"💾 Saved to: {output_file}")
-        print(f"🎧 Play it: start {output_file} (Windows) or open {output_file} (Mac)")
+        print(f"   Saved to: {output_file}")
+        print(f"   Play it: start {output_file} (Windows) or open {output_file} (Mac)")
         return True
     else:
         print(f"❌ TTS failed: {response.text}")

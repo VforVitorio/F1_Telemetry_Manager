@@ -8,7 +8,6 @@ import io
 import logging
 import sys
 from pathlib import Path
-from typing import Optional, Tuple
 from pydub import AudioSegment
 
 # Add backend to path for imports (when running as script)

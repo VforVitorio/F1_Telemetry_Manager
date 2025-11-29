@@ -226,18 +226,18 @@ if __name__ == "__main__":
 
     logging.basicConfig(level=logging.INFO)
 
-    print("🔊 Edge TTS Service Test")
+    print("Edge TTS Service Test")
     print("=" * 50)
 
     tts = TTSService()
 
-    print("\n📋 Available voices:")
+    print("\nAvailable voices:")
     for i, voice in enumerate(tts.get_available_voices(), 1):
         print(f"  {i}. {voice['name']}")
         print(f"     ID: {voice['id']}")
         print(f"     Gender: {voice['gender']}")
 
-    print("\n🎤 Generating test audio...")
+    print("\nGenerating test audio...")
     text = "Hello, I am Caronte, your Formula 1 strategy assistant."
     audio = tts.synthesize_speech(text)
     print(f"✅ Generated {len(audio)} bytes of audio")
@@ -245,5 +245,5 @@ if __name__ == "__main__":
     # Save test audio
     with open("test_tts_edge.mp3", "wb") as f:
         f.write(audio)
-    print("💾 Saved to test_tts_edge.mp3")
-    print("\n✨ Test complete! Edge TTS provides high-quality natural voices.")
+    print("Saved to test_tts_edge.mp3")
+    print("\nTest complete! Edge TTS provides high-quality natural voices.")

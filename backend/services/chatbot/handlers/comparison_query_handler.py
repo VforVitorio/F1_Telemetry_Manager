@@ -93,9 +93,6 @@ class ComparisonQueryHandler(BaseHandler):
         self._log_request(message, **kwargs)
 
         try:
-            # TODO: Future enhancement - fetch comparison data from telemetry service
-            # Extract driver names/lap numbers from the query
-            # Retrieve and format comparison data
 
             # Build messages with comparison system prompt
             messages = build_messages(
@@ -180,8 +177,6 @@ class ComparisonQueryHandler(BaseHandler):
         Returns:
             List of entities being compared
         """
-        # TODO: Implement entity extraction
-        # For now, return empty list or extract from context if available
         entities = []
 
         if context and "drivers" in context:

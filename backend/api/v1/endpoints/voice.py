@@ -9,19 +9,16 @@ from fastapi.responses import Response
 import base64
 import time
 import logging
-from typing import Optional
 
 from backend.models.voice_models import (
     TranscriptionResponse,
     TTSRequest,
-    VoiceChatRequest,
     VoiceChatResponse,
     VoiceHealthResponse,
     AvailableVoicesResponse
 )
 from backend.services.voice.stt_service import get_stt_service
 from backend.services.voice.tts_service import get_tts_service
-from backend.services.voice.audio_processor import AudioProcessor
 from backend.services.chatbot.lmstudio_service import (
     send_message as lm_send_message,
     build_messages,

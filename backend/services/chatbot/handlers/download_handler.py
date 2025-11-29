@@ -104,10 +104,7 @@ class DownloadHandler(BaseHandler):
                     "requested_format": requested_format,
                     "available_formats": self.supported_formats,
                     "data_available": True,
-                    # TODO: Add actual download link when implemented
-                    # "download_url": "...",
-                    # "file_size": "...",
-                    # "expires_at": "..."
+
                 }
             }
 

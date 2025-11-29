@@ -18,7 +18,6 @@ from backend.services.chatbot.lmstudio_service import (
     LMStudioError
 )
 from backend.models.chat_models import (
-    ChatMessage,
     ChatRequest,
     ChatResponse,
     HealthResponse,
@@ -85,7 +84,7 @@ async def send_chat_message(request: ChatRequest):
         # Build messages array with multimodal support for vision models
         messages = build_messages(
             user_message=request.text,
-            image_base64=request.image,  # Pass image to LLM
+            image_base64=request.image,
             chat_history=request.chat_history,
             context=request.context
         )
@@ -179,7 +178,7 @@ async def stream_chat_message(request: ChatRequest):
         # Build messages array with multimodal support for vision models
         messages = build_messages(
             user_message=request.text,
-            image_base64=request.image,  # Pass image to LLM
+            image_base64=request.image,
             chat_history=request.chat_history,
             context=request.context
         )
