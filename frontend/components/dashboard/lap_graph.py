@@ -114,7 +114,7 @@ def _filter_lap_data(lap_times_data, show_outliers, show_invalid_laps):
     return filtered_data
 
 
-def render_lap_graph(selected_year, selected_gp, selected_session, selected_drivers, color_palette):
+def render_lap_graph(selected_year, selected_gp, selected_session, selected_drivers, color_palette, render_buttons=False):
     """
     Display lap time graph with Plotly using real FastF1 data.
     Supports clicking on a lap to load telemetry data.
@@ -125,6 +125,7 @@ def render_lap_graph(selected_year, selected_gp, selected_session, selected_driv
         selected_session (str): Selected session type
         selected_drivers (list): List of selected driver codes (e.g., ["VER", "LEC"])
         color_palette (list): List of colors for each driver
+        render_buttons (bool): Whether to render control buttons after the graph
     """
     st.markdown("<h2 style='text-align: center;'>LAP CHART</h2>",
                 unsafe_allow_html=True)
@@ -284,6 +285,10 @@ def render_lap_graph(selected_year, selected_gp, selected_session, selected_driv
 
     # Display the chart
     st.plotly_chart(fig, use_container_width=True)
+
+    # Render control buttons immediately after the graph if requested
+    if render_buttons:
+        render_control_buttons(lap_times_data, selected_drivers, selected_year, selected_gp, selected_session)
 
     # Display tyre compound legend with lap counts per driver
     _render_tyre_compound_legend(lap_times_data, selected_drivers)
