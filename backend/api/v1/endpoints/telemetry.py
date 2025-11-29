@@ -48,7 +48,7 @@ async def get_sessions(
 async def get_drivers(
     year: int = Query(..., description="Year of the season"),
     gp: str = Query(..., description="Grand Prix name"),
-    session: str = Query(..., description="Session type (FP1, FP2, FP3, Q, R)")
+    session: str = Query(..., description="Session type (FP1, FP2, FP3, SQ, Q, S, R)")
 ):
     """
     Get available drivers for a specific session.
@@ -61,7 +61,7 @@ async def get_drivers(
 async def get_laps(
     year: int = Query(..., description="Year of the season"),
     gp: str = Query(..., description="Grand Prix name"),
-    session: str = Query(..., description="Session type (FP1, FP2, FP3, Q, R)"),
+    session: str = Query(..., description="Session type (FP1, FP2, FP3, SQ, Q, S, R)"),
     drivers: str = Query(..., description="Comma-separated driver codes")
 ):
     """
@@ -76,7 +76,7 @@ async def get_laps(
 async def get_lap_telemetry_endpoint(
     year: int = Query(..., description="Year of the season"),
     gp: str = Query(..., description="Grand Prix name"),
-    session: str = Query(..., description="Session type (FP1, FP2, FP3, Q, R)"),
+    session: str = Query(..., description="Session type (FP1, FP2, FP3, SQ, Q, S, R)"),
     driver: str = Query(..., description="Driver code"),
     lap_number: int = Query(..., description="Lap number")
 ):

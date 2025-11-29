@@ -34,8 +34,8 @@ def load_sessions_for_gp(year: int, gp: str):
         return session_list
     if error:
         st.warning(f"Could not load sessions: {error}. Using default list.")
-    # Fallback list
-    return ["FP1", "FP2", "FP3", "Q", "R"]
+    # Fallback list (includes Sprint sessions: SQ = Sprint Qualifying, S = Sprint Race)
+    return ["FP1", "FP2", "FP3", "SQ", "Q", "S", "R"]
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
