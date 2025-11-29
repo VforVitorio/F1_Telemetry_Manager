@@ -29,7 +29,7 @@ async def compare_drivers(
     year: int = Query(..., description="Season year"),
     gp: str = Query(..., description="Grand Prix name"),
     session: str = Query(...,
-                         description="Session type (FP1, FP2, FP3, Q, R)"),
+                         description="Session type (FP1, FP2, FP3, SQ, Q, S, R)"),
     driver1: str = Query(...,
                          description="First driver abbreviation (e.g., VER)"),
     driver2: str = Query(...,

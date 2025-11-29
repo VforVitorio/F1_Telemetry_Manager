@@ -68,8 +68,13 @@ def get_available_sessions(year: int, gp: str) -> List[str]:
         List of available session names
     """
     try:
-        # Standard F1 sessions
-        session_names = ['FP1', 'FP2', 'FP3', 'Q', 'R']
+        # Standard F1 sessions including Sprint format
+        # FP1, FP2, FP3: Free Practice sessions
+        # Q: Qualifying
+        # SQ: Sprint Qualifying (only for Sprint weekends)
+        # S: Sprint Race (only for Sprint weekends)
+        # R: Main Race
+        session_names = ['FP1', 'FP2', 'FP3', 'SQ', 'Q', 'S', 'R']
 
         # Try to verify which sessions exist
         sessions = []
@@ -82,7 +87,7 @@ def get_available_sessions(year: int, gp: str) -> List[str]:
                 continue
 
         print(f"Available sessions for {year} {gp}: {sessions}")
-        return sessions if sessions else session_names
+        return sessions if sessions else ['FP1', 'FP2', 'FP3', 'Q', 'R']
     except Exception as e:
         print(f"Error getting sessions for {year} {gp}: {e}")
         return ['FP1', 'FP2', 'FP3', 'Q', 'R']

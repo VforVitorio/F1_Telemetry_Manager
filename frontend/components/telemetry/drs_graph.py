@@ -4,8 +4,8 @@ DRS Graph Component
 This component renders the DRS (Drag Reduction System) graph for selected drivers.
 
 Purpose:
-    Show the areas where each driver activates DRS (reducing aerodynamic drag). It
-    helps identify circuit DRS zones and compare DRS usage between drivers.
+    Show the specific zones where each driver activates DRS (reducing aerodynamic drag).
+    It helps identify circuit DRS zones and compare DRS usage between drivers.
 
 Required data:
     - telemetry_data: DataFrame with columns 'driver', 'distance', 'drs'
@@ -13,14 +13,16 @@ Required data:
     - color_palette: List of colors for each driver
 
 Visualization:
-    - Type: Area chart or horizontal bars (go.Scatter with fill or go.Bar)
+    - Type: Horizontal rectangles showing DRS activation zones
     - X axis: Distance on the circuit (meters)
-    - Y axis: DRS state (0 = closed, >0 or 1 = open)
-    - FastF1 values:
-      * 0-7: DRS closed
-      * 8-14: DRS open
-    - Can be binarized: 0 = closed, 1 = open
-    - Filled area indicates zones with active DRS
+    - Y axis: Driver labels (stacked layout)
+    - FastF1 DRS values (from official documentation):
+      * 0, 1: DRS Off
+      * 2-7: Unknown/intermediate states
+      * 8: Detected, Eligible (in activation zone but not yet open)
+      * 10, 12, 14: DRS On (actively deployed)
+    - Binarization: 0 = closed, 1 = open (>=10 = actively deployed)
+    - Colored rectangles indicate zones where DRS is actively open
 
 Public function:
     - render_drs_graph(telemetry_data, selected_drivers, color_palette) -> None
@@ -30,9 +32,9 @@ Private functions:
     - _process_drs_data(data) -> pd.DataFrame
     - _create_drs_figure(data, drivers, colors) -> go.Figure
 
-TODO: Backend integration
-    - FastF1 method: session.laps.pick_driver(driver).get_telemetry()
-    - Required column: 'DRS' (0-7=closed, 8-14=open, binarize to 0/1)
+Backend integration:
+    - FastF1 method: lap.get_car_data() returns 'DRS' column
+    - Values: 0-1=Off, 8=Eligible, 10/12/14=On (see documentation above)
 """
 
 
@@ -88,11 +90,17 @@ def _process_drs_data(telemetry_data):
     """
     Processes DRS data by binarizing values
 
-    FastF1 DRS values: 0-7 = closed, 8-14 = open
-    Converts to: 0 = closed, 1 = open
+    FastF1 DRS values (from official documentation):
+    - 0, 1 = Off
+    - 2-7 = Unknown/intermediate states
+    - 8 = Detected, Eligible once in Activation Zone (not yet open)
+    - 10, 12, 14 = On (DRS actively open)
+
+    Converts to: 0 = closed, 1 = open (only when DRS is actively deployed >= 10)
     """
     processed_data = telemetry_data.copy()
-    processed_data['drs'] = (processed_data['drs'] >= 8).astype(int)
+    # DRS is considered "open" only when value is 10 or higher (actively deployed)
+    processed_data['drs'] = (processed_data['drs'] >= 10).astype(int)
     return processed_data
 
 
@@ -153,45 +161,94 @@ def render_drs_graph(telemetry_data_multi, selected_drivers, color_palette):
 
 
 def _create_drs_figure(telemetry_data, selected_drivers, color_palette):
-    """Creates the Plotly figure for DRS visualization with filled area"""
+    """Creates the Plotly figure for DRS visualization as a step line graph"""
     fig = go.Figure()
 
     if telemetry_data.empty:
         return fig
 
-    # Add a line trace with filled area for each driver
+    # Calculate vertical spacing for each driver (stacked layout)
+    # Each driver has 2 levels: 0 (Disabled) and 1 (Enabled)
+    driver_count = len(selected_drivers)
+    vertical_spacing = 2.5  # Increased space between drivers to avoid mixing
+
+    # Add traces for each driver (stacked vertically for better visibility)
     for idx, driver in enumerate(selected_drivers):
         # Filter telemetry data for the current driver
-        driver_data = telemetry_data[telemetry_data['driver'] == driver]
+        driver_data = telemetry_data[telemetry_data['driver'] == driver].copy()
 
         if not driver_data.empty:
-            # Create line chart showing DRS activation zones
+            # Offset each driver vertically
+            y_offset = idx * vertical_spacing
+
+            # Get distance and DRS values
+            distance_vals = driver_data['distance'].tolist()
+            drs_vals = driver_data['drs'].tolist()
+
+            # Add the offset to DRS values so each driver is stacked
+            drs_vals_offset = [val + y_offset for val in drs_vals]
+
+            # Create step line trace for this driver (no fill to avoid color mixing)
             fig.add_trace(go.Scatter(
-                # Distance along the circuit (from FastF1)
-                x=driver_data['distance'],
-                # DRS state: 0 = closed, 1 = open (processed from FastF1)
-                y=driver_data['drs'],
+                x=distance_vals,
+                y=drs_vals_offset,
                 name=driver,
-                line=dict(color=color_palette[idx], width=2),
+                line=dict(color=color_palette[idx], width=3, shape='hv'),  # 'hv' creates step line
                 mode='lines',
-                hovertemplate='<b>%{fullData.name}</b><br>Distance: %{x:.0f}m<br>DRS: %{y:.0f}<extra></extra>'
+                hovertemplate='<b>%{fullData.name}</b><br>Distance: %{x:.0f}m<br>DRS: %{customdata}<extra></extra>',
+                customdata=['Enabled' if val == 1 else 'Disabled' for val in drs_vals]
             ))
+
+            # Add a horizontal separator line between drivers
+            if idx < driver_count - 1:
+                max_distance = max(distance_vals)
+                fig.add_shape(
+                    type="line",
+                    x0=0,
+                    x1=max_distance,
+                    y0=y_offset + 1.25,
+                    y1=y_offset + 1.25,
+                    line=dict(color='rgba(128, 128, 128, 0.3)', width=1, dash='dash')
+                )
+
+    # Create custom tick positions and labels for DRS state
+    # Show "Disabled" (0) and "Enabled" (1) on Y axis for each driver
+    tick_positions = []
+    tick_labels = []
+    for idx, driver in enumerate(selected_drivers):
+        y_offset = idx * vertical_spacing
+        # Add two ticks per driver: one for "Disabled" (0) and one for "Enabled" (1)
+        tick_positions.append(y_offset)  # Disabled
+        tick_labels.append(f"Disabled")
+        tick_positions.append(y_offset + 1)  # Enabled
+        tick_labels.append(f"Enabled")
 
     # Configure layout with dark theme
     fig.update_layout(
         template="plotly_dark",
         xaxis_title="Distance (m)",
         yaxis_title="DRS State",
-        height=400,
-        margin=dict(l=40, r=40, t=40, b=40),
+        height=max(300, 130 * driver_count),
+        margin=dict(l=80, r=40, t=40, b=40),
         plot_bgcolor=Color.PRIMARY_BG,
         paper_bgcolor=Color.PRIMARY_BG,
         font=dict(color=TextColor.PRIMARY),
-        hovermode='x unified',  # Show all drivers' values when hovering
+        hovermode='x unified',
         yaxis=dict(
             tickmode='array',
-            tickvals=[0, 1],
-            ticktext=['Closed', 'Open']  # Human-readable labels for DRS states
+            tickvals=tick_positions,
+            ticktext=tick_labels,
+            range=[-0.3, driver_count * vertical_spacing - 1.25],
+            showgrid=True,
+            gridcolor='rgba(128, 128, 128, 0.2)'
+        ),
+        showlegend=True,
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1
         )
     )
 
@@ -213,8 +270,8 @@ def _generate_mock_drs_data(selected_drivers):
     mock_data = []
 
     for driver in selected_drivers:
-        # Initialize DRS as closed (values 0-7)
-        drs = np.full(len(distance), 3)  # Use middle value for closed (3)
+        # Initialize DRS as closed (values 0-1 = Off)
+        drs = np.full(len(distance), 0)  # 0 = DRS Off
 
         # Add DRS zones on typical straight sections
         # DRS zones are typically on main straights
@@ -224,9 +281,9 @@ def _generate_mock_drs_data(selected_drivers):
         ]
 
         for zone_start, zone_end in drs_zones:
-            # DRS is open (values 8-14) in these zones
+            # DRS is actively open (values 10/12/14 = On) in these zones
             zone_mask = (distance >= zone_start) & (distance <= zone_end)
-            drs[zone_mask] = 12  # Use middle value for open (12)
+            drs[zone_mask] = 12  # 12 = DRS On (actively deployed)
 
         # Create DataFrame for this driver
         driver_df = pd.DataFrame({
