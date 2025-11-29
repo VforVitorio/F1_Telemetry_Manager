@@ -27,6 +27,7 @@ from utils.chat_state import (
     get_saved_chat_names
 )
 from utils.chat_navigation import clear_pending_message
+from utils.report_storage import save_report
 
 # Component imports
 from components.chatbot.chat_sidebar import render_chat_sidebar
@@ -246,6 +247,13 @@ def render_report_button():
                         from datetime import datetime
                         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                         filename = f"f1_chat_report_{timestamp}.md"
+
+                        # Save report to storage for sidebar access
+                        save_report(
+                            content=report_content,
+                            filename=filename,
+                            context=context
+                        )
 
                         # Show download button
                         st.download_button(
