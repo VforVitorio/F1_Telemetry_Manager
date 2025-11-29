@@ -14,6 +14,7 @@ from services.voice_api import (
     decode_audio_base64,
     check_voice_health
 )
+from services.chat_service import generate_report
 from utils.audio_utils import (
     validate_audio_file,
     format_duration
@@ -225,6 +226,59 @@ def check_voice_services():
     return health.get('stt_ready', False) and health.get('tts_ready', False)
 
 
+def render_voice_report_button():
+    """Render the report download button for voice chat."""
+    voice_history = st.session_state.get('voice_history', [])
+
+    # Only show if there's voice history with at least 1 exchange
+    if len(voice_history) >= 1:
+        col1, col2, col3 = st.columns([2, 1, 2])
+        with col2:
+            if st.button("📄 Download Report", use_container_width=True, type="secondary", key="voice_report_btn"):
+                with st.spinner("Generating report..."):
+                    # Convert voice history to chat history format for report generation
+                    chat_history = []
+                    for exchange in voice_history:
+                        # Add user message
+                        chat_history.append({
+                            "role": "user",
+                            "type": "text",
+                            "content": exchange.get('transcript', '')
+                        })
+                        # Add assistant message
+                        chat_history.append({
+                            "role": "assistant",
+                            "type": "text",
+                            "content": exchange.get('response_text', '')
+                        })
+
+                    # Get context if available (though voice chat might not have it)
+                    context = st.session_state.get('chat_context', {})
+
+                    # Generate report
+                    report_content = generate_report(
+                        chat_history=chat_history,
+                        context=context
+                    )
+
+                    if report_content:
+                        # Prepare filename
+                        from datetime import datetime
+                        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                        filename = f"f1_voice_chat_report_{timestamp}.md"
+
+                        # Show download button
+                        st.download_button(
+                            label="⬇️ Download Markdown Report",
+                            data=report_content,
+                            file_name=filename,
+                            mime="text/markdown",
+                            use_container_width=True,
+                            key=f"voice_download_{timestamp}"
+                        )
+                        st.success("✅ Report generated successfully!")
+
+
 def render_voice_chat():
     """
     Main voice chat rendering function.
@@ -265,6 +319,9 @@ def render_voice_chat():
     )
 
     st.markdown("---")
+
+    # Report download button (appears when there's voice history)
+    render_voice_report_button()
 
     # Audio Orb Visualization (auto-plays when response is ready)
     with st.container():
