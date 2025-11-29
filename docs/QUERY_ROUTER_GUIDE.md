@@ -1,10 +1,10 @@
-# 🎯 F1 Query Router - Guía Completa
+# F1 Query Router - Complete Guide
 
-## 📋 Resumen Ejecutivo
+## Overview
 
-El **F1 Query Router** es un sistema inteligente de enrutamiento de consultas que clasifica automáticamente las preguntas de los usuarios y las dirige al handler especializado apropiado, garantizando respuestas optimizadas y contextualizadas.
+The **F1 Query Router** is an intelligent query routing system that automatically classifies user questions and directs them to the appropriate specialized handler, ensuring optimized and contextualized responses.
 
-## 🏗️ Arquitectura del Sistema
+## System Architecture
 
 ```
 ┌─────────────────────────────────────────────┐
@@ -39,171 +39,171 @@ El **F1 Query Router** es un sistema inteligente de enrutamiento de consultas qu
 └─────────────────────────────────────────────┘
 ```
 
-## 🎯 Tipos de Consultas Soportadas
+## Supported Query Types
 
-### 1. BASIC QUERY - Consultas Básicas ℹ️
+### 1. BASIC QUERY - General Questions
 
-**Descripción**: Preguntas simples sobre conceptos F1, terminología, reglas e información general.
+**Description**: Simple questions about F1 concepts, terminology, rules, and general information.
 
-**Ejemplos**:
-- "¿Qué es DRS?"
-- "Explica el sistema de puntos en F1"
-- "¿Quién ganó el GP de Mónaco en 2023?"
-- "¿Qué son los compuestos de neumáticos?"
-- "Explica qué es la pole position"
+**Examples**:
+- "What is DRS?"
+- "Explain the F1 points system"
+- "Who won the Monaco GP in 2023?"
+- "What are tire compounds?"
+- "Explain pole position"
 
-**Características del Handler**:
-- Respuestas educativas y accesibles
-- Adaptado a diferentes niveles de conocimiento (principiantes a expertos)
-- Enfoque en claridad y comprensión
-- Sin requerir datos de telemetría
+**Handler Characteristics**:
+- Educational and accessible responses
+- Adapted to different knowledge levels (beginner to expert)
+- Focus on clarity and comprehension
+- No telemetry data required
 
 **System Prompt**: [basic_query_prompt.md](../backend/services/chatbot/prompts/basic_query_prompt.md)
 
 ---
 
-### 2. TECHNICAL QUERY - Consultas Técnicas 🔧
+### 2. TECHNICAL QUERY - Telemetry Analysis
 
-**Descripción**: Análisis técnico avanzado que requiere datos de telemetría, métricas de rendimiento y análisis de ingeniería.
+**Description**: Advanced technical analysis requiring telemetry data, performance metrics, and engineering insights.
 
-**Ejemplos**:
-- "Muestra la aplicación de aceleración en el sector 2"
-- "Analiza los datos de presión de freno en la vuelta 15"
-- "¿Cuál fue la velocidad máxima en la recta?"
-- "Muestra las curvas de RPM para la vuelta más rápida"
-- "Explica el patrón de degradación de neumáticos"
+**Examples**:
+- "Show throttle application in sector 2"
+- "Analyze brake pressure data on lap 15"
+- "What was the top speed on the straight?"
+- "Show RPM curves for the fastest lap"
+- "Explain the tire degradation pattern"
 
-**Características del Handler**:
-- Análisis de telemetría detallado
-- Insights de ingeniería de carreras
-- Explicaciones técnicas con terminología profesional
-- Recomendaciones de optimización de rendimiento
+**Handler Characteristics**:
+- Detailed telemetry analysis
+- Race engineering insights
+- Technical explanations with professional terminology
+- Performance optimization recommendations
 
-**Canales de Telemetría Analizados**:
-- Velocidad (km/h)
-- Acelerador (0-100%)
-- Freno (0-100%)
+**Telemetry Channels Analyzed**:
+- Speed (km/h)
+- Throttle (0-100%)
+- Brake (0-100%)
 - RPM
-- Marchas (1-8)
-- DRS (activación)
-- Fuerzas G (lateral y longitudinal)
-- Temperaturas de neumáticos
+- Gear (1-8)
+- DRS (activation)
+- G-forces (lateral and longitudinal)
+- Tire temperatures
 
 **System Prompt**: [technical_query_prompt.md](../backend/services/chatbot/prompts/technical_query_prompt.md)
 
 ---
 
-### 3. COMPARISON QUERY - Consultas Comparativas ⚖️
+### 3. COMPARISON QUERY - Multi-Driver Analysis
 
-**Descripción**: Comparaciones multi-piloto o multi-vuelta con análisis estadístico y deltas de rendimiento.
+**Description**: Multi-driver or multi-lap comparisons with statistical analysis and performance deltas.
 
-**Ejemplos**:
-- "Compara los tiempos de vuelta de Hamilton vs Verstappen"
-- "Muestra el delta entre sus vueltas más rápidas"
-- "¿Quién fue más rápido en el sector 1, Leclerc o Sainz?"
-- "Compara el ritmo de carrera de los top 3 pilotos"
-- "Analiza la brecha de rendimiento entre compañeros de equipo"
+**Examples**:
+- "Compare Hamilton vs Verstappen lap times"
+- "Show the delta between their fastest laps"
+- "Who was faster in sector 1, Leclerc or Sainz?"
+- "Compare race pace of top 3 drivers"
+- "Analyze performance gap between teammates"
 
-**Características del Handler**:
-- Análisis lado a lado
-- Cálculo de deltas (tiempo, velocidad, porcentaje)
-- Análisis sector por sector
-- Insights estadísticos y de significancia
-- Comparaciones objetivas basadas en datos
+**Handler Characteristics**:
+- Side-by-side analysis
+- Delta calculations (time, speed, percentage)
+- Sector-by-sector breakdown
+- Statistical significance insights
+- Objective data-driven comparisons
 
-**Tipos de Comparación**:
-- Piloto vs Piloto
-- Vuelta vs Vuelta
-- Sesión vs Sesión
-- Compañeros de equipo
-- Año vs Año
+**Comparison Types**:
+- Driver vs Driver
+- Lap vs Lap
+- Session vs Session
+- Teammate comparisons
+- Year vs Year
 
 **System Prompt**: [comparison_query_prompt.md](../backend/services/chatbot/prompts/comparison_query_prompt.md)
 
 ---
 
-### 4. REPORT REQUEST - Solicitud de Reporte 📄
+### 4. REPORT REQUEST - Conversation Summaries
 
-**Descripción**: Generación de resúmenes y reportes profesionales de conversaciones y análisis previos.
+**Description**: Generation of professional summaries and reports from previous conversations and analysis.
 
-**Ejemplos**:
-- "Genera un resumen de nuestra conversación"
-- "Crea un reporte del análisis que hicimos"
-- "Exporta esta conversación como documento"
-- "Resume los hallazgos clave"
-- "Haz un reporte PDF de este chat"
+**Examples**:
+- "Generate a summary of our conversation"
+- "Create a report of the analysis we did"
+- "Export this conversation as a document"
+- "Summarize the key findings"
+- "Make a PDF report of this chat"
 
-**Características del Handler**:
-- Consolidación de conversaciones multi-turno
-- Estructura profesional (Executive Summary, Findings, Conclusions)
-- Formato Markdown para fácil exportación
-- Preservación de precisión técnica
-- Extracción de insights clave
+**Handler Characteristics**:
+- Multi-turn conversation consolidation
+- Professional structure (Executive Summary, Findings, Conclusions)
+- Markdown format for easy export
+- Technical accuracy preservation
+- Key insights extraction
 
-**Estructura de Reporte**:
-1. **Executive Summary**: Resumen de 2-3 oraciones
-2. **Topics Discussed**: Temas principales cubiertos
-3. **Key Findings**: Hallazgos principales
-4. **Detailed Analysis**: Análisis técnico detallado
-5. **Technical Details**: Datos y métricas específicas
-6. **Conclusions**: Resumen final y recomendaciones
+**Report Structure**:
+1. **Executive Summary**: 2-3 sentence overview
+2. **Topics Discussed**: Main topics covered
+3. **Key Findings**: Primary discoveries
+4. **Detailed Analysis**: In-depth technical analysis
+5. **Technical Details**: Specific data and metrics
+6. **Conclusions**: Final summary and recommendations
 
 **System Prompt**: [report_handler_prompt.md](../backend/services/chatbot/prompts/report_handler_prompt.md)
 
 ---
 
-### 5. DOWNLOAD REQUEST - Solicitud de Descarga 💾
+### 5. DOWNLOAD REQUEST - Data Export
 
-**Descripción**: Exportación de datos de telemetría, resultados de análisis y datos de carreras en varios formatos.
+**Description**: Export telemetry data, analysis results, and race data in various formats.
 
-**Ejemplos**:
-- "Descarga los datos de telemetría como CSV"
-- "Exporta a JSON"
-- "¿Puedo obtener esto en formato Excel?"
-- "Descarga la tabla de tiempos de vuelta"
-- "Exporta todos los datos que analizamos"
+**Examples**:
+- "Download telemetry data as CSV"
+- "Export to JSON"
+- "Can I get this in Excel format?"
+- "Download the lap times table"
+- "Export all analyzed data"
 
-**Formatos Soportados**:
-- **CSV**: Para Excel, hojas de cálculo, análisis general
-- **JSON**: Para aplicaciones web, APIs, uso programático
-- **Excel (XLSX)**: Para reportes profesionales, múltiples hojas
-- **Parquet**: Para big data, ciencia de datos (Pandas, Spark)
+**Supported Formats**:
+- **CSV**: For Excel, spreadsheets, general analysis
+- **JSON**: For web apps, APIs, programmatic use
+- **Excel (XLSX)**: For professional reports, multiple sheets
+- **Parquet**: For big data, data science (Pandas, Spark)
 
-**Características del Handler**:
-- Detección automática de formato
-- Guía sobre el mejor formato para cada uso
-- Descripción de estructura de datos
-- Recomendaciones de uso
+**Handler Characteristics**:
+- Automatic format detection
+- Guidance on best format for each use case
+- Data structure description
+- Usage recommendations
 
 **System Prompt**: [download_handler_prompt.md](../backend/services/chatbot/prompts/download_handler_prompt.md)
 
 ---
 
-## 🧠 Sistema de Clasificación
+## Classification System
 
-### Clasificación LLM (Principal)
+### LLM Classification (Primary)
 
-El sistema utiliza un LLM (via LM Studio) para clasificar consultas con alta precisión:
+The system uses an LLM (via LM Studio) to classify queries with high accuracy:
 
-- **Temperature**: 0.1 (baja para consistencia)
-- **Max Tokens**: 50 (respuesta corta esperada)
+- **Temperature**: 0.1 (low for consistency)
+- **Max Tokens**: 50 (short response expected)
 - **System Prompt**: [classifier_system_prompt.md](../backend/services/chatbot/prompts/classifier_system_prompt.md)
 
-### Clasificación Rule-based (Fallback)
+### Rule-based Classification (Fallback)
 
-Si LM Studio no está disponible, el sistema usa un clasificador basado en reglas:
+If LM Studio is unavailable, the system uses a rule-based classifier:
 
 ```python
-# Palabras clave para DOWNLOAD_REQUEST
+# Keywords for DOWNLOAD_REQUEST
 download_keywords = ['download', 'export', 'csv', 'json', 'excel', 'xlsx']
 
-# Palabras clave para REPORT_REQUEST
+# Keywords for REPORT_REQUEST
 report_keywords = ['report', 'summary', 'summarize', 'document', 'pdf']
 
-# Palabras clave para COMPARISON_QUERY
+# Keywords for COMPARISON_QUERY
 comparison_keywords = ['compare', 'versus', 'vs', 'vs.', 'difference between', 'delta']
 
-# Palabras clave para TECHNICAL_QUERY
+# Keywords for TECHNICAL_QUERY
 technical_keywords = [
     'telemetry', 'speed', 'throttle', 'brake', 'rpm', 'gear',
     'temperature', 'tire', 'tyre', 'sector', 'lap time', 'data'
@@ -212,15 +212,13 @@ technical_keywords = [
 # Default: BASIC_QUERY
 ```
 
-## 📡 API Endpoint
-
 ### POST `/api/v1/chat/query`
 
 **Request Structure**:
 ```json
 {
-  "text": "Tu pregunta aquí",
-  "image": null,
+  "text": "Your question here",
+  "image": "data:image/jpeg;base64,/9j/4AAQ...",
   "chat_history": [],
   "context": {
     "year": 2024,
@@ -234,38 +232,93 @@ technical_keywords = [
 }
 ```
 
+**Request Parameters**:
+- `text` (string, required): User query text
+- `image` (string, optional): Base64-encoded image in data URI format (e.g., "data:image/jpeg;base64,...")
+- `chat_history` (array, optional): Previous conversation messages
+- `context` (object, optional): F1 session context (year, GP, session, drivers)
+- `model` (string, optional): Override default LLM model
+- `temperature` (float, optional): LLM temperature (0.0-1.0)
+- `max_tokens` (integer, optional): Maximum response length
+
+**Multimodal Query Examples**:
+
+1. **Chart Analysis**:
+```json
+{
+  "text": "Analyze the speed profile in this telemetry chart",
+  "image": "data:image/jpeg;base64,/9j/4AAQ...",
+  "context": {
+    "year": 2024,
+    "grand_prix": "Bahrain",
+    "session": "Race",
+    "drivers": ["VER"]
+  }
+}
+```
+
+2. **Comparison with Image**:
+```json
+{
+  "text": "Compare these two drivers' performance based on this delta chart",
+  "image": "data:image/jpeg;base64,/9j/4AAQ...",
+  "context": {
+    "drivers": ["HAM", "VER"]
+  }
+}
+```
+
 **Response Structure**:
 ```json
 {
   "type": "COMPARISON_QUERY",
   "handler": "ComparisonQueryHandler",
-  "response": "Respuesta del LLM...",
+  "response": "LLM response...",
   "metadata": {
     "query_type": "COMPARISON_QUERY",
     "handler": "ComparisonQueryHandler",
     "processing_time_ms": 1234.56,
     "timestamp": "2024-11-28T12:00:00",
-    "llm_model": "qwen2-vl-4b-instruct",
-    "tokens_used": 150
+    "llm_model": "qwen3-vl-4b-instruct",
+    "tokens_used": 150,
+    "used_image": true,
+    "image_size_kb": 45.2
   }
 }
 ```
 
-## 🧪 Testing
+**Automatic Retry Mechanism**:
 
-### Ejecutar Tests
+If a vision model fails to process an image query, the system automatically retries without the image:
+
+```
+1. Initial Request: text + image → Vision Model
+2. Vision Fails (timeout/error)
+3. Automatic Retry: text only → Text-only Model
+4. Response: Graceful degradation message + text analysis
+```
+
+**Error Handling**:
+- Vision model timeout: Automatic retry without image
+- Invalid image format: Returns error message with supported formats
+- Image too large: Automatic optimization to 768×480 JPEG
+- Missing context: Uses default values or asks for clarification
+
+## Testing
+
+### Run Tests
 
 ```bash
-# Test completo (con LM Studio)
+# Full test (with LM Studio)
 python3 backend/test_query_router.py
 
-# Test solo estructura y fallback (sin LM Studio)
+# Structure and fallback only (without LM Studio)
 python3 backend/test_query_router.py <<< "n"
 ```
 
-### Casos de Test
+### Test Cases
 
-El sistema incluye test cases para validar la clasificación:
+The system includes test cases to validate classification:
 
 ```python
 test_cases = [
@@ -282,117 +335,84 @@ test_cases = [
 ]
 ```
 
-## 📊 Métricas y Performance
+## Metrics and Performance
 
-El router proporciona métricas detalladas en cada respuesta:
+The router provides detailed metrics in each response:
 
-- **processing_time_ms**: Tiempo total de procesamiento
-- **tokens_used**: Tokens consumidos del LLM
-- **handler_type**: Tipo de handler ejecutado
-- **used_context**: Si se usó contexto F1
-- **used_history**: Si se usó historial de chat
-- **used_image**: Si se procesó una imagen
+- **processing_time_ms**: Total processing time (includes vision model if applicable)
+- **tokens_used**: LLM tokens consumed
+- **handler_type**: Type of handler executed
+- **used_context**: Whether F1 context was used
+- **used_history**: Whether chat history was used
+- **used_image**: Whether an image was processed (v1.1+)
+- **image_size_kb**: Size of processed image in kilobytes (v1.1+)
+- **retry_attempted**: Whether automatic retry was triggered (v1.1+)
 
-## 🔄 Flujo de Procesamiento
+**Performance Benchmarks (v1.1)**:
+- Text-only queries: 1-3 seconds
+- Vision queries (chart analysis): 5-15 seconds
+- Retry fallback: +2-3 seconds
+- History compression: <2 seconds for 10+ interactions
 
-1. **Recepción de Query**: Usuario envía consulta via API
-2. **Validación**: Validar campos requeridos (`text`)
-3. **Clasificación**: LLM o fallback determina el tipo
-4. **Enrutamiento**: Router selecciona el handler apropiado
-5. **Procesamiento**: Handler especializado genera respuesta
-6. **Respuesta**: Retornar resultado con metadata
+## Processing Flow
 
-## 🎨 System Prompts
+1. **Query Reception**: User sends query via API
+2. **Validation**: Validate required fields (`text`)
+3. **Classification**: LLM or fallback determines the type
+4. **Routing**: Router selects the appropriate handler
+5. **Processing**: Specialized handler generates response
+6. **Response**: Return result with metadata
 
-Todos los prompts están centralizados en archivos Markdown para fácil mantenimiento:
+## System Prompts
+
+All prompts are centralized in Markdown files for easy maintenance:
 
 ```
 backend/services/chatbot/prompts/
-├── basic_query_prompt.md           # Prompt para consultas básicas
-├── technical_query_prompt.md       # Prompt para análisis técnico
-├── comparison_query_prompt.md      # Prompt para comparaciones
-├── report_handler_prompt.md        # Prompt para reportes
-├── download_handler_prompt.md      # Prompt para descargas
-└── classifier_system_prompt.md     # Prompt del clasificador
+├── basic_query_prompt.md           # Basic query prompt
+├── technical_query_prompt.md       # Technical analysis prompt
+├── comparison_query_prompt.md      # Comparison prompt
+├── report_handler_prompt.md        # Report generation prompt
+├── download_handler_prompt.md      # Download guidance prompt
+└── classifier_system_prompt.md     # Classifier prompt
 ```
 
-### Ventajas de Prompts en Archivos
+### Advantages of File-based Prompts
 
-✅ **Fácil edición**: Modificar sin tocar código
-✅ **Versionamiento**: Control de cambios en Git
-✅ **Colaboración**: Equipo puede mejorar prompts
-✅ **Testing**: A/B testing de diferentes versiones
-✅ **Documentación**: Prompts autodocumentados
-✅ **Fallback**: Sistema incluye prompts mínimos de respaldo
+- Easy editing without touching code
+- Version control in Git
+- Team collaboration on prompt improvements
+- A/B testing of different versions
+- Self-documenting prompts
+- System includes minimal fallback prompts
 
-## 🚀 Próximos Pasos
+## Implementation Status
 
-### Fase 2: Integración con Telemetría
-- Conectar handlers con servicios de telemetría reales
-- Obtener datos de FastF1 automáticamente
-- Procesamiento de datos en tiempo real
+### v1.0 Complete (November 2024)
+- ✅ 5 specialized handlers implemented
+- ✅ LLM + rule-based fallback classifier
+- ✅ Professional prompts in .md files
+- ✅ Integrated testing system
+- ✅ Complete documentation
+- ✅ Performance metrics and metadata
 
-### Fase 3: Soporte Multimodal
-- Análisis de imágenes de telemetría
-- Interpretación de gráficos
-- OCR para datos de pantallas
+### v1.1 Complete (January 2025)
+- ✅ **Multimodal support**: Vision model integration (Qwen3-VL-4B)
+- ✅ **Image parameter**: Base64 data URI format for charts
+- ✅ **Automatic retry**: Fallback to text-only on vision failure
+- ✅ **Smart compression**: LLM-powered history summarization (5 interactions)
+- ✅ **Timeout configuration**: Infinite wait for vision processing (DEFAULT_TIMEOUT=None)
+- ✅ **Image optimization**: 768×480 JPEG at 85% quality
+- ✅ **Auto-send integration**: Dashboard → Chat with predefined prompts
 
-### Fase 4: Funcionalidad Completa
-- Generación real de archivos descargables
-- Exportación a PDF de reportes
-- Links de descarga con expiración
-
-## 📚 Recursos Adicionales
-
-- **Testing Guide**: [TEST_ROUTER.md](../backend/services/chatbot/TEST_ROUTER.md)
-- **Architecture**: [ARCHITECTURE.md](ARCHITECTURE.md)
-- **Roadmap**: [ROADMAP.md](ROADMAP.md)
-
-## 🐛 Troubleshooting
-
-### Error: LM Studio no conecta
-**Solución**:
-1. Verificar que LM Studio esté corriendo en `localhost:1234`
-2. Iniciar el servidor en LM Studio
-3. Cargar un modelo compatible
-
-### Error: Clasificación incorrecta
-**Solución**:
-1. Revisar el prompt del clasificador
-2. Ajustar palabras clave del fallback
-3. Proporcionar más contexto en la query
-
-### Error: Handler no encontrado
-**Solución**:
-1. Verificar que todos los handlers estén inicializados
-2. Ejecutar test de estructura del router
-3. Revisar imports en `__init__.py`
-
-## 💡 Best Practices
-
-### Para Usuarios
-1. **Se específico**: Incluye contexto (año, GP, sesión)
-2. **Una intención por query**: No mezcles tipos de consulta
-3. **Usa palabras clave**: Facilita la clasificación correcta
-
-### Para Desarrolladores
-1. **Mantén prompts actualizados**: Refleja cambios en F1
-2. **Versiona prompts**: Guarda cambios importantes
-3. **Test exhaustivo**: Valida clasificación con casos edge
-4. **Logs detallados**: Facilita debugging
-
-## 📝 Changelog
-
-### v1.0.0 - Sistema de Enrutamiento Completo
-- ✅ 5 handlers especializados implementados
-- ✅ Clasificador LLM + fallback rule-based
-- ✅ Prompts profesionales en archivos .md
-- ✅ Sistema de testing integrado
-- ✅ Documentación completa
-- ✅ Metadata y métricas de performance
+### v2.0 Planned
+- 🔵 Multi-image support (compare multiple charts)
+- 🔵 Image caching (avoid re-uploading identical charts)
+- 🔵 Streaming with vision (real-time multimodal responses)
+- 🔵 Advanced vision analytics (data extraction from charts)
 
 ---
 
-**Desarrollado para**: F1 Telemetry Manager
-**Fecha**: Noviembre 2025
-**Versión**: 1.0.0
+**Developed for**: F1 Telemetry Manager  
+**Last Updated**: January 2025  
+**Version**: 1.1.0

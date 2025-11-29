@@ -5,9 +5,11 @@
 
 This document describes the architectural design and technical decisions for the F1_Telemetry_Manager project. It outlines the system structure, design patterns, module organization, and integration strategies.
 
-**Project Duration:** 5 weeks
+**Project Duration:** 5 weeks (v1.0 MVP) + 6 weeks (v1.1 Enhancements)
 
-**Last Updated:** October 19, 2025
+**Last Updated:** January 2025
+
+**Current Version:** 1.1
 
 ---
 
@@ -352,30 +354,61 @@ The application is organized into seven primary feature modules:
 **Core Responsibilities:**
 
 * Manage conversational AI interface
-* Integrate with LM Studio for LLM responses
-* Maintain conversation context
+* Integrate with LM Studio for LLM responses (local inference)
+* Maintain conversation context with smart compression
 * Generate contextual responses based on visualizations
-* Save and retrieve chat history
+* Support multimodal queries (text + images)
+* Save and retrieve chat history efficiently
 
 **Key Components:**
 
-* Frontend: Chat interface, message bubbles, context buttons ("Ask about this")
-* Backend: Chatbot endpoints, chatbot service, LM Studio adapter, context manager, prompt builder, chat repository
+* Frontend: Chat interface, message bubbles, context buttons ("Ask about this"), auto-send system
+* Backend: Chatbot endpoints, LM Studio service, query router (5 handlers), context manager, prompt builder, chat repository
 
 **Key Operations:**
 
-* Process user messages with context
+* Process user messages with F1 session context
 * Build appropriate prompts based on conversation state
-* Call LM Studio API for LLM responses
-* Attach visualization context to queries
-* Store conversation history per user
-* Adapt responses for basic vs. advanced users
+* Call LM Studio API for LLM responses (with timeout configuration)
+* Attach visualization context and images to queries
+* Store conversation history per user with automatic compression
+* Route queries to specialized handlers (basic, technical, comparison, report, download)
+* Support vision models (Qwen3-VL) for chart analysis
 
-**Special Features:**
+**Advanced Features (v1.1):**
 
-* Contextual "Ask about this" buttons on every visualization
-* Pre-loaded prompts when triggered from visualizations
-* Screenshot/context attachment system
+* **Smart History Compression**: Automatic LLM-powered summarization after 5 interactions
+* **Vision Model Support**: Send telemetry charts directly to multimodal models
+* **Auto-send from Dashboard**: Click 🤖 on any chart to analyze in chat automatically
+* **Infinite Timeout**: Vision queries process without time limits (DEFAULT_TIMEOUT=None)
+* **Automatic Retry**: Falls back to text-only if vision model fails
+* **Image Optimization**: Charts converted to 768×480 JPEG at 85% quality
+* **Data URI Encoding**: Base64 format compatible with OpenAI Vision API
+
+**Chat Management Strategy:**
+
+```
+Chat History Flow:
+1. User sends message → Added to history
+2. History length checked → If >5 interactions, compress
+3. Compression: LLM summarizes old messages → Keep recent 5
+4. New message built with compressed context
+5. Send to LM Studio with optimized payload
+```
+
+**Vision Model Flow:**
+
+```
+Multimodal Query Flow:
+1. User clicks 🤖 on chart → Chart to 768×480 JPEG
+2. Convert to base64 data URI
+3. Navigate to chat with pending message
+4. Auto-send with image_base64 parameter
+5. Build multimodal message (text + image parts)
+6. Send to LM Studio (timeout=None)
+7. If vision fails → Retry without image
+8. Return analysis response
+```
 
 ---
 
@@ -1024,8 +1057,8 @@ External services are wrapped in adapters:
 
 ---
 
-**Document Version:** 1.0
+**Document Version:** 1.1
 
-**Last Updated:** October 19, 2025
+**Last Updated:** January 2025
 
-**Status:** Draft for 5-week implementation
+**Status:** Production (v1.1 Complete)
