@@ -93,7 +93,7 @@ Respuesta con metadata
     "handler": "BasicQueryHandler",
     "processing_time_ms": 1234.56,
     "timestamp": "2024-11-27T12:00:00",
-    "llm_model": "qwen2-vl-4b-instruct",
+    "llm_model": "qwen3-vl-4b-instruct",
     "tokens_used": 150
   }
 }
@@ -389,7 +389,7 @@ if uploaded_image:
 #### 4. Configuración de LM Studio
 
 1. **Descargar modelo**:
-   - Buscar en LM Studio: `qwen2-vl-4b-instruct`
+   - Buscar en LM Studio: `qwen3-vl-4b-instruct`
    - Versión recomendada: Q4_K_M (balance rendimiento/calidad)
 
 2. **Cargar modelo**:

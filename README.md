@@ -68,6 +68,7 @@ F1 Telemetry Manager analyzes Formula 1 telemetry data through an interface comb
 - **Speech-to-Text**: OpenAI Whisper for accurate audio transcription
 - **Text-to-Speech**: pyttsx3 for offline audio synthesis
 - **Full Voice Flow**: Single-endpoint STT → LLM → TTS pipeline
+- **Voice Orb Visualization**: Audio-reactive orb with Iridescence shader for real-time feedback
 - **Voice Chat Reports**: Export voice conversation transcripts with timestamps
 - **Voice Models**: Configurable system voices (Windows SAPI, macOS NSSpeechSynthesizer, Linux eSpeak)
 - **Audio Formats**: Supports WAV, MP3, WebM, OGG, M4A input
@@ -154,13 +155,13 @@ The system uses a layered architecture with feature-based organization:
 | **Changelog**       | Version history and notable changes               | [📝 CHANGELOG.md](docs/CHANGELOG.md)             |
 | **Issue Templates** | Bug reports, feature requests, and task templates | [🐛 ISSUE_TEMPLATES.md](docs/ISSUE_TEMPLATES.md) |
 | **Query Router**    | Intelligent query routing system guide            | [🎯 QUERY_ROUTER_GUIDE.md](docs/QUERY_ROUTER_GUIDE.md) |
-| **Voice Chat**      | Voice interaction implementation details          | [🎤 VOICE_CHAT_IMPLEMENTATION_PLAN.md](docs/VOICE_CHAT_IMPLEMENTATION_PLAN.md) |
+| **Voice Chat**      | Voice interaction implementation details          | [🎤 VOICE_CHAT_IMPLEMENTATION_PLAN.md](docs/archived/VOICE_CHAT_IMPLEMENTATION_PLAN.md) |
 
 ### Implementation Plans
 
-- **Circuit Analysis**: [CIRCUIT_ANALYSIS_IMPLEMENTATION_PLAN.md](docs/CIRCUIT_ANALYSIS_IMPLEMENTATION_PLAN.md)
-- **Circuit Comparison**: [CIRCUIT_COMPARISON_IMPLEMENTATION_PLAN.md](docs/CIRCUIT_COMPARISON_IMPLEMENTATION_PLAN.md)
-- **Chat System**: [CHAT_IMPLEMENTATION_PLAN.md](docs/CHAT_IMPLEMENTATION_PLAN.md)
+- **Circuit Analysis**: [CIRCUIT_ANALYSIS_IMPLEMENTATION_PLAN.md](docs/archived/CIRCUIT_ANALYSIS_IMPLEMENTATION_PLAN.md)
+- **Circuit Comparison**: [CIRCUIT_COMPARISON_IMPLEMENTATION_PLAN.md](docs/archived/CIRCUIT_COMPARISON_IMPLEMENTATION_PLAN.md)
+- **Chat System**: [CHAT_IMPLEMENTATION_PLAN.md](docs/archived/CHAT_IMPLEMENTATION_PLAN.md)
 - **Multimodal Support**: [MULTIMODAL_IMPLEMENTATION.md](docs/MULTIMODAL_IMPLEMENTATION.md)
 - **Query Routing**: [QUERY_ROUTING_IMPLEMENTATION.md](docs/QUERY_ROUTING_IMPLEMENTATION.md)
 

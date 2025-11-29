@@ -388,7 +388,7 @@ backend/services/chatbot/prompts/
 
 ## Implementation Status
 
-### v1.0 Complete (November 2024)
+### v1.0 Complete (October 2025)
 - ✅ 5 specialized handlers implemented
 - ✅ LLM + rule-based fallback classifier
 - ✅ Professional prompts in .md files
@@ -396,7 +396,7 @@ backend/services/chatbot/prompts/
 - ✅ Complete documentation
 - ✅ Performance metrics and metadata
 
-### v1.1 Complete (January 2025)
+### v1.1 Complete (November 2025)
 - ✅ **Multimodal support**: Vision model integration (Qwen3-VL-4B)
 - ✅ **Image parameter**: Base64 data URI format for charts
 - ✅ **Automatic retry**: Fallback to text-only on vision failure
@@ -414,5 +414,5 @@ backend/services/chatbot/prompts/
 ---
 
 **Developed for**: F1 Telemetry Manager  
-**Last Updated**: January 2025  
+**Last Updated**: November 2025  
 **Version**: 1.1.0

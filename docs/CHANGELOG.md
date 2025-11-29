@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [1.1.0][1.1.0] - 2025-01-XX
+## [1.1.0][1.1.0] - 2025-11-29
 
 ### Added
 
@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 #### Voice Capabilities
 - **Whisper Model Upgrade**: Enhanced speech recognition (small → medium model)
+- **Voice Orb Visualization**: Audio-reactive orb with Iridescence shader for real-time feedback
 - **Voice Chat Reports**: Export voice conversation transcripts
 - **TTS Integration**: Text-to-speech output for chat responses
 

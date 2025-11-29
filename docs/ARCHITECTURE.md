@@ -7,7 +7,7 @@ This document describes the architectural design and technical decisions for the
 
 **Project Duration:** 5 weeks (v1.0 MVP) + 6 weeks (v1.1 Enhancements)
 
-**Last Updated:** January 2025
+**Last Updated:** November 2025
 
 **Current Version:** 1.1
 
@@ -1059,6 +1059,6 @@ External services are wrapped in adapters:
 
 **Document Version:** 1.1
 
-**Last Updated:** January 2025
+**Last Updated:** November 2025
 
 **Status:** Production (v1.1 Complete)
