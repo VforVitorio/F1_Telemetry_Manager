@@ -125,7 +125,7 @@ class ReportHandler(BaseHandler):
                 messages=messages,
                 model=kwargs.get("model"),
                 temperature=kwargs.get("temperature", 0.5),  # Lower for consistency
-                max_tokens=kwargs.get("max_tokens", 2000),  # Higher for complete reports
+                max_tokens=kwargs.get("max_tokens", 4000),  # Balanced for speed and completeness
                 stream=False
             )
 
@@ -207,13 +207,36 @@ class ReportHandler(BaseHandler):
                 prompt += f"- Drivers: {', '.join(context['drivers'])}\n"
             prompt += "\n"
 
-        # Add conversation history
+        # Add conversation history (excluding images to save tokens)
         prompt += "## Conversation History\n\n"
+        images_filtered = 0
         for idx, msg in enumerate(chat_history, 1):
             role = msg.get("role", "unknown")
             content = msg.get("content", "")
-            if role and content:
+
+            # Skip empty messages
+            if not role or not content:
+                continue
+
+            # Check if content is an image (base64 or data URI)
+            is_image = False
+            if isinstance(content, str):
+                # Check if it's a data URI image
+                if content.startswith('data:image'):
+                    is_image = True
+                # Check if it's a very long string (likely base64 image)
+                elif len(content) > 10000 and not content.startswith(('http', 'www')):
+                    is_image = True
+
+            # Replace images with placeholder to save tokens
+            if is_image:
+                images_filtered += 1
+                prompt += f"**{role.capitalize()}**: [Image attached - not included in report]\n\n"
+            else:
                 prompt += f"**{role.capitalize()}**: {content}\n\n"
+
+        if images_filtered > 0:
+            logger.info(f"Filtered {images_filtered} image(s) from report to save tokens")
 
         prompt += "\n---\n\n"
         prompt += "Generate a comprehensive report following the standard report structure."
