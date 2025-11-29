@@ -297,10 +297,14 @@ def render_lap_graph(selected_year, selected_gp, selected_session, selected_driv
     # Display tyre compound legend with lap counts per driver
     _render_tyre_compound_legend(lap_times_data, selected_drivers)
 
-    # Add lap selector for telemetry - one lap per driver
-    _render_lap_selector_section(
-        lap_times_data, selected_drivers, selected_year, selected_gp, selected_session
-    )
+    # Display current telemetry selections if any
+    if 'selected_laps_per_driver' in st.session_state and st.session_state['selected_laps_per_driver']:
+        selections_text = ", ".join([f"**{driver}** (Lap {lap})"
+                                    for driver, lap in st.session_state['selected_laps_per_driver'].items()])
+        st.info(f"📊 Showing telemetry: {selections_text}")
+        st.markdown("💡 **Tip:** Click on any point in the LAP CHART above to load that lap's telemetry")
+    else:
+        st.info("💡 **Tip:** Click on any point in the LAP CHART above to load telemetry data for that lap")
 
     # Return lap_times_data so control buttons can use it
     return lap_times_data
@@ -463,130 +467,6 @@ def _render_tyre_compound_legend(lap_times_data, selected_drivers):
             st.markdown("</div>", unsafe_allow_html=True)
 
 
-def _render_lap_selector_section(lap_times_data, selected_drivers, selected_year, selected_gp, selected_session):
-    """
-    Render lap selector section for telemetry data.
-
-    Args:
-        lap_times_data: List of lap time data dictionaries
-        selected_drivers: List of selected driver codes
-        selected_year: Selected year
-        selected_gp: Selected Grand Prix
-        selected_session: Selected session
-    """
-    if not lap_times_data or not selected_drivers:
-        st.info("💡 Select drivers above to view lap telemetry data")
-        return
-
-    st.markdown("<br>", unsafe_allow_html=True)
-    st.markdown("### 📊 Select laps for each driver to compare telemetry")
-
-    # Initialize selected_laps_per_driver if not exists
-    if 'selected_laps_per_driver' not in st.session_state:
-        st.session_state['selected_laps_per_driver'] = {}
-
-    # Create a row for each driver
-    lap_selections = {}
-    for driver in selected_drivers:
-        col1, col2, col3 = st.columns([2, 3, 1])
-
-        with col1:
-            st.markdown(f"**{driver}**")
-
-        with col2:
-            # Get lap numbers for this driver
-            driver_laps = [lap['lap_number'] for lap in lap_times_data
-                           if lap['driver'] == driver]
-            driver_laps.sort()
-
-            if driver_laps:
-                # Use previous selection if available, otherwise default to first lap
-                default_lap = st.session_state['selected_laps_per_driver'].get(
-                    driver, driver_laps[0])
-                if default_lap not in driver_laps:
-                    default_lap = driver_laps[0]
-
-                selected_lap = st.selectbox(
-                    "Lap Number",
-                    options=driver_laps,
-                    index=driver_laps.index(default_lap),
-                    key=f"lap_selector_{driver}",
-                    label_visibility="collapsed"
-                )
-                lap_selections[driver] = selected_lap
-            else:
-                st.warning("No laps available")
-                lap_selections[driver] = None
-
-        with col3:
-            st.markdown("<br>", unsafe_allow_html=True)
-
-    # Load button at the bottom
-    st.markdown("<br>", unsafe_allow_html=True)
-    load_button = st.button("🔄 LOAD ALL TELEMETRY",
-                            type="primary", use_container_width=True)
-
-    # Load telemetry when button is clicked
-    if load_button:
-        _load_telemetry_for_selected_laps(
-            lap_selections, selected_year, selected_gp, selected_session
-        )
-
-    # Display current selections
-    if 'selected_laps_per_driver' in st.session_state and st.session_state['selected_laps_per_driver']:
-        selections_text = ", ".join([f"**{driver}** (Lap {lap})"
-                                    for driver, lap in st.session_state['selected_laps_per_driver'].items()])
-        st.info(f"📊 Showing telemetry: {selections_text}")
-
-
-def _load_telemetry_for_selected_laps(lap_selections, selected_year, selected_gp, selected_session):
-    """
-    Load telemetry data for selected laps.
-
-    Args:
-        lap_selections: Dictionary mapping driver codes to selected lap numbers
-        selected_year: Selected year
-        selected_gp: Selected Grand Prix
-        selected_session: Selected session
-    """
-    if not lap_selections:
-        return
-
-    telemetry_data_multi = {}
-    all_successful = True
-
-    with st.spinner("Loading telemetry for all drivers..."):
-        for driver, lap_num in lap_selections.items():
-            if lap_num is not None:
-                success, telemetry, error = _fetch_lap_telemetry_cached(
-                    selected_year,
-                    selected_gp,
-                    selected_session,
-                    driver,
-                    lap_num
-                )
-
-                if success and telemetry:
-                    telemetry_data_multi[driver] = telemetry
-                else:
-                    all_successful = False
-                    st.warning(
-                        f"⚠️ Could not load telemetry for {driver} lap {lap_num}: {error if error else 'No data'}")
-
-    # Store in session state
-    if telemetry_data_multi:
-        st.session_state['telemetry_data_multi'] = telemetry_data_multi
-        st.session_state['selected_laps_per_driver'] = lap_selections
-
-        if all_successful:
-            st.success("✅ Loaded telemetry for all drivers")
-        st.rerun()
-    else:
-        st.error("⚠️ Could not load any telemetry data")
-        st.info(
-            "💡 **Tip:** Some laps may not have telemetry data (pit laps, incomplete laps, or data quality issues). Try selecting different laps.")
-
-
 def render_control_buttons(lap_times_data, selected_drivers, selected_year, selected_gp, selected_session):
     """
     Display control buttons below the graph with toggle functionality.
@@ -602,7 +482,7 @@ def render_control_buttons(lap_times_data, selected_drivers, selected_year, sele
 
     with btn_col1:
         # Fastest lap selection - auto-selects fastest lap for each driver
-        if st.button("🏁 SELECT FASTEST LAPS", use_container_width=True):
+        if st.button("🏁 SELECT FASTEST LAPS", width="stretch"):
             if lap_times_data and selected_drivers:
                 _select_fastest_laps(lap_times_data, selected_drivers, selected_year, selected_gp, selected_session)
 
@@ -612,7 +492,7 @@ def render_control_buttons(lap_times_data, selected_drivers, selected_year, sele
             st.session_state['show_outliers'] = False
 
         button_text = "HIDE OUTLIERS" if st.session_state['show_outliers'] else "SHOW OUTLIERS"
-        if st.button(button_text, use_container_width=True):
+        if st.button(button_text, width="stretch"):
             st.session_state['show_outliers'] = not st.session_state['show_outliers']
             st.rerun()
 
@@ -622,7 +502,7 @@ def render_control_buttons(lap_times_data, selected_drivers, selected_year, sele
             st.session_state['show_invalid_laps'] = True  # Show by default
 
         button_text = "HIDE INVALID LAPS" if st.session_state['show_invalid_laps'] else "SHOW INVALID LAPS"
-        if st.button(button_text, use_container_width=True):
+        if st.button(button_text, width="stretch"):
             st.session_state['show_invalid_laps'] = not st.session_state['show_invalid_laps']
             st.rerun()
 
