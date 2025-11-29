@@ -8,11 +8,41 @@ Provides functions for streaming messages, checking health, and managing models.
 import httpx
 from typing import Optional, Dict, List, Any, AsyncIterator
 import streamlit as st
+import base64
+import imghdr
 
 
 # Backend API configuration
 BACKEND_BASE_URL = "http://localhost:8000"  # Adjust as needed
 CHAT_API_BASE = f"{BACKEND_BASE_URL}/api/v1/chat"
+
+
+def format_image_for_vision_model(image_bytes: bytes) -> str:
+    """
+    Format image bytes as a proper Data URI for vision models.
+
+    LM Studio (and OpenAI-compatible APIs) require images in the format:
+    data:image/jpeg;base64,{base64_encoded_data}
+
+    Args:
+        image_bytes: Raw image bytes
+
+    Returns:
+        Properly formatted Data URI string
+    """
+    # Detect image type
+    image_type = imghdr.what(None, h=image_bytes)
+    if image_type is None:
+        # Default to jpeg if type detection fails
+        image_type = 'jpeg'
+
+    # Convert to base64
+    b64_string = base64.b64encode(image_bytes).decode('utf-8')
+
+    # Format as Data URI
+    data_uri = f"data:image/{image_type};base64,{b64_string}"
+
+    return data_uri
 
 
 def check_lm_studio_health() -> bool:
@@ -73,15 +103,18 @@ async def stream_message(
         Chunks of the assistant's response as they arrive
     """
     try:
-        # Convert image bytes to base64 for JSON serialization
-        import base64
-        image_b64 = None
+        # Format image for vision model (Data URI format)
+        image_data_uri = None
         if image:
             if isinstance(image, bytes):
-                image_b64 = base64.b64encode(image).decode('utf-8')
+                image_data_uri = format_image_for_vision_model(image)
             elif isinstance(image, str):
-                # Already base64 encoded
-                image_b64 = image
+                # If already a string, check if it has the data URI prefix
+                if not image.startswith('data:image'):
+                    # Add prefix if missing
+                    image_data_uri = f"data:image/jpeg;base64,{image}"
+                else:
+                    image_data_uri = image
 
         async with httpx.AsyncClient(timeout=None) as client:
             async with client.stream(
@@ -89,7 +122,7 @@ async def stream_message(
                 f"{CHAT_API_BASE}/stream",
                 json={
                     "text": text,
-                    "image": image_b64,
+                    "image": image_data_uri,
                     "chat_history": chat_history or [],
                     "context": context or {},
                     "model": model,
@@ -129,21 +162,24 @@ def send_message(
         Complete assistant response
     """
     try:
-        # Convert image bytes to base64 for JSON serialization
-        import base64
-        image_b64 = None
+        # Format image for vision model (Data URI format)
+        image_data_uri = None
         if image:
             if isinstance(image, bytes):
-                image_b64 = base64.b64encode(image).decode('utf-8')
+                image_data_uri = format_image_for_vision_model(image)
             elif isinstance(image, str):
-                # Already base64 encoded
-                image_b64 = image
+                # If already a string, check if it has the data URI prefix
+                if not image.startswith('data:image'):
+                    # Add prefix if missing
+                    image_data_uri = f"data:image/jpeg;base64,{image}"
+                else:
+                    image_data_uri = image
 
         response = httpx.post(
             f"{CHAT_API_BASE}/message",
             json={
                 "text": text,
-                "image": image_b64,
+                "image": image_data_uri,
                 "chat_history": chat_history or [],
                 "context": context or {},
                 "model": model,
@@ -194,9 +230,9 @@ def generate_report(
                 "context": context or {},
                 "model": model,
                 "temperature": 0.5,  # Lower temperature for consistent reports
-                "max_tokens": 2000  # Higher for complete reports
+                "max_tokens": 4000  # Balanced for speed and completeness
             },
-            timeout=60.0
+            timeout=None
         )
 
         if response.status_code == 200:
