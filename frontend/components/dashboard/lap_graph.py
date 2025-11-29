@@ -283,8 +283,12 @@ def render_lap_graph(selected_year, selected_gp, selected_session, selected_driv
         yaxis_title_font=dict(size=18)
     )
 
-    # Display the chart
-    st.plotly_chart(fig, use_container_width=True)
+    # Display the chart with click event handling
+    selected_points = st.plotly_chart(fig, width="stretch", on_select="rerun", key="lap_chart")
+
+    # Handle click events on the chart
+    if selected_points and hasattr(selected_points, 'selection') and selected_points.selection and hasattr(selected_points.selection, 'points'):
+        _handle_lap_click(selected_points.selection.points, lap_times_data, selected_year, selected_gp, selected_session)
 
     # Render control buttons immediately after the graph if requested
     if render_buttons:
@@ -300,6 +304,72 @@ def render_lap_graph(selected_year, selected_gp, selected_session, selected_driv
 
     # Return lap_times_data so control buttons can use it
     return lap_times_data
+
+
+def _handle_lap_click(points, lap_times_data, selected_year, selected_gp, selected_session):
+    """
+    Handle click events on the lap chart to automatically load telemetry.
+
+    Args:
+        points: List of clicked points from Plotly selection
+        lap_times_data: List of lap time data dictionaries
+        selected_year: Selected year
+        selected_gp: Selected Grand Prix
+        selected_session: Selected session
+    """
+    if not points or not lap_times_data:
+        return
+
+    # Get the first clicked point (it comes as a dictionary)
+    point = points[0]
+
+    # Extract lap number from x-axis and driver from customdata
+    # Points come as dictionaries with keys like 'x', 'y', 'customdata', etc.
+    lap_number = int(point.get('x', 0)) if isinstance(point, dict) else int(point.x)
+
+    # Get customdata which contains the driver code
+    customdata = point.get('customdata', []) if isinstance(point, dict) else (point.customdata if hasattr(point, 'customdata') else [])
+    driver = customdata[0] if customdata and len(customdata) > 0 else None
+
+    if not driver or lap_number is None:
+        return
+
+    # Check if this lap+driver combination is already loaded
+    current_selections = st.session_state.get('selected_laps_per_driver', {})
+    if current_selections.get(driver) == lap_number:
+        # Already loaded, no need to reload
+        return
+
+    # Load telemetry for the clicked lap
+    with st.spinner(f"Loading telemetry for {driver} Lap {lap_number}..."):
+        success, telemetry, error = _fetch_lap_telemetry_cached(
+            selected_year,
+            selected_gp,
+            selected_session,
+            driver,
+            lap_number
+        )
+
+        if success and telemetry:
+            # Get existing telemetry data or create new dict
+            telemetry_data_multi = st.session_state.get('telemetry_data_multi', {})
+
+            # Update telemetry for this driver
+            telemetry_data_multi[driver] = telemetry
+
+            # Update session state
+            st.session_state['telemetry_data_multi'] = telemetry_data_multi
+
+            # Update selected laps
+            if 'selected_laps_per_driver' not in st.session_state:
+                st.session_state['selected_laps_per_driver'] = {}
+            st.session_state['selected_laps_per_driver'][driver] = lap_number
+
+            st.success(f"✅ Loaded telemetry for {driver} Lap {lap_number}")
+            st.rerun()
+        else:
+            st.error(f"⚠️ Could not load telemetry for {driver} Lap {lap_number}: {error if error else 'No data'}")
+            st.info("💡 **Tip:** Some laps may not have telemetry data (pit laps, incomplete laps, or data quality issues). Try selecting a different lap.")
 
 
 def _render_tyre_compound_legend(lap_times_data, selected_drivers):
