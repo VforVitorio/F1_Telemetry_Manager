@@ -27,8 +27,7 @@ from components.common.link_button import render_link_button
 # Dashboard-specific components
 from components.dashboard.css_styles import render_custom_css, apply_driver_pill_colors
 from components.dashboard.data_selectors import render_data_selectors
-from components.dashboard.lap_graph import render_lap_graph, render_control_buttons
-
+from components.dashboard.lap_graph import render_lap_graph
 import services.telemetry_service
 importlib.reload(services.telemetry_service)
 
