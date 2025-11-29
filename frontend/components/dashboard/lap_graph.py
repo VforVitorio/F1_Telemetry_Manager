@@ -3,6 +3,7 @@ Lap Chart graph component with telemetry selection.
 """
 
 import os
+import base64
 import streamlit as st
 import plotly.graph_objects as go
 from collections import defaultdict
@@ -410,61 +411,65 @@ def _render_tyre_compound_legend(lap_times_data, selected_drivers):
     compound_order = ['soft', 'medium', 'hard', 'intermediate', 'inter', 'wet']
     sorted_compounds = sorted(all_compounds, key=lambda x: compound_order.index(x.lower()) if x.lower() in compound_order else 999)
 
-    # Display compounds and driver usage in a table-like format
-    current_dir = os.path.dirname(os.path.abspath(__file__))
+    # Display compounds and driver usage in an HTML table for better alignment
+    num_compounds = len(sorted_compounds)
+    col_width = 100 / num_compounds
 
-    # Create columns for each compound
-    cols = st.columns(len(sorted_compounds))
+    # Map compounds to image files
+    image_map = {
+        'soft': 'soft.png',
+        'medium': 'medium.png',
+        'hard': 'hard.png',
+        'intermediate': 'inter.png',
+        'inter': 'inter.png',
+        'wet': 'wet.png'
+    }
 
-    for idx, compound in enumerate(sorted_compounds):
-        with cols[idx]:
-            # Map compound to image file
-            image_map = {
-                'soft': 'soft.png',
-                'medium': 'medium.png',
-                'hard': 'hard.png',
-                'intermediate': 'inter.png',
-                'inter': 'inter.png',
-                'wet': 'wet.png'
-            }
+    # Get the path to the shared images directory
+    # Current file: frontend/components/dashboard/lap_graph.py
+    current_file_dir = os.path.dirname(os.path.abspath(__file__))  # frontend/components/dashboard
+    components_dir = os.path.dirname(current_file_dir)  # frontend/components
+    frontend_dir = os.path.dirname(components_dir)  # frontend
+    img_dir = os.path.join(frontend_dir, 'shared', 'img')  # frontend/shared/img
 
-            image_file = image_map.get(compound.lower())
+    # Build HTML table (no leading/trailing whitespace)
+    table_html = '<table style="width: 100%; border-collapse: collapse; border: none; margin: 0 auto;"><tr>'
 
-            # Center the content
-            st.markdown("<div style='text-align: center;'>", unsafe_allow_html=True)
+    # Add compound columns
+    for compound in sorted_compounds:
+        # Get image file path
+        image_file = image_map.get(compound.lower(), 'soft.png')
+        image_path = os.path.join(img_dir, image_file)
 
-            # Add image - smaller and centered
-            if image_file:
-                image_path = os.path.join(current_dir, '..', '..', 'shared', 'img', image_file)
-                try:
-                    # Center image with columns
-                    col1, col2, col3 = st.columns([1, 2, 1])
-                    with col2:
-                        st.image(image_path, width=100)
-                except Exception:
-                    emoji = get_tyre_emoji(compound)
-                    st.markdown(f"<div style='text-align: center; font-size: 60px; margin-bottom: 10px;'>{emoji}</div>", unsafe_allow_html=True)
+        # Convert image to base64 for embedding in HTML
+        img_base64 = ""
+        try:
+            with open(image_path, 'rb') as img_file:
+                img_base64 = base64.b64encode(img_file.read()).decode()
+        except Exception as e:
+            print(f"Error loading image {image_path}: {e}")
 
-            # Compound name - extra large
-            st.markdown(
-                f"<div style='text-align: center; font-weight: bold; font-size: 28px; margin-top: 10px; margin-bottom: 20px;'>"
-                f"{compound.capitalize()}"
-                f"</div>",
-                unsafe_allow_html=True
-            )
+        table_html += f'<td style="width: {col_width}%; text-align: center; vertical-align: top; border: none; padding: 10px;">'
 
-            # Lap counts for each driver - extra large text
-            for driver in selected_drivers:
-                lap_count = driver_compound_counts[driver].get(compound, 0)
-                if lap_count > 0:
-                    st.markdown(
-                        f"<div style='text-align: center; font-size: 24px; margin-bottom: 10px;'>"
-                        f"<strong>{driver}:</strong> {lap_count} lap{'s' if lap_count > 1 else ''}"
-                        f"</div>",
-                        unsafe_allow_html=True
-                    )
+        # Add image if loaded successfully
+        if img_base64:
+            table_html += f'<div style="margin-bottom: 10px;"><img src="data:image/png;base64,{img_base64}" style="width: 100px; height: auto;"></div>'
 
-            st.markdown("</div>", unsafe_allow_html=True)
+        table_html += f'<div style="font-weight: bold; font-size: 28px; margin-bottom: 20px;">{compound.capitalize()}</div>'
+
+        # Add lap counts for each driver
+        for driver in selected_drivers:
+            lap_count = driver_compound_counts[driver].get(compound, 0)
+            if lap_count > 0:
+                table_html += f'<div style="font-size: 24px; margin-bottom: 10px;"><strong>{driver}:</strong> {lap_count} lap{"s" if lap_count > 1 else ""}</div>'
+
+        table_html += '</td>'
+
+    # Close table
+    table_html += '</tr></table>'
+
+    # Render the table
+    st.markdown(table_html, unsafe_allow_html=True)
 
 
 def render_control_buttons(lap_times_data, selected_drivers, selected_year, selected_gp, selected_session):
