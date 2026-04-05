@@ -1,4 +1,4 @@
-from backend.api.v1.endpoints import auth, circuit_domination, comparison, telemetry, chat, voice
+from backend.api.v1.endpoints import auth, circuit_domination, comparison, telemetry, chat, voice, strategy
 from backend.core.config import FRONTEND_URL
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import FastAPI
@@ -37,6 +37,9 @@ app.include_router(chat.router, prefix="/api/v1")
 
 # Add voice router
 app.include_router(voice.router, prefix="/api/v1/voice", tags=["voice"])
+
+# Add strategy router (N25–N31 agent pipeline)
+app.include_router(strategy.router, prefix="/api/v1")
 
 
 @app.get("/")

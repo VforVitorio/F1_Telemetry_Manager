@@ -21,6 +21,7 @@ class QueryType(str, Enum):
     COMPARISON_QUERY = "COMPARISON_QUERY"
     REPORT_REQUEST = "REPORT_REQUEST"
     DOWNLOAD_REQUEST = "DOWNLOAD_REQUEST"
+    STRATEGY_QUERY = "STRATEGY_QUERY"  # Pit stop / tyre / race strategy questions
     UNKNOWN = "UNKNOWN"  # Fallback for unclassified queries
 
 
@@ -167,6 +168,18 @@ class QueryClassifier:
         if any(keyword in message_lower for keyword in technical_keywords):
             logger.info("Fallback classified as TECHNICAL_QUERY")
             return QueryType.TECHNICAL_QUERY
+
+        # Check for strategy queries
+        strategy_keywords = [
+            'pit', 'pitstop', 'pit stop', 'pit window', 'undercut', 'overcut',
+            'stay out', 'box', 'tyre strategy', 'tire strategy', 'compound',
+            'soft', 'medium', 'hard', 'intermediate', 'wet tyre',
+            'safety car strategy', 'strategy recommend', 'should i pit',
+            'when to pit', 'recommend strategy', 'race strategy',
+        ]
+        if any(keyword in message_lower for keyword in strategy_keywords):
+            logger.info("Fallback classified as STRATEGY_QUERY")
+            return QueryType.STRATEGY_QUERY
 
         # Default to basic query
         logger.info("Fallback classified as BASIC_QUERY")

@@ -16,6 +16,7 @@ from backend.services.chatbot.handlers import (
     ComparisonQueryHandler,
     ReportHandler,
     DownloadHandler,
+    StrategyHandler,
 )
 
 logger = logging.getLogger(__name__)
@@ -40,6 +41,7 @@ class QueryRouter:
             QueryType.COMPARISON_QUERY: ComparisonQueryHandler(),
             QueryType.REPORT_REQUEST: ReportHandler(),
             QueryType.DOWNLOAD_REQUEST: DownloadHandler(),
+            QueryType.STRATEGY_QUERY: StrategyHandler(),
         }
 
         logger.info("QueryRouter initialized with all handlers")

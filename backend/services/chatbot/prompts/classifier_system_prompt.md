@@ -54,6 +54,19 @@ Explicit requests to download or export data in specific formats (CSV, JSON, Exc
 - "Download the lap times table"
 - "Export all the data we analyzed"
 
+### 6. STRATEGY_QUERY
+Questions about pit stop timing, tyre strategy, undercut/overcut windows, or
+requests for a real-time strategy recommendation using the ML pipeline.
+
+**Examples:**
+- "Should I pit now?"
+- "What's the undercut window against Verstappen?"
+- "Recommend a strategy for the next 15 laps"
+- "Is this a good lap to box?"
+- "What compound should I go to after pitting?"
+- "Is an overcut viable from P4?"
+- "Analyse the pit window for the safety car"
+
 ## Classification Rules:
 
 1. **ALWAYS return ONLY the category name** (e.g., "BASIC_QUERY", "TECHNICAL_QUERY")
@@ -72,6 +85,7 @@ Return ONLY one of these exact strings (no quotes, no punctuation):
 - COMPARISON_QUERY
 - REPORT_REQUEST
 - DOWNLOAD_REQUEST
+- STRATEGY_QUERY
 
 ## Examples:
 
