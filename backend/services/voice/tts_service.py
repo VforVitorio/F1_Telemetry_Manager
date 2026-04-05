@@ -1,103 +1,68 @@
 """
-Text-to-Speech Service using Edge TTS
+Text-to-Speech Service using Qwen3-TTS
 
-Provides high-quality neural speech synthesis using Microsoft Edge's TTS service.
-Requires internet connection but has no local dependencies or model downloads.
+Provides low-latency neural speech synthesis via the Qwen3-TTS-12Hz-0.6B-Base
+model (~97ms end-to-end).  No internet connection required after the initial
+model download.
+
+Install: pip install -U qwen-tts soundfile
 """
 
-from backend.core.voice_config import TTS_RATE, TTS_VOLUME
+import io
 import logging
 import sys
 from pathlib import Path
-from typing import Optional, List, Dict
-import io
-import asyncio
-import nest_asyncio
+from typing import Dict, List, Optional
 
-# Allow nested event loops (for running async code in FastAPI)
-nest_asyncio.apply()
+from backend.core.voice_config import QWEN3_SAMPLE_RATE, QWEN3_TTS_MODEL
 
 # Add backend to path for imports (when running as script)
 backend_dir = Path(__file__).resolve().parent.parent.parent
 if str(backend_dir) not in sys.path:
     sys.path.insert(0, str(backend_dir))
 
-
 logger = logging.getLogger(__name__)
-
-# Lazy import edge-tts to avoid loading at import time
-edge_tts = None
-
-
-def _import_edge_tts():
-    """Lazy import of edge-tts library."""
-    global edge_tts
-    if edge_tts is None:
-        try:
-            import edge_tts as _edge_tts
-            edge_tts = _edge_tts
-        except ImportError as e:
-            logger.error(f"Failed to import edge-tts library: {e}")
-            raise ImportError(
-                "edge-tts not installed. Install with: pip install edge-tts"
-            )
 
 
 class TTSService:
-    """Text-to-Speech service using Microsoft Edge TTS."""
+    """Text-to-Speech service using Qwen3-TTS."""
 
     def __init__(self):
-        """Initialize Edge TTS service."""
+        """Load the Qwen3-TTS model (downloads on first use)."""
         try:
-            _import_edge_tts()
+            from qwen_tts import Qwen3TTSModel
 
-            # Default to Andrew Multilingual voice
-            self.voice = "en-US-AndrewMultilingualNeural"  # Male, multilingual, natural
-
-            logger.info(
-                f"Edge TTS Service initialized with voice: {self.voice}")
+            logger.info("Loading Qwen3-TTS model '%s'...", QWEN3_TTS_MODEL)
+            self._model = Qwen3TTSModel.from_pretrained(QWEN3_TTS_MODEL)
+            logger.info("Qwen3-TTS model loaded successfully")
         except Exception as e:
-            logger.error(f"Failed to initialize TTS engine: {e}")
+            logger.error("Failed to initialize Qwen3-TTS: %s", e)
             raise
 
-    async def _synthesize_async(self, text: str, rate: str, volume: str) -> bytes:
-        """
-        Asynchronous speech synthesis using edge-tts.
-
-        Args:
-            text: Text to synthesize
-            rate: Rate adjustment (e.g., '+0%', '-20%', '+50%')
-            volume: Volume adjustment (e.g., '+0%', '-50%', '+20%')
-
-        Returns:
-            Audio bytes in MP3 format
-        """
-        communicate = edge_tts.Communicate(
-            text, self.voice, rate=rate, volume=volume)
-
-        audio_chunks = []
-        async for chunk in communicate.stream():
-            if chunk["type"] == "audio":
-                audio_chunks.append(chunk["data"])
-
-        return b"".join(audio_chunks)
+    # ------------------------------------------------------------------
+    # Public contract (identical signatures to the EdgeTTS version)
+    # ------------------------------------------------------------------
 
     def synthesize_speech(
         self,
         text: str,
         rate: Optional[int] = None,
-        volume: Optional[float] = None
+        volume: Optional[float] = None,
     ) -> bytes:
         """
-        Convert text to speech audio using Edge TTS.
+        Convert text to speech and return WAV audio bytes.
+
+        The `rate` and `volume` arguments are accepted for API compatibility
+        with the previous EdgeTTS implementation but are ignored — Qwen3-TTS
+        Base does not expose rate/volume controls.
 
         Args:
-            text: Text to synthesize
-            rate: Speech rate (words per minute), default from config
-            volume: Volume level (0.0 to 1.0), default from config
+            text: Text to synthesize (non-empty)
+            rate: Ignored (kept for API compat)
+            volume: Ignored (kept for API compat)
 
         Returns:
-            Audio bytes in MP3 format
+            Audio bytes in WAV format
 
         Raises:
             ValueError: If text is empty
@@ -106,96 +71,51 @@ class TTSService:
         if not text or not text.strip():
             raise ValueError("Text cannot be empty")
 
-        # Use defaults if not provided
-        if rate is None:
-            rate = TTS_RATE
-        if volume is None:
-            volume = TTS_VOLUME
-
         try:
-            # Convert rate from WPM to percentage
-            # 175 WPM is baseline (0%), faster is +%, slower is -%
-            rate_percentage = int((rate / 175.0 - 1.0) * 100)
-            rate_str = f"{rate_percentage:+d}%"
+            import soundfile as sf
 
-            # Convert volume from 0.0-1.0 to percentage
-            volume_percentage = int((volume - 1.0) * 100)
-            volume_str = f"{volume_percentage:+d}%"
+            logger.info("Synthesizing: '%s...'", text[:50])
 
-            logger.info(
-                f"Synthesizing text: '{text[:50]}...' (rate={rate_str}, volume={volume_str})")
+            audio_array = self._model.generate_voice(text)
 
-            # Run async synthesis (nest_asyncio allows this in FastAPI)
-            audio_bytes = asyncio.run(
-                self._synthesize_async(text, rate_str, volume_str)
-            )
+            buf = io.BytesIO()
+            sf.write(buf, audio_array, samplerate=QWEN3_SAMPLE_RATE, format="WAV")
+            audio_bytes = buf.getvalue()
 
-            logger.info(f"Generated {len(audio_bytes)} bytes of audio")
+            logger.info("Generated %d bytes of audio", len(audio_bytes))
             return audio_bytes
 
         except Exception as e:
-            logger.error(f"Speech synthesis failed: {e}")
+            logger.error("Speech synthesis failed: %s", e)
             raise RuntimeError(f"Failed to synthesize speech: {e}")
 
-    def get_available_voices(self) -> List[Dict[str, any]]:
+    def get_available_voices(self) -> List[Dict[str, object]]:
         """
-        Get list of available English voices from Edge TTS.
+        Return the list of available TTS voices.
 
-        Returns:
-            List of English voice options
+        Qwen3-TTS-12Hz-0.6B-Base ships with a single built-in voice.
+        Voice cloning is available via the CustomVoice variant
+        (Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice).
         """
         return [
             {
-                'id': 'en-US-AndrewMultilingualNeural',
-                'name': 'Andrew (English US, Male, Multilingual)',
-                'languages': ['en-US', 'multilingual'],
-                'gender': 'Male'
-            },
-            {
-                'id': 'en-US-AriaNeural',
-                'name': 'Aria (English US, Female)',
-                'languages': ['en-US'],
-                'gender': 'Female'
-            },
-            {
-                'id': 'en-US-GuyNeural',
-                'name': 'Guy (English US, Male)',
-                'languages': ['en-US'],
-                'gender': 'Male'
-            },
-            {
-                'id': 'en-GB-SoniaNeural',
-                'name': 'Sonia (English UK, Female)',
-                'languages': ['en-GB'],
-                'gender': 'Female'
-            },
-            {
-                'id': 'en-GB-RyanNeural',
-                'name': 'Ryan (English UK, Male)',
-                'languages': ['en-GB'],
-                'gender': 'Male'
+                "id": "qwen3-base",
+                "name": "Qwen3 TTS Base (0.6B)",
+                "languages": [
+                    "en", "zh", "ja", "ko", "de", "fr", "ru", "pt", "es", "it"
+                ],
+                "gender": "Neutral",
             }
         ]
 
     def set_voice(self, voice_id: str) -> bool:
         """
-        Set voice by ID.
+        No-op — Qwen3-TTS Base uses a single built-in voice.
 
-        Args:
-            voice_id: Voice ID (e.g., 'en-US-AriaNeural')
-
-        Returns:
-            True if voice was set successfully
+        Returns True when voice_id matches the only available voice,
+        False otherwise.
         """
-        available_ids = [v['id'] for v in self.get_available_voices()]
-        if voice_id in available_ids:
-            self.voice = voice_id
-            logger.info(f"Voice changed to: {voice_id}")
-            return True
-        else:
-            logger.warning(
-                f"Voice ID '{voice_id}' not found in available voices")
-            return False
+        return voice_id == "qwen3-base"
 
 
 # Singleton instance for reuse
@@ -203,47 +123,30 @@ _tts_service_instance: Optional[TTSService] = None
 
 
 def get_tts_service() -> TTSService:
-    """
-    Get or create TTS service singleton.
-
-    Returns:
-        TTSService instance
-    """
+    """Get or create the TTS service singleton."""
     global _tts_service_instance
     if _tts_service_instance is None:
         _tts_service_instance = TTSService()
     return _tts_service_instance
 
 
-# Test/Demo code
 if __name__ == "__main__":
-    import io
-    import sys
-
-    # Fix Windows encoding for emojis
-    if sys.platform == "win32":
-        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
-
     logging.basicConfig(level=logging.INFO)
 
-    print("Edge TTS Service Test")
+    print("TTS Service Test — Qwen3-TTS")
     print("=" * 50)
 
     tts = TTSService()
 
     print("\nAvailable voices:")
-    for i, voice in enumerate(tts.get_available_voices(), 1):
-        print(f"  {i}. {voice['name']}")
-        print(f"     ID: {voice['id']}")
-        print(f"     Gender: {voice['gender']}")
+    for v in tts.get_available_voices():
+        print(f"  {v['id']} — {v['name']}")
 
     print("\nGenerating test audio...")
-    text = "Hello, I am Caronte, your Formula 1 strategy assistant."
+    text = "Box box, pit this lap. Undercut window is open."
     audio = tts.synthesize_speech(text)
-    print(f"✅ Generated {len(audio)} bytes of audio")
+    print(f"Generated {len(audio)} bytes of audio")
 
-    # Save test audio
-    with open("test_tts_edge.mp3", "wb") as f:
+    with open("test_tts_qwen3.wav", "wb") as f:
         f.write(audio)
-    print("Saved to test_tts_edge.mp3")
-    print("\nTest complete! Edge TTS provides high-quality natural voices.")
+    print("Saved to test_tts_qwen3.wav")
