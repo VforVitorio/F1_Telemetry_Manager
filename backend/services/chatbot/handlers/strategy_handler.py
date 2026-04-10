@@ -13,16 +13,16 @@ LLM, without calling the ML models.
 
 import logging
 import sys
-from dataclasses import asdict, is_dataclass
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from .base_handler import BaseHandler
 from backend.services.chatbot.lmstudio_service import (
     LMStudioError,
     build_messages,
     send_message,
 )
+
+from .base_handler import BaseHandler
 
 # ---------------------------------------------------------------------------
 # Repo-root path injection — same pattern as strategy endpoint
@@ -53,42 +53,25 @@ Keep responses under 200 words unless the user explicitly asks for detail.
 """
 
 
-def _to_dict(obj: Any) -> Dict[str, Any]:
-    if is_dataclass(obj) and not isinstance(obj, type):
-        return asdict(obj)
-    try:
-        return obj.model_dump()
-    except AttributeError:
-        pass
-    try:
-        return obj.dict()
-    except AttributeError:
-        pass
-    return vars(obj)
-
-
-def _format_recommendation(rec: Any) -> str:
-    """Render a StrategyRecommendation as a chat-friendly string."""
-    d = _to_dict(rec)
-    action      = d.get("action", "UNKNOWN")
-    confidence  = d.get("confidence", 0.0)
-    reasoning   = d.get("reasoning", "")
-    mc          = d.get("mc_scores", {})
+def _format_recommendation(rec_dict: Dict[str, Any]) -> str:
+    """Render a StrategyRecommendation dict as a chat-friendly string."""
+    action = rec_dict.get("action", "UNKNOWN")
+    confidence = rec_dict.get("confidence", 0.0)
+    reasoning = rec_dict.get("reasoning", "")
+    scores = rec_dict.get("scenario_scores", {})
 
     lines = [
         f"**Recommended action:** {action}  (confidence {confidence:.0%})",
         "",
         reasoning,
     ]
-    if mc:
-        lines += [
-            "",
-            "**Monte-Carlo scores:**",
-            f"- STAY OUT: {mc.get('STAY_OUT', 0):.3f}",
-            f"- PIT NOW:  {mc.get('PIT_NOW', 0):.3f}",
-            f"- UNDERCUT: {mc.get('UNDERCUT', 0):.3f}",
-            f"- OVERCUT:  {mc.get('OVERCUT', 0):.3f}",
-        ]
+    if scores:
+        lines += ["", "**Scenario scores:**"]
+        for key, val in scores.items():
+            if isinstance(val, dict):
+                lines.append(f"- {key}: score={val.get('score', 0):.3f}")
+            else:
+                lines.append(f"- {key}: {val:.3f}")
     return "\n".join(lines)
 
 
@@ -117,9 +100,7 @@ class StrategyHandler(BaseHandler):
         lap_state = (context or {}).get("lap_state")
 
         if lap_state:
-            return self._handle_with_pipeline(
-                message, lap_state, context, chat_history, **kwargs
-            )
+            return self._handle_with_pipeline(message, lap_state, context, chat_history, **kwargs)
         return self._handle_text_only(message, image, chat_history, context, **kwargs)
 
     # ------------------------------------------------------------------
@@ -134,36 +115,19 @@ class StrategyHandler(BaseHandler):
     ) -> Dict[str, Any]:
         """Run the N31 orchestrator and return a formatted recommendation."""
         try:
-            import pandas as pd
-            from src.agents.strategy_orchestrator import (
-                RaceState,
-                run_strategy_orchestrator_from_state,
-            )
+            from backend.utils.laps_cache import get_laps_df
+            from backend.utils.race_state_builder import build_race_state
+            from backend.utils.serialization import agent_output_to_dict
+            from src.agents.strategy_orchestrator import run_strategy_orchestrator_from_state
 
-            # Load laps_df once
-            laps_path = _REPO_ROOT / "data" / "processed" / "laps_featured_2025.parquet"
-            if not laps_path.exists():
-                raise FileNotFoundError(
-                    f"Featured parquet not found: {laps_path}. "
-                    "Run the data pipeline first."
-                )
-            laps_df = pd.read_parquet(laps_path)
+            laps_df = get_laps_df()
+            if laps_df is None:
+                raise FileNotFoundError("Featured parquet not found. Run the data pipeline first.")
 
-            d = lap_state.get("driver", {})
-            w = lap_state.get("weather", {})
-
-            race_state = RaceState(
-                driver=d.get("driver", "UNK"),
-                lap=lap_state.get("lap_number", 1),
-                total_laps=lap_state.get("session_meta", {}).get("total_laps", 57),
-                position=d.get("position", 10),
-                compound=d.get("compound", "MEDIUM"),
-                tyre_life=d.get("tyre_life", 1),
+            race_state = build_race_state(
+                lap_state,
                 gap_ahead_s=float(context.get("gap_ahead_s", 2.0)),
                 pace_delta_s=float(context.get("pace_delta_s", 0.0)),
-                air_temp=float(w.get("air_temp", 25.0)),
-                track_temp=float(w.get("track_temp", 35.0)),
-                rainfall=bool(w.get("rainfall", False)),
                 risk_tolerance=float(context.get("risk_tolerance", 0.5)),
             )
 
@@ -173,7 +137,8 @@ class StrategyHandler(BaseHandler):
                 lap_state=lap_state,
             )
 
-            response_text = _format_recommendation(rec)
+            rec_dict = agent_output_to_dict(rec)
+            response_text = _format_recommendation(rec_dict)
             self._log_response(len(response_text))
 
             return {
@@ -183,8 +148,8 @@ class StrategyHandler(BaseHandler):
                 "metadata": {
                     "handler_type": "strategy",
                     "mode": "pipeline",
-                    "action": _to_dict(rec).get("action"),
-                    "confidence": _to_dict(rec).get("confidence"),
+                    "action": rec_dict.get("action"),
+                    "confidence": rec_dict.get("confidence"),
                 },
             }
 
@@ -195,9 +160,7 @@ class StrategyHandler(BaseHandler):
                 f"I encountered an error running the strategy models: {exc}. "
                 "I'll answer based on general F1 strategy knowledge instead.\n\n"
             )
-            text_result = self._handle_text_only(
-                message, None, chat_history, {}, **kwargs
-            )
+            text_result = self._handle_text_only(message, None, chat_history, {}, **kwargs)
             text_result["response"] = fallback + text_result["response"]
             text_result["metadata"]["mode"] = "fallback_text"
             return text_result
