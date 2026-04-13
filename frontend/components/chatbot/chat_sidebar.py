@@ -23,6 +23,8 @@ from utils.report_storage import (
 def render_chat_sidebar() -> None:
     """Render the full modern chat sidebar."""
     _inject_sidebar_css()
+    _render_mode_toggle()
+    st.divider()
     _render_new_chat_button()
     _render_chat_list()
     st.divider()
@@ -32,6 +34,29 @@ def render_chat_sidebar() -> None:
 # ---------------------------------------------------------------------------
 # Sections
 # ---------------------------------------------------------------------------
+
+def _render_mode_toggle() -> None:
+    """Text / Voice mode toggle at top of sidebar."""
+    c1, c2 = st.columns(2)
+    with c1:
+        if st.button(
+            ":material/chat: Text",
+            use_container_width=True,
+            type="primary" if st.session_state.get("chat_mode", "text") == "text" else "secondary",
+            key="sidebar_mode_text",
+        ):
+            st.session_state.chat_mode = "text"
+            st.rerun()
+    with c2:
+        if st.button(
+            ":material/mic: Voice",
+            use_container_width=True,
+            type="primary" if st.session_state.get("chat_mode", "text") == "voice" else "secondary",
+            key="sidebar_mode_voice",
+        ):
+            st.session_state.chat_mode = "voice"
+            st.rerun()
+
 
 def _render_new_chat_button() -> None:
     """Prominent New Chat button at top."""
