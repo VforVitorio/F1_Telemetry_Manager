@@ -198,10 +198,9 @@ def render_chat_history():
     if not messages:
         # Welcome state with interactive prompt cards
         st.markdown(
-            '<div style="text-align: center; padding: 24px 0 8px; color: #9ca3af;">'
-            '<h3 style="color: #a78bfa; margin-bottom: 4px;">F1 Strategy Assistant</h3>'
-            '<p style="font-size: 0.9rem;">I have direct access to ML strategy tools. '
-            'Mention a <b>driver</b>, <b>GP</b>, and <b>lap</b> to trigger an analysis.</p>'
+            '<div style="text-align: center; padding: 12px 0 4px; color: #9ca3af;">'
+            '<p style="font-size: 0.85rem; margin: 0;">Mention a <b>driver</b>, <b>GP</b>, '
+            'and <b>lap</b> to trigger an analysis, or try an example below.</p>'
             '</div>',
             unsafe_allow_html=True,
         )
