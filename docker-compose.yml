@@ -10,6 +10,7 @@ services:
       - ../../.env
     environment:
       - F1_STRAT_DATA_ROOT=/app/data
+      - LM_STUDIO_HOST=host.docker.internal
     volumes:
       - ./backend:/app/backend
       - ../../src:/app/src:ro
