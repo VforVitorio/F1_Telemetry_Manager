@@ -95,7 +95,7 @@ def render_delta_graph(telemetry_data_multi, selected_drivers, color_palette):
             if not delta_df.empty:
                 fig = _create_delta_figure(delta_df, drivers_with_data, colors_with_data)
                 _render_section_title_with_button(fig, drivers_with_data, "delta")
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, width="stretch")
             else:
                 render_loading_spinner()
         else:

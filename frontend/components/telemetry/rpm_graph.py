@@ -124,7 +124,7 @@ def render_rmp_graph(telemetry_data_multi, selected_drivers, color_palette):
             fig = _create_rpm_figure(
                 combined_df, drivers_with_data, colors_with_data)
             _render_section_title_with_button(fig, drivers_with_data[0], "rpm")
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="stretch")
         else:
             _render_section_title()
             render_loading_spinner()

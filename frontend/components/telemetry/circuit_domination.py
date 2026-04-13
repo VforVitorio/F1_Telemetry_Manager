@@ -110,7 +110,7 @@ def render_circuit_domination_section(
                 gp=gp,
                 session=session
             )
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="stretch")
     else:
         # Render the section title
         _render_section_title()
