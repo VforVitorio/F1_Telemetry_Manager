@@ -18,7 +18,7 @@ def render_data_selectors():
 
     with col1:
         # Year selector - no default selection
-        year_options = [None, 2024, 2023]
+        year_options = [None, 2025, 2024, 2023]
         selected_year = st.selectbox(
             "YEAR",
             options=year_options,
@@ -68,19 +68,24 @@ def render_data_selectors():
         # drivers = fetch_drivers(selected_year, selected_gp, selected_session)
         # GET /api/v1/telemetry/drivers?year={year}&gp={gp}&session={session}
 
-        # F1 2024 Complete driver lineup (24 drivers) - codes only
+        # F1 driver lineup — covers 2023-2025 grid
         driver_options = [
-            "VER", "PER",  # Red Bull
-            "LEC", "SAI",  # Ferrari
-            "HAM", "RUS",  # Mercedes
+            "VER", "PER",  # Red Bull (2023-2024)
+            "TSU",         # Red Bull (2025) / RB (2023-2024)
+            "LEC", "SAI",  # Ferrari (2023-2024) / SAI at Williams 2025
+            "HAM", "RUS",  # Mercedes (2023-2024) / HAM at Ferrari 2025
+            "ANT",         # Mercedes (2025)
             "NOR", "PIA",  # McLaren
             "ALO", "STR",  # Aston Martin
-            "GAS", "OCO",  # Alpine
-            "ALB", "COL", "SAR",  # Williams
-            "TSU", "RIC", "LAW",  # RB
-            "BOT", "ZHO",  # Sauber
-            "MAG", "HUL", "BEA",  # Haas
-            "DOO",  # Reserve/Test
+            "GAS", "OCO",  # Alpine (2023-2024) / OCO at Haas 2025
+            "DOO",         # Alpine (2025)
+            "ALB", "COL", "SAR",  # Williams (2023-2024)
+            "RIC", "LAW",  # RB
+            "HAD",         # RB (2025)
+            "BOT", "ZHO",  # Sauber (2023-2024)
+            "HUL",         # Sauber (2025) / Haas (2023-2024)
+            "BOR",         # Sauber (2025)
+            "MAG", "BEA",  # Haas
         ]
 
         selected_drivers = st.multiselect(
@@ -92,6 +97,6 @@ def render_data_selectors():
         )
 
         # Get official team colors for selected drivers
-        color_palette = [get_driver_color(code) for code in selected_drivers]
+        color_palette = [get_driver_color(code, year=selected_year) for code in selected_drivers]
 
     return selected_year, selected_gp, selected_session, selected_drivers, color_palette
