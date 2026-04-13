@@ -1,1 +1,1 @@
-"""F1 Telemetry Manager Frontend Package."""
+"""F1 Strat Manager Frontend Package."""
