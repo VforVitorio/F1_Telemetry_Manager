@@ -49,7 +49,7 @@ def initialize_chat_mode():
 def render_header():
     """Display page header with mode toggle."""
     st.markdown(
-        "<h1 style='text-align: center;'>🏎️ F1 STRATEGY ASSISTANT CHAT</h1>",
+        "<h1 style='text-align: center;'>F1 Strategy Chat</h1>",
         unsafe_allow_html=True
     )
 
@@ -180,20 +180,26 @@ def handle_send_message(text: str, image: Optional[str]):
                     image_to_send = msg.get("content")
                     break
 
-        # Get response from backend using send_message (non-streaming for simplicity)
-        from services.chat_service import send_message as chat_send_message
+        # Use tool-aware endpoint — detects strategy queries and calls ML agents
+        from services.chat_service import send_tool_message
 
-        response = chat_send_message(
+        result = send_tool_message(
             text=text,
-            image=image_to_send,  # Now passing base64 string
+            image=image_to_send,
             chat_history=history,
             context=context,
             model=DEFAULT_MODEL,
-            temperature=DEFAULT_TEMPERATURE
+            temperature=DEFAULT_TEMPERATURE,
         )
 
-        # Add assistant response
-        add_message("assistant", "text", response)
+        # Add text response
+        response_text = result.get("response", "")
+        add_message("assistant", "text", response_text)
+
+        # If a tool was invoked, add the structured result for rich rendering
+        tool_result = result.get("tool_result")
+        if tool_result:
+            add_message("assistant", "tool_result", tool_result)
 
     except Exception as e:
         st.error(f"Error communicating with LM Studio: {e}")
@@ -286,16 +292,13 @@ def render_chat_page():
         render_voice_chat()
     else:
         # Text Chat Mode (original functionality)
-        # Check LM Studio connection
+        # Check LLM connection (LM Studio or OpenAI depending on backend config)
         if not check_lm_studio_connection():
-            st.error("⚠️ Cannot connect to LM Studio. Please ensure:")
-            st.markdown("""
-            1. LM Studio is running
-            2. Local server is started (http://localhost:1234)
-            3. A model is loaded
-            4. Backend server is running (http://localhost:8000)
-            """)
-            st.stop()
+            st.warning(
+                ":material/warning: LLM service not reachable. "
+                "Chat may not work until the backend connects to LM Studio or OpenAI. "
+                "Check backend logs for details."
+            )
 
         # Sidebar with chat management (NO model parameters)
         with st.sidebar:
@@ -313,6 +316,13 @@ def render_chat_page():
         # Input area (fixed at bottom visually)
         st.markdown("<div style='margin-top: 20px;'></div>",
                     unsafe_allow_html=True)
+        # Check for pending text from example prompt clicks
+        pending = st.session_state.pop("chat_pending_text", None)
+        if pending:
+            with st.spinner("Running analysis..."):
+                handle_send_message(pending, None)
+            st.rerun()
+
         text, image, send_clicked = render_chat_input()
 
         if send_clicked:
