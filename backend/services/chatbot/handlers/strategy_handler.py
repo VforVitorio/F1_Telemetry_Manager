@@ -28,9 +28,11 @@ from .base_handler import BaseHandler
 # Repo-root path injection — same pattern as strategy endpoint
 # ---------------------------------------------------------------------------
 _HERE = Path(__file__).resolve()
-_REPO_ROOT = _HERE
-while not (_REPO_ROOT / ".git").exists():
+_REPO_ROOT = _HERE.parent
+while not (_REPO_ROOT / ".git").exists() and _REPO_ROOT != _REPO_ROOT.parent:
     _REPO_ROOT = _REPO_ROOT.parent
+if not (_REPO_ROOT / ".git").exists():
+    _REPO_ROOT = Path("/app")
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
