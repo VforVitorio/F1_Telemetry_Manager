@@ -304,13 +304,68 @@ class StrategyHandler(BaseHandler):
             ToolName.LIST_DRIVERS: lambda: list_available_drivers(p.gp or "", p.year),
             ToolName.GET_LAP_RANGE: lambda: get_lap_range(p.gp or "", p.driver or "", p.year),
         }
+        # Phase 2 telemetry tools are auto-generated from OpenAPI via
+        # FastMCP.from_openapi() and mounted as a sub-server.  They execute
+        # via HTTP to the FastAPI endpoints, NOT via this dispatch map.
 
         fn = dispatch.get(tool_call.tool)
-        if fn is None:
+        if fn is not None:
+            raw = fn()
+            return json.loads(raw) if isinstance(raw, str) else raw
+
+        # Phase 2: telemetry tools not in dispatch — call FastAPI endpoint via HTTP
+        return self._execute_telemetry_tool(tool_call)
+
+    def _execute_telemetry_tool(self, tool_call: ToolCall) -> Dict[str, Any]:
+        """Call a Phase 2 telemetry endpoint via HTTP (auto-generated tools).
+
+        Maps ToolName to the corresponding FastAPI GET endpoint and passes
+        extracted params as query strings.
+        """
+        import requests as _req
+
+        p = tool_call.params
+        base = "http://localhost:8000/api/v1"
+
+        endpoint_map = {
+            ToolName.GET_LAP_TIMES: (
+                f"{base}/telemetry/lap-times",
+                {"year": p.year, "gp": p.gp or "", "session": "R", "drivers": p.driver or ""},
+            ),
+            ToolName.GET_TELEMETRY: (
+                f"{base}/telemetry/lap-telemetry",
+                {"year": p.year, "gp": p.gp or "", "session": "R", "driver": p.driver or "", "lap_number": p.lap or 1},
+            ),
+            ToolName.COMPARE_DRIVERS: (
+                f"{base}/comparison/compare",
+                {"year": p.year, "gp": p.gp or "", "session": "R", "driver1": p.driver or "", "driver2": p.driver2 or ""},
+            ),
+            ToolName.GET_RACE_DATA: (
+                f"{base}/telemetry/race-data",
+                {"year": p.year, "gp": p.gp or "", "driver": p.driver or ""},
+            ),
+        }
+
+        entry = endpoint_map.get(tool_call.tool)
+        if entry is None:
             raise ValueError(f"Unknown tool: {tool_call.tool}")
 
-        raw = fn()
-        return json.loads(raw) if isinstance(raw, str) else raw
+        url, params = entry
+        try:
+            resp = _req.get(url, params=params, timeout=60)
+            resp.raise_for_status()
+            data = resp.json()
+
+            # Trim large payloads for chat (keep first 20 records max)
+            if isinstance(data, dict):
+                for key in ("lap_times", "race_data"):
+                    if key in data and isinstance(data[key], list) and len(data[key]) > 20:
+                        total = len(data[key])
+                        data[key] = data[key][:20]
+                        data[f"{key}_note"] = f"Showing 20 of {total} records"
+            return data
+        except _req.exceptions.RequestException as exc:
+            return {"error": str(exc)}
 
     def _summarise_result(
         self,
