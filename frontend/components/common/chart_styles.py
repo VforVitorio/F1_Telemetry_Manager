@@ -30,14 +30,23 @@ def apply_telemetry_chart_styles() -> str:
     """
     return """
     <style>
-    /* Target the Plotly chart container with multiple selectors for stronger specificity */
+    /* Hide scrollbar on the parent wrapper without clipping content */
+    div.stElementContainer:has(div[data-testid="stPlotlyChart"]) {
+        scrollbar-width: none !important;
+        -ms-overflow-style: none !important;
+    }
+    div.stElementContainer:has(div[data-testid="stPlotlyChart"])::-webkit-scrollbar {
+        display: none !important;
+    }
+
+    /* outline instead of border — no extra pixels in the layout */
     div[data-testid="stPlotlyChart"] {
-        border: 2px solid #a78bfa !important;
+        outline: 2px solid #a78bfa !important;
+        outline-offset: -2px !important;
         border-radius: 12px !important;
         background-color: #181633 !important;
-        margin: 20px 0 !important;
+        margin: 0 !important;
         box-shadow: 0 4px 12px rgba(167, 139, 250, 0.2) !important;
-        overflow: hidden !important;
     }
 
     /* Ensure the inner Plotly elements also respect the background */
