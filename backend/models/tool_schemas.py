@@ -33,6 +33,12 @@ class ToolName(str, Enum):
     LIST_DRIVERS = "list_drivers"
     GET_LAP_RANGE = "get_lap_range"
 
+    # Phase 2 — Telemetry & comparison tools
+    GET_LAP_TIMES = "get_lap_times"
+    GET_TELEMETRY = "get_telemetry"
+    COMPARE_DRIVERS = "compare_drivers"
+    GET_RACE_DATA = "get_race_data"
+
 
 class DisplayType(str, Enum):
     """How the frontend should render a tool result inside a chat bubble."""
@@ -56,6 +62,11 @@ TOOL_DISPLAY_MAP: dict[ToolName, DisplayType] = {
     ToolName.LIST_GPS: DisplayType.TEXT,
     ToolName.LIST_DRIVERS: DisplayType.TEXT,
     ToolName.GET_LAP_RANGE: DisplayType.TEXT,
+    # Phase 2
+    ToolName.GET_LAP_TIMES: DisplayType.TABLE,
+    ToolName.GET_TELEMETRY: DisplayType.TABLE,
+    ToolName.COMPARE_DRIVERS: DisplayType.TABLE,
+    ToolName.GET_RACE_DATA: DisplayType.TABLE,
 }
 
 
@@ -70,6 +81,7 @@ class ToolCallParams(BaseModel):
 
     gp: Optional[str] = Field(None, description="Grand Prix name (e.g. 'Bahrain', 'Jeddah').")
     driver: Optional[str] = Field(None, description="3-letter driver code (e.g. 'VER', 'HAM').")
+    driver2: Optional[str] = Field(None, description="Second driver code for comparison tools.")
     lap: Optional[int] = Field(None, ge=1, description="Lap number to analyse.")
     year: int = Field(2025, ge=2023, le=2025, description="Season year.")
     risk_tolerance: float = Field(0.5, ge=0.0, le=1.0, description="Risk tolerance for the orchestrator.")
@@ -102,6 +114,14 @@ class ToolCall(BaseModel):
     def is_listing_tool(self) -> bool:
         """True for helper tools that list GPs / drivers / lap ranges."""
         return self.tool in {ToolName.LIST_GPS, ToolName.LIST_DRIVERS, ToolName.GET_LAP_RANGE}
+
+    @property
+    def is_telemetry_tool(self) -> bool:
+        """True for Phase 2 telemetry tools that may not need a lap number."""
+        return self.tool in {
+            ToolName.GET_LAP_TIMES, ToolName.GET_RACE_DATA,
+            ToolName.COMPARE_DRIVERS, ToolName.GET_TELEMETRY,
+        }
 
 
 # ---------------------------------------------------------------------------
