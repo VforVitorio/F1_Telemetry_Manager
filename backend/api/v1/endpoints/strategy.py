@@ -23,9 +23,11 @@ from pydantic import BaseModel, Field
 # Repo-root injection — `src/agents/` must be importable from here
 # ---------------------------------------------------------------------------
 _HERE = Path(__file__).resolve()
-_REPO_ROOT = _HERE
-while not (_REPO_ROOT / ".git").exists():
+_REPO_ROOT = _HERE.parent
+while not (_REPO_ROOT / ".git").exists() and _REPO_ROOT != _REPO_ROOT.parent:
     _REPO_ROOT = _REPO_ROOT.parent
+if not (_REPO_ROOT / ".git").exists():
+    _REPO_ROOT = Path("/app")
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
@@ -74,6 +76,16 @@ class RadioRequest(BaseModel):
     lap_state: Dict[str, Any]
     radio_msgs: List[Dict[str, Any]] = Field(default_factory=list)
     rcm_events: List[Dict[str, Any]] = Field(default_factory=list)
+
+
+class PaceRangeRequest(BaseModel):
+    """Batch pace predictions across a lap range."""
+
+    year: int = 2025
+    gp: str
+    driver: str
+    lap_start: int
+    lap_end: int
 
 
 class RagRequest(BaseModel):
@@ -211,8 +223,172 @@ def _agent_error(agent: str, exc: Exception, status: int = 500) -> HTTPException
 # Shared helpers (DRY — extracted to backend.utils)
 # ---------------------------------------------------------------------------
 
+from backend.utils.laps_cache import get_laps_df  # noqa: E402
 from backend.utils.laps_cache import require_laps_df as _require_laps_df  # noqa: E402
 from backend.utils.serialization import agent_output_to_dict as _to_dict  # noqa: E402
+
+# ---------------------------------------------------------------------------
+# Helper GET endpoints — parquet metadata for frontend selectors
+# ---------------------------------------------------------------------------
+
+
+@router.get("/available-gps")
+def available_gps(year: int = 2025):
+    """Return the list of GP names available in the featured parquet."""
+    df = get_laps_df(year)
+    if df is None:
+        return {"gps": []}
+    return {"gps": sorted(df["GP_Name"].dropna().unique().tolist())}
+
+
+@router.get("/available-drivers")
+def available_drivers(gp: str, year: int = 2025):
+    """Return driver codes for a specific GP in the featured parquet."""
+    df = get_laps_df(year)
+    if df is None:
+        return {"drivers": []}
+    subset = df[df["GP_Name"] == gp]
+    return {"drivers": sorted(subset["Driver"].dropna().unique().tolist())}
+
+
+@router.get("/lap-range")
+def lap_range(gp: str, driver: str, year: int = 2025):
+    """Return the min/max lap numbers for a driver in a GP."""
+    df = get_laps_df(year)
+    if df is None:
+        return {"min_lap": 1, "max_lap": 1}
+    subset = df[(df["GP_Name"] == gp) & (df["Driver"] == driver)]
+    if subset.empty:
+        return {"min_lap": 1, "max_lap": 1}
+    return {
+        "min_lap": int(subset["LapNumber"].min()),
+        "max_lap": int(subset["LapNumber"].max()),
+    }
+
+
+@router.get("/lap-state")
+def get_lap_state(
+    gp: str,
+    driver: str,
+    lap: int,
+    year: int = 2025,
+):
+    """Build the canonical lap_state dict from the featured parquet.
+
+    Returns the same structure that RaceStateManager.get_lap_state() produces
+    so it can be passed directly to any agent endpoint.
+    """
+    from fastapi import HTTPException as _HTTPExc
+
+    df = get_laps_df(year)
+    if df is None:
+        raise _HTTPExc(503, detail=f"No parquet for {year}")
+
+    gp_df = df[df["GP_Name"] == gp]
+    if gp_df.empty:
+        raise _HTTPExc(404, detail=f"GP '{gp}' not found")
+
+    row = gp_df[(gp_df["Driver"] == driver) & (gp_df["LapNumber"] == lap)]
+    if row.empty:
+        raise _HTTPExc(404, detail=f"No data for {driver} lap {lap} at {gp}")
+
+    r = row.iloc[0]
+
+    def _safe(val):
+        """Convert numpy types to Python native; NaN → 0."""
+        if pd.isna(val):
+            return 0
+        try:
+            return val.item()
+        except AttributeError:
+            return val
+
+    # Compute cumulative lap times per driver up to this lap for real gaps
+    laps_up_to = gp_df[gp_df["LapNumber"] <= lap].copy()
+    cum_times = (
+        laps_up_to.sort_values(["Driver", "LapNumber"])
+        .groupby("Driver")["LapTime_s"]
+        .sum()
+    )
+    driver_cum = cum_times.get(driver, 0.0)
+
+    # Build position-sorted list for gap computation at this lap
+    lap_snapshot = gp_df[gp_df["LapNumber"] == lap].copy()
+    lap_snapshot["_cum"] = lap_snapshot["Driver"].map(cum_times)
+    lap_snapshot = lap_snapshot.sort_values("Position")
+
+    drv_pos = int(_safe(r.get("Position", 0)))
+    gap_ahead_s = 0.0
+    if drv_pos > 1:
+        car_ahead = lap_snapshot[lap_snapshot["Position"] == drv_pos - 1]
+        if not car_ahead.empty:
+            gap_ahead_s = abs(float(driver_cum - car_ahead.iloc[0]["_cum"]))
+
+    driver_dict = {
+        "driver": str(r.get("Driver", "")),
+        "team": str(r.get("Team", "")),
+        "lap_number": int(_safe(r.get("LapNumber", lap))),
+        "lap_time_s": float(_safe(r.get("LapTime_s", 0))),
+        "position": drv_pos,
+        "compound": str(r.get("Compound", "")),
+        "compound_id": int(_safe(r.get("CompoundID", 0))),
+        "tyre_life": int(_safe(r.get("TyreLife", 0))),
+        "stint": int(_safe(r.get("Stint", 1))),
+        "fresh_tyre": bool(r.get("FreshTyre", False)),
+        "speed_i1": float(_safe(r.get("SpeedI1", 0))),
+        "speed_i2": float(_safe(r.get("SpeedI2", 0))),
+        "speed_fl": float(_safe(r.get("SpeedFL", 0))),
+        "speed_st": float(_safe(r.get("SpeedST", 0))),
+        "fuel_load": float(_safe(r.get("FuelLoad", 0))),
+        "driver_number": int(_safe(r.get("DriverNumber", 0))),
+        "sector1_s": float(_safe(r.get("Sector1_s", 0))),
+        "sector2_s": float(_safe(r.get("Sector2_s", 0))),
+        "sector3_s": float(_safe(r.get("Sector3_s", 0))),
+        "gap_ahead_s": round(gap_ahead_s, 3),
+    }
+
+    # Rivals: all other drivers at the same lap, with real gaps
+    rivals_df = lap_snapshot[lap_snapshot["Driver"] != driver]
+    rivals = []
+    for _, rr in rivals_df.iterrows():
+        rival_pos = int(_safe(rr.get("Position", 0)))
+        rival_gap = 0.0
+        if rival_pos > 1:
+            ahead = lap_snapshot[lap_snapshot["Position"] == rival_pos - 1]
+            if not ahead.empty:
+                rival_gap = abs(float(rr["_cum"] - ahead.iloc[0]["_cum"]))
+        rivals.append({
+            "driver": str(rr.get("Driver", "")),
+            "team": str(rr.get("Team", "")),
+            "position": rival_pos,
+            "lap_time_s": float(_safe(rr.get("LapTime_s", 0))),
+            "compound": str(rr.get("Compound", "")),
+            "tyre_life": int(_safe(rr.get("TyreLife", 0))),
+            "gap_ahead_s": round(rival_gap, 3),
+        })
+
+    weather = {
+        "air_temp": float(_safe(r.get("AirTemp", 25))),
+        "track_temp": float(_safe(r.get("TrackTemp", 40))),
+        "humidity": float(_safe(r.get("Humidity", 50))),
+        "rainfall": int(_safe(r.get("Rainfall", 0))),
+    }
+
+    total_laps = int(gp_df["LapNumber"].max())
+
+    return {
+        "lap_number": int(lap),
+        "driver": driver_dict,
+        "rivals": rivals,
+        "weather": weather,
+        "session_meta": {
+            "gp_name": gp,
+            "year": year,
+            "driver": driver,
+            "team": driver_dict["team"],
+            "total_laps": total_laps,
+        },
+    }
 
 # ---------------------------------------------------------------------------
 # /pace — N25 XGBoost lap-time prediction + bootstrap CI
@@ -233,6 +409,125 @@ def predict_pace(request: PaceRequest):
     except Exception as exc:
         logger.error("Pace agent error: %s", exc, exc_info=True)
         raise _agent_error("pace", exc)
+
+
+# ---------------------------------------------------------------------------
+# /pace-range — batch pace predictions for a lap range (Model Lab chart)
+# ---------------------------------------------------------------------------
+
+
+@router.post("/pace-range")
+def predict_pace_range(request: PaceRangeRequest):
+    """Run Pace Agent across a lap range and return actual vs predicted."""
+    import numpy as np
+
+    from src.agents.pace_agent import run_pace_agent_from_state
+
+    df = get_laps_df(request.year)
+    if df is None:
+        raise HTTPException(503, detail=f"No parquet for {request.year}")
+
+    gp_df = df[df["GP_Name"] == request.gp]
+    if gp_df.empty:
+        raise HTTPException(404, detail=f"GP '{request.gp}' not found")
+
+    drv_df = gp_df[gp_df["Driver"] == request.driver].sort_values("LapNumber")
+    if drv_df.empty:
+        raise HTTPException(404, detail=f"Driver '{request.driver}' not found")
+
+    drv_df = drv_df[
+        (drv_df["LapNumber"] >= request.lap_start)
+        & (drv_df["LapNumber"] <= request.lap_end)
+    ]
+
+    total_laps = int(gp_df["LapNumber"].max())
+    results = []
+
+    for _, row in drv_df.iterrows():
+        lap_num = int(row["LapNumber"])
+        actual = float(row["LapTime_s"]) if not pd.isna(row.get("LapTime_s")) else None
+
+        # Skip laps without a valid previous lap time (lap 1 of each stint)
+        prev_lt = row.get("Prev_LapTime")
+        if pd.isna(prev_lt) or (prev_lt is not None and prev_lt < 60):
+            results.append({
+                "lap": lap_num, "actual": actual,
+                "pred": None, "ci_p10": None, "ci_p90": None,
+                "compound": str(row.get("Compound", "")),
+                "stint": int(row.get("Stint", 1)),
+            })
+            continue
+
+        # Build a minimal lap_state for this row
+        lap_state = _build_lap_state_from_row(row, gp_df, request.gp, request.year, total_laps)
+
+        try:
+            out = run_pace_agent_from_state(lap_state)
+            results.append({
+                "lap": lap_num, "actual": actual,
+                "pred": out.lap_time_pred, "ci_p10": out.ci_p10, "ci_p90": out.ci_p90,
+                "compound": str(row.get("Compound", "")),
+                "stint": int(row.get("Stint", 1)),
+            })
+        except Exception:
+            results.append({
+                "lap": lap_num, "actual": actual,
+                "pred": None, "ci_p10": None, "ci_p90": None,
+                "compound": str(row.get("Compound", "")),
+                "stint": int(row.get("Stint", 1)),
+            })
+
+    return {"predictions": results, "count": len(results)}
+
+
+def _build_lap_state_from_row(row, gp_df, gp: str, year: int, total_laps: int) -> dict:
+    """Build the canonical lap_state dict from a single parquet row."""
+    def _s(val, default=0):
+        if pd.isna(val):
+            return default
+        try:
+            return val.item()
+        except AttributeError:
+            return val
+
+    lap = int(row["LapNumber"])
+    return {
+        "lap_number": lap,
+        "driver": {
+            "driver": str(row.get("Driver", "")),
+            "team": str(row.get("Team", "")),
+            "lap_number": lap,
+            "lap_time_s": float(_s(row.get("LapTime_s", 0))),
+            "position": int(_s(row.get("Position", 10))),
+            "compound": str(row.get("Compound", "")),
+            "compound_id": int(_s(row.get("CompoundID", 0))),
+            "tyre_life": int(_s(row.get("TyreLife", 0))),
+            "stint": int(_s(row.get("Stint", 1))),
+            "fresh_tyre": bool(row.get("FreshTyre", False)),
+            "speed_i1": float(_s(row.get("SpeedI1", 0))),
+            "speed_i2": float(_s(row.get("SpeedI2", 0))),
+            "speed_fl": float(_s(row.get("SpeedFL", 0))),
+            "speed_st": float(_s(row.get("SpeedST", 0))),
+            "fuel_load": float(_s(row.get("FuelLoad", 0))),
+            "driver_number": int(_s(row.get("DriverNumber", 0))),
+            "sector1_s": float(_s(row.get("Sector1_s", 0))),
+            "sector2_s": float(_s(row.get("Sector2_s", 0))),
+            "sector3_s": float(_s(row.get("Sector3_s", 0))),
+        },
+        "rivals": [],
+        "weather": {
+            "air_temp": float(_s(row.get("AirTemp", 25))),
+            "track_temp": float(_s(row.get("TrackTemp", 40))),
+            "humidity": float(_s(row.get("Humidity", 50))),
+            "rainfall": int(_s(row.get("Rainfall", 0))),
+        },
+        "session_meta": {
+            "gp_name": gp, "year": year,
+            "driver": str(row.get("Driver", "")),
+            "team": str(row.get("Team", "")),
+            "total_laps": total_laps,
+        },
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -413,3 +708,164 @@ def recommend_strategy(
     except Exception as exc:
         logger.error("Orchestrator error: %s", exc, exc_info=True)
         raise _agent_error("orchestrator", exc)
+
+
+# ---------------------------------------------------------------------------
+# Radio corpus endpoints — query pre-built radio data from parquet
+# ---------------------------------------------------------------------------
+
+# GP name → slug resolver (shared with CLI and radio runner)
+try:
+    from src.f1_strat_manager.gp_slugs import COUNTRY_SLUG_BY_GP, resolve_gp_slug
+except ImportError:
+    COUNTRY_SLUG_BY_GP = {}
+
+    def resolve_gp_slug(gp_name: str) -> str:  # type: ignore[misc]
+        return gp_name.lower().replace(" ", "_")
+
+
+def _radio_corpus_root() -> Path:
+    """Base path for the processed radio corpus."""
+    return _REPO_ROOT / "data" / "processed" / "race_radios"
+
+
+def _transcript_cache_root() -> Path:
+    """Base path for cached Whisper transcripts."""
+    return _REPO_ROOT / "data" / "processed" / "radio_nlp"
+
+
+def _driver_number_to_code(year: int = 2025) -> dict:
+    """Build a {driver_number: 'VER'} mapping from the featured parquet."""
+    df = get_laps_df(year)
+    if df is None:
+        return {}
+    mapping = df[["DriverNumber", "Driver"]].drop_duplicates()
+    return dict(zip(mapping["DriverNumber"].astype(int), mapping["Driver"]))
+
+
+@router.get("/radio-available-gps")
+def radio_available_gps(year: int = 2025):
+    """Return GP names that have a radio corpus for the given year."""
+    corpus = _radio_corpus_root() / str(year)
+    if not corpus.is_dir():
+        return {"gps": []}
+
+    # Invert slug map to translate on-disk slugs back to friendly names
+    slug_to_gp = {v: k for k, v in COUNTRY_SLUG_BY_GP.items()}
+    # Deduplicate (Montreal/Montréal both map to canada)
+    seen = {}
+    for slug in sorted(d.name for d in corpus.iterdir() if d.is_dir()):
+        friendly = slug_to_gp.get(slug, slug.replace("_", " ").title())
+        if friendly not in seen:
+            seen[friendly] = slug
+    return {"gps": sorted(seen.keys())}
+
+
+@router.get("/radio-laps")
+def radio_laps(gp: str, year: int = 2025, driver: Optional[str] = None):
+    """Return drivers and their laps that have radio messages.
+
+    If *driver* is provided (3-letter code, e.g. 'VER'), only that driver's
+    laps are returned.  Otherwise all drivers with radio are listed.
+    """
+    import json as _json
+
+    try:
+        slug = resolve_gp_slug(gp)
+    except ValueError as exc:
+        raise HTTPException(400, detail=str(exc))
+
+    radios_path = _radio_corpus_root() / str(year) / slug / "radios.parquet"
+    if not radios_path.exists():
+        return {"drivers": []}
+
+    rdf = pd.read_parquet(radios_path)
+    drv_map = _driver_number_to_code(year)
+
+    # Load cached transcripts (if available)
+    transcripts: dict = {}
+    tx_path = _transcript_cache_root() / str(year) / slug / "transcripts.json"
+    if tx_path.exists():
+        try:
+            with open(tx_path, encoding="utf-8") as f:
+                transcripts = _json.load(f)
+        except Exception:
+            pass
+
+    # Optionally filter by driver code
+    if driver:
+        # Find the driver_number for this code
+        code_to_num = {v: k for k, v in drv_map.items()}
+        drv_num = code_to_num.get(driver)
+        if drv_num is not None:
+            rdf = rdf[rdf["driver_number"] == drv_num]
+        else:
+            return {"drivers": []}
+
+    result = []
+    for drv_num, grp in rdf.groupby("driver_number"):
+        code = drv_map.get(int(drv_num), f"#{drv_num}")
+        laps_data = []
+        for _, row in grp.sort_values("lap_number").iterrows():
+            audio_key = str(row.get("audio_path", "")).replace("\\", "/")
+            tx = transcripts.get(audio_key, {})
+            laps_data.append({
+                "lap": int(row["lap_number"]),
+                "text": tx.get("text", ""),
+                "has_transcript": bool(tx.get("text")),
+                "audio_path": audio_key,
+            })
+        result.append({"driver": code, "driver_number": int(drv_num), "laps": laps_data})
+
+    result.sort(key=lambda d: d["driver"])
+    return {"drivers": result}
+
+
+@router.get("/radio-transcript")
+def radio_transcript(gp: str, driver: str, lap: int, year: int = 2025):
+    """Return the transcript text for a specific driver/lap radio message."""
+    import json as _json
+
+    try:
+        slug = resolve_gp_slug(gp)
+    except ValueError as exc:
+        raise HTTPException(400, detail=str(exc))
+
+    radios_path = _radio_corpus_root() / str(year) / slug / "radios.parquet"
+    if not radios_path.exists():
+        raise HTTPException(404, detail=f"No radio corpus for {gp} {year}")
+
+    rdf = pd.read_parquet(radios_path)
+    drv_map = _driver_number_to_code(year)
+    code_to_num = {v: k for k, v in drv_map.items()}
+    drv_num = code_to_num.get(driver)
+
+    if drv_num is None:
+        raise HTTPException(404, detail=f"Driver {driver} not found")
+
+    rows = rdf[(rdf["driver_number"] == drv_num) & (rdf["lap_number"] == lap)]
+    if rows.empty:
+        raise HTTPException(404, detail=f"No radio for {driver} at lap {lap}")
+
+    tx_path = _transcript_cache_root() / str(year) / slug / "transcripts.json"
+    transcripts: dict = {}
+    if tx_path.exists():
+        try:
+            with open(tx_path, encoding="utf-8") as f:
+                transcripts = _json.load(f)
+        except Exception:
+            pass
+
+    results = []
+    for _, row in rows.iterrows():
+        audio_key = str(row.get("audio_path", "")).replace("\\", "/")
+        tx = transcripts.get(audio_key, {})
+        results.append({
+            "driver": driver,
+            "lap": lap,
+            "text": tx.get("text", "[no transcript available]"),
+            "duration_s": tx.get("duration_s"),
+            "audio_path": audio_key,
+        })
+
+    return {"messages": results}
