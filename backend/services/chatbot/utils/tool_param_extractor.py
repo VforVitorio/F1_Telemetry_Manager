@@ -37,6 +37,10 @@ _DRIVER_CODES = {
 _KEYWORD_TOOL_MAP: list[tuple[list[str], ToolName]] = [
     (["regulation", "rule", "article", "fia", "sporting code"], ToolName.QUERY_REGULATIONS),
     (["recommend", "strategy", "full analysis", "what should"],   ToolName.RECOMMEND_STRATEGY),
+    (["compare", "versus", "vs", "head to head"],                 ToolName.COMPARE_DRIVERS),
+    (["telemetry", "speed trace", "throttle", "brake trace"],     ToolName.GET_TELEMETRY),
+    (["lap times", "laptimes", "lap time chart"],                 ToolName.GET_LAP_TIMES),
+    (["race data", "race overview", "full race"],                 ToolName.GET_RACE_DATA),
     (["tire", "tyre", "degradation", "cliff", "compound"],        ToolName.PREDICT_TIRE),
     (["pit", "stop", "undercut", "overcut", "box box"],           ToolName.PREDICT_PIT),
     (["overtake", "pass", "drs", "safety car", "sc prob"],        ToolName.PREDICT_SITUATION),
@@ -162,13 +166,21 @@ class ToolParameterExtractor:
     def _regex_extraction(self, message: str) -> Optional[ToolCall]:
         """Deterministic extraction using patterns and keywords."""
         upper = message.upper()
-        driver = self._extract_driver(upper)
+        all_drivers = self._extract_all_drivers(upper)
+        driver = all_drivers[0] if all_drivers else None
+        driver2 = all_drivers[1] if len(all_drivers) >= 2 else None
         lap = self._extract_lap(message)
         gp = self._extract_gp(message)
         tool = self._classify_tool(message.lower())
 
-        # If we found driver+GP+lap but no specific tool keyword → default to full recommendation
-        if tool is None and driver and gp and lap:
+        # Two drivers + compare keyword → compare_drivers
+        if driver and driver2 and tool == ToolName.COMPARE_DRIVERS:
+            pass  # already correct
+        # Two drivers without keyword → default to compare
+        elif driver and driver2 and tool is None:
+            tool = ToolName.COMPARE_DRIVERS
+        # If we found driver+GP+lap but no specific tool keyword → full recommendation
+        elif tool is None and driver and gp and lap:
             tool = ToolName.RECOMMEND_STRATEGY
         elif tool is None:
             return None
@@ -176,6 +188,7 @@ class ToolParameterExtractor:
         params = ToolCallParams(
             gp=gp,
             driver=driver,
+            driver2=driver2,
             lap=lap,
             question=message if tool == ToolName.QUERY_REGULATIONS else None,
         )
@@ -186,12 +199,15 @@ class ToolParameterExtractor:
     # -- Helpers --
 
     def _extract_driver(self, upper_msg: str) -> Optional[str]:
-        """Find a 3-letter F1 driver code in the message."""
-        words = re.findall(r"\b[A-Z]{3}\b", upper_msg)
-        for w in words:
-            if w in _DRIVER_CODES:
-                return w
+        """Find the first 3-letter F1 driver code in the message."""
+        for code in self._extract_all_drivers(upper_msg):
+            return code
         return None
+
+    def _extract_all_drivers(self, upper_msg: str) -> list[str]:
+        """Find all 3-letter F1 driver codes in the message."""
+        words = re.findall(r"\b[A-Z]{3}\b", upper_msg)
+        return [w for w in words if w in _DRIVER_CODES]
 
     def _extract_lap(self, message: str) -> Optional[int]:
         """Extract a lap number from patterns like 'lap 30', 'L30', 'vuelta 30'."""
