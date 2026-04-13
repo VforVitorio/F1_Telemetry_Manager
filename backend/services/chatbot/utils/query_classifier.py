@@ -176,6 +176,9 @@ class QueryClassifier:
             'soft', 'medium', 'hard', 'intermediate', 'wet tyre',
             'safety car strategy', 'strategy recommend', 'should i pit',
             'when to pit', 'recommend strategy', 'race strategy',
+            'tool', 'tools', 'mcp', 'predict', 'analyze', 'analyse',
+            'what can you do', 'capabilities', 'degradation', 'cliff',
+            'overtake', 'sc prob', 'regulation', 'rag',
         ]
         if any(keyword in message_lower for keyword in strategy_keywords):
             logger.info("Fallback classified as STRATEGY_QUERY")
