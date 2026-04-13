@@ -1,24 +1,67 @@
 """
-LM Studio Service
+LLM Service — Unified interface for LM Studio (local) and OpenAI (cloud).
 
-Handles communication with LM Studio API for chat completions.
-Provides functions for sending messages, streaming responses, and health checks.
+Switch between providers via the LLM_PROVIDER env var:
+  - LLM_PROVIDER=lmstudio  (default) → local LM Studio at localhost:1234
+  - LLM_PROVIDER=openai               → OpenAI API with OPENAI_API_KEY
+
+When using OpenAI, the model defaults to gpt-4.1-mini for general chat
+and can be overridden per-call via the model parameter.
 """
 
+import os
 import requests
 from typing import Dict, List, Any, Optional, Generator
 import logging
 
 logger = logging.getLogger(__name__)
 
-# LM Studio configuration
-LM_STUDIO_URL = "http://localhost:1234/v1/chat/completions"
-LM_STUDIO_MODELS_URL = "http://localhost:1234/v1/models"
-DEFAULT_TIMEOUT = None  # No timeout - wait indefinitely for response
+# ---------------------------------------------------------------------------
+# Provider configuration
+# ---------------------------------------------------------------------------
+LLM_PROVIDER = os.getenv("F1_LLM_PROVIDER", os.getenv("LLM_PROVIDER", "lmstudio"))  # "lmstudio" | "openai"
+
+# LM Studio (local)
+_LM_HOST = os.getenv("LM_STUDIO_HOST", "localhost")
+LM_STUDIO_URL = f"http://{_LM_HOST}:1234/v1/chat/completions"
+LM_STUDIO_MODELS_URL = f"http://{_LM_HOST}:1234/v1/models"
+
+# OpenAI (cloud)
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+OPENAI_URL = "https://api.openai.com/v1/chat/completions"
+OPENAI_MODELS_URL = "https://api.openai.com/v1/models"
+OPENAI_DEFAULT_MODEL = os.getenv("OPENAI_CHAT_MODEL", "gpt-5.4-mini")
+
+# Derived — which URLs to actually use
+_is_openai = LLM_PROVIDER.lower() == "openai"
+COMPLETIONS_URL = OPENAI_URL if _is_openai else LM_STUDIO_URL
+MODELS_URL = OPENAI_MODELS_URL if _is_openai else LM_STUDIO_MODELS_URL
+DEFAULT_TIMEOUT = 60 if _is_openai else None  # OpenAI has reasonable latency; LM Studio can be slow
+
+
+def _headers() -> dict:
+    """Build request headers — adds Authorization for OpenAI, plain for LM Studio."""
+    h = {"Content-Type": "application/json"}
+    if _is_openai and OPENAI_API_KEY:
+        h["Authorization"] = f"Bearer {OPENAI_API_KEY}"
+    return h
+
+
+def _default_model(override: Optional[str] = None) -> Optional[str]:
+    """Return the model to use.
+
+    When using OpenAI, ignore local model names (llama, mistral, etc.)
+    that the frontend might send — they don't exist on OpenAI and cause 404s.
+    """
+    if _is_openai:
+        if override and (override.startswith("gpt") or override.startswith("o")):
+            return override
+        return OPENAI_DEFAULT_MODEL
+    return override or None
 
 
 class LMStudioError(Exception):
-    """Custom exception for LM Studio related errors."""
+    """Custom exception for LLM service errors (LM Studio or OpenAI)."""
     pass
 
 
@@ -33,10 +76,8 @@ def check_health() -> Dict[str, Any]:
         LMStudioError: If LM Studio is not accessible
     """
     try:
-        response = requests.get(
-            LM_STUDIO_MODELS_URL,
-            timeout=5
-        )
+        provider = "OpenAI" if _is_openai else "LM Studio"
+        response = requests.get(MODELS_URL, headers=_headers(), timeout=5)
 
         if response.status_code == 200:
             models = response.json()
@@ -44,21 +85,23 @@ def check_health() -> Dict[str, Any]:
                 "status": "healthy",
                 "lm_studio_reachable": True,
                 "models_available": len(models.get("data", [])),
-                "message": "LM Studio is running"
+                "message": f"{provider} is running (provider={LLM_PROVIDER})"
             }
         else:
             return {
                 "status": "unhealthy",
                 "lm_studio_reachable": False,
-                "message": f"LM Studio returned status {response.status_code}"
+                "message": f"{provider} returned status {response.status_code}"
             }
 
     except requests.exceptions.ConnectionError:
-        logger.error("Cannot connect to LM Studio")
+        provider = "OpenAI" if _is_openai else "LM Studio"
+        logger.error("Cannot connect to %s", provider)
         return {
             "status": "unhealthy",
             "lm_studio_reachable": False,
-            "message": "Cannot connect to LM Studio. Ensure it's running on localhost:1234"
+            "message": f"Cannot connect to {provider}. "
+                       f"{'Check OPENAI_API_KEY' if _is_openai else 'Ensure LM Studio is running on port 1234'}"
         }
     except Exception as e:
         logger.error(f"Error checking LM Studio health: {e}")
@@ -80,10 +123,7 @@ def get_available_models() -> List[str]:
         LMStudioError: If unable to fetch models
     """
     try:
-        response = requests.get(
-            LM_STUDIO_MODELS_URL,
-            timeout=5
-        )
+        response = requests.get(MODELS_URL, headers=_headers(), timeout=5)
 
         if response.status_code == 200:
             models_data = response.json()
@@ -124,16 +164,20 @@ def send_message(
         LMStudioError: If the request fails
     """
     try:
+        resolved_model = _default_model(model)
+
+        # OpenAI gpt-4.1+ / gpt-5+ use max_completion_tokens instead of max_tokens
+        token_key = "max_completion_tokens" if _is_openai else "max_tokens"
+
         payload = {
             "messages": messages,
             "temperature": temperature,
-            "max_tokens": max_tokens,
+            token_key: max_tokens,
             "stream": stream
         }
 
-        # Only include model if specified
-        if model:
-            payload["model"] = model
+        if resolved_model:
+            payload["model"] = resolved_model
 
         # Log payload structure (without full base64 to avoid log spam)
         logger.debug(
@@ -157,8 +201,8 @@ def send_message(
                     f"  Message {i}: role={role}, text={str(content)[:100]}...")
 
         response = requests.post(
-            LM_STUDIO_URL,
-            headers={"Content-Type": "application/json"},
+            COMPLETIONS_URL,
+            headers=_headers(),
             json=payload,
             timeout=DEFAULT_TIMEOUT
         )
@@ -208,19 +252,21 @@ def stream_message(
         LMStudioError: If the request fails
     """
     try:
+        resolved_model = _default_model(model)
+
         payload = {
             "messages": messages,
             "temperature": temperature,
-            "max_tokens": max_tokens,
+            "max_completion_tokens" if _is_openai else "max_tokens": max_tokens,
             "stream": True
         }
 
-        if model:
-            payload["model"] = model
+        if resolved_model:
+            payload["model"] = resolved_model
 
         response = requests.post(
-            LM_STUDIO_URL,
-            headers={"Content-Type": "application/json"},
+            COMPLETIONS_URL,
+            headers=_headers(),
             json=payload,
             stream=True,
             timeout=DEFAULT_TIMEOUT
@@ -353,7 +399,23 @@ def build_messages(
 
     # Add system prompt
     if not system_prompt:
-        system_prompt = "You are a helpful F1 Strategy Assistant with deep knowledge of Formula 1 racing, telemetry analysis, and race strategy."
+        system_prompt = (
+            "You are the F1 Strategy Assistant, embedded in a real-time telemetry and race "
+            "simulation system. You have direct access to these strategy analysis tools that "
+            "are called AUTOMATICALLY when the user mentions a driver, GP, and lap:\n\n"
+            "- **Pace prediction** — predict lap times (XGBoost model, bootstrap CI)\n"
+            "- **Tyre degradation** — estimate laps to cliff, deg rate (TCN + MC Dropout)\n"
+            "- **Race situation** — overtake probability & safety car likelihood (LightGBM)\n"
+            "- **Pit strategy** — stop duration, undercut probability, optimal window\n"
+            "- **Radio analysis** — NLP on team radio (sentiment, intent, entities)\n"
+            "- **FIA regulations** — RAG lookup in sporting/technical regulations\n"
+            "- **Full strategy recommendation** — all agents + Monte Carlo simulation\n\n"
+            "Tell the user about these tools when asked. To trigger a tool, the user just needs "
+            "to mention a driver code (VER, HAM, LEC...), a Grand Prix name, and a lap number.\n"
+            "Example: 'What is VER tyre status at lap 30 in Bahrain?'\n\n"
+            "For general F1 questions (no specific driver/GP/lap), answer from your knowledge. "
+            "Keep responses concise (under 200 words) unless asked for detail."
+        )
 
     # Add context to system prompt if provided
     if context:
