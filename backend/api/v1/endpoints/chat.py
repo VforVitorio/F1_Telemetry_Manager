@@ -296,7 +296,7 @@ def tool_message(request: ToolMessageRequest):
         if tool_call.confidence < 0.3:
             return _forward_to_llm(request)
 
-    if not tool_call.is_rag_query and not tool_call.is_listing_tool and not tool_call.has_required_location:
+    if not tool_call.is_rag_query and not tool_call.is_listing_tool and not tool_call.is_telemetry_tool and not tool_call.has_required_location:
         return ToolMessageResponse(
             response=(
                 "I'd like to run that analysis for you, but I need a bit more info. "
