@@ -11,11 +11,19 @@ When no lap_state is present it falls back to a general strategy Q&A via the
 LLM, without calling the ML models.
 """
 
+import json
 import logging
 import sys
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+from backend.models.tool_schemas import (
+    DisplayType,
+    ToolCall,
+    ToolName,
+    ToolResultData,
+    TOOL_DISPLAY_MAP,
+)
 from backend.services.chatbot.lmstudio_service import (
     LMStudioError,
     build_messages,
@@ -222,3 +230,109 @@ class StrategyHandler(BaseHandler):
                 "tokens_used": None,
                 "metadata": {"handler_type": "strategy", "error": str(exc)},
             }
+
+    # ------------------------------------------------------------------
+    # Tool-aware flow (used by /tool-message endpoint)
+    # ------------------------------------------------------------------
+
+    def handle_with_tools(
+        self,
+        message: str,
+        tool_call: ToolCall,
+        image: Optional[str] = None,
+        chat_history: Optional[list] = None,
+        **kwargs,
+    ) -> Dict[str, Any]:
+        """Execute a tool call and return structured data + LLM summary.
+
+        This is the main entry point for the tool-message chat endpoint.
+        It calls the appropriate agent, gets structured data, then asks
+        LM Studio to summarise the result in natural language.
+        """
+        try:
+            raw_result = self._execute_tool(tool_call)
+            summary = self._summarise_result(message, tool_call, raw_result)
+            display_type = TOOL_DISPLAY_MAP.get(tool_call.tool, DisplayType.TEXT)
+
+            tool_result = ToolResultData(
+                tool_name=tool_call.tool.value,
+                display_type=display_type,
+                data=raw_result,
+                summary=summary,
+            )
+
+            return {
+                "response": summary,
+                "llm_model": None,
+                "tokens_used": None,
+                "tool_result": tool_result.model_dump(),
+            }
+        except Exception as exc:
+            logger.error("Tool execution error (%s): %s", tool_call.tool, exc, exc_info=True)
+            return {
+                "response": f"Error running {tool_call.tool.value}: {exc}",
+                "llm_model": None,
+                "tokens_used": None,
+                "tool_result": None,
+            }
+
+    def _execute_tool(self, tool_call: ToolCall) -> Dict[str, Any]:
+        """Dispatch to the correct agent based on tool_call.tool."""
+        from backend.mcp_tools import (
+            predict_pace,
+            predict_tire,
+            predict_situation,
+            predict_pit,
+            analyze_radio,
+            query_regulations,
+            recommend_strategy,
+            list_available_gps,
+            list_available_drivers,
+            get_lap_range,
+        )
+
+        p = tool_call.params
+        dispatch = {
+            ToolName.PREDICT_PACE: lambda: predict_pace(p.gp, p.driver, p.lap, p.year),
+            ToolName.PREDICT_TIRE: lambda: predict_tire(p.gp, p.driver, p.lap, p.year),
+            ToolName.PREDICT_SITUATION: lambda: predict_situation(p.gp, p.driver, p.lap, p.year),
+            ToolName.PREDICT_PIT: lambda: predict_pit(p.gp, p.driver, p.lap, p.year),
+            ToolName.ANALYZE_RADIO: lambda: analyze_radio(p.gp, p.driver, p.lap, p.year),
+            ToolName.QUERY_REGULATIONS: lambda: query_regulations(p.question or ""),
+            ToolName.RECOMMEND_STRATEGY: lambda: recommend_strategy(p.gp, p.driver, p.lap, p.year, p.risk_tolerance),
+            ToolName.LIST_GPS: lambda: list_available_gps(p.year),
+            ToolName.LIST_DRIVERS: lambda: list_available_drivers(p.gp or "", p.year),
+            ToolName.GET_LAP_RANGE: lambda: get_lap_range(p.gp or "", p.driver or "", p.year),
+        }
+
+        fn = dispatch.get(tool_call.tool)
+        if fn is None:
+            raise ValueError(f"Unknown tool: {tool_call.tool}")
+
+        raw = fn()
+        return json.loads(raw) if isinstance(raw, str) else raw
+
+    def _summarise_result(
+        self,
+        user_message: str,
+        tool_call: ToolCall,
+        result: Dict[str, Any],
+    ) -> str:
+        """Ask LM Studio to produce a concise natural-language summary."""
+        try:
+            compact = json.dumps(result, default=str, ensure_ascii=False)[:2000]
+            prompt = (
+                f"The user asked: \"{user_message}\"\n\n"
+                f"The {tool_call.tool.value} tool returned this data:\n{compact}\n\n"
+                "Provide a concise, expert F1 strategy summary of this data in 2-4 sentences. "
+                "Highlight the key insight and any recommended action."
+            )
+            messages = build_messages(prompt, system_prompt=_SYSTEM_PROMPT)
+            response = send_message(messages, temperature=0.3, max_tokens=300)
+
+            if "choices" in response and response["choices"]:
+                return response["choices"][0]["message"]["content"]
+        except Exception:
+            logger.debug("LLM summarisation failed, using raw format", exc_info=True)
+
+        return _format_recommendation(result) if "action" in result else str(result)[:500]
