@@ -1,6 +1,6 @@
 from backend.api.v1.endpoints import auth, circuit_domination, comparison, telemetry, chat, voice, strategy
 from backend.core.config import FRONTEND_URL
-from backend.mcp_tools import mcp as mcp_server
+from backend.mcp_tools import mcp as mcp_server, _mount_openapi_tools
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import FastAPI
 import sys
@@ -48,6 +48,12 @@ app.include_router(strategy.router, prefix="/api/v1")
 
 # Mount FastMCP server — MCP clients connect via Streamable HTTP at /mcp
 app.mount("/mcp", mcp_app)
+
+
+@app.on_event("startup")
+def _startup_mount_openapi():
+    """Mount Phase 2 telemetry tools from OpenAPI spec after server starts."""
+    _mount_openapi_tools()
 
 
 @app.get("/")
