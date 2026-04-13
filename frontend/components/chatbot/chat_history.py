@@ -141,39 +141,49 @@ def render_chat_history():
             display: none;
         }
 
-        /* st.chat_input — fixed bottom bar: force app gradient background */
-        [data-testid="stBottom"],
-        .stBottom {
-            background: linear-gradient(135deg, #121127 0%, #1e1b4b 100%) !important;
+        /* ===== st.chat_input Bottom Bar — transparent so .stApp gradient shows through ===== */
+        /* 1. Outermost sticky wrapper */
+        [data-testid="stBottom"] {
+            background: transparent !important;
         }
-        [data-testid="stBottomBlockContainer"],
-        .stBottomBlockContainer {
-            background: linear-gradient(135deg, #121127 0%, #1e1b4b 100%) !important;
+        /* 2. StyledInnerBottomContainer (NO data-testid — the grey culprit) */
+        [data-testid="stBottom"] > div {
+            background: transparent !important;
         }
-        [data-testid="stChatInput"],
-        .stChatInput {
-            background-color: transparent !important;
-            border-top: 1px solid rgba(167, 139, 250, 0.2) !important;
+        /* 3. Block container */
+        [data-testid="stBottomBlockContainer"] {
+            background: transparent !important;
         }
-        [data-testid="stChatInput"] textarea {
-            background-color: #1e1b4b !important;
-            border: 1px solid #2d2d3a !important;
+        /* 4. Chat input wrapper */
+        [data-testid="stChatInput"] {
+            background: transparent !important;
+        }
+        /* 5. The actual input box — subtle dark bg with purple border */
+        .stChatInput > div,
+        [data-testid="stChatInput"] > div {
+            background-color: rgba(30, 27, 75, 0.85) !important;
+            border: 1px solid rgba(167, 139, 250, 0.3) !important;
             border-radius: 12px !important;
+        }
+        /* 6. Textarea */
+        [data-testid="stChatInputTextArea"],
+        [data-testid="stChatInput"] textarea {
+            background-color: transparent !important;
             color: #ffffff !important;
-            height: auto !important;
-            min-height: 44px !important;
-            max-height: 120px !important;
         }
         [data-testid="stChatInput"] textarea:focus {
             border-color: #a78bfa !important;
-            box-shadow: 0 0 0 1px #a78bfa !important;
+            box-shadow: 0 0 0 2px rgba(167, 139, 250, 0.2) !important;
         }
+        /* 7. Submit button */
+        [data-testid="stChatInputSubmitButton"],
         [data-testid="stChatInput"] button {
             background-color: #a78bfa !important;
             color: white !important;
+            border-radius: 8px !important;
         }
 
-        /* File uploader — compact, inline with chat area */
+        /* File uploader expander — subtle */
         [data-testid="stFileUploader"] {
             border: 1px dashed #2d2d3a !important;
             background-color: transparent !important;
@@ -206,7 +216,7 @@ def render_chat_history():
 _EXAMPLE_PROMPTS = [
     (":material/tire_repair:", "Tyre status", "Tyre status for VER at lap 30 in Bahrain"),
     (":material/speed:", "Pace prediction", "Predict pace for LEC lap 25 Monaco"),
-    (":material/gavel:", "FIA regulation", "What does article 48.12 say about safety car?"),
+    (":material/gavel:", "FIA regulation", "What do articles 55 and 57 say about safety car procedures?"),
     (":material/strategy:", "Full strategy", "Full strategy for NOR lap 40 Australia risk 0.7"),
 ]
 
