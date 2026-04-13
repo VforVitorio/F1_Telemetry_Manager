@@ -47,28 +47,11 @@ def initialize_chat_mode():
 
 
 def render_header():
-    """Display page header with mode toggle."""
+    """Display page header — mode toggle moved to sidebar."""
     st.markdown(
-        "<h1 style='text-align: center;'>F1 Strategy Chat</h1>",
-        unsafe_allow_html=True
+        "<h1 style='text-align: center; margin-bottom: 0;'>F1 Strategy Chat</h1>",
+        unsafe_allow_html=True,
     )
-
-    # Mode toggle with buttons (like login/register)
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col2:
-        tab_cols = st.columns(2)
-        with tab_cols[0]:
-            if st.button("💬 Text Chat", use_container_width=True,
-                         type="primary" if st.session_state.chat_mode == 'text' else "secondary"):
-                st.session_state.chat_mode = 'text'
-                st.rerun()
-        with tab_cols[1]:
-            if st.button("🎤 Voice Chat", use_container_width=True,
-                         type="primary" if st.session_state.chat_mode == 'voice' else "secondary"):
-                st.session_state.chat_mode = 'voice'
-                st.rerun()
-
-    st.markdown("---")
 
 
 def handle_pending_message():
@@ -305,8 +288,6 @@ def render_chat_page():
             render_chat_sidebar()
 
         # Main content area
-        st.markdown("## Chat")
-
         # Report download button (appears when there's chat history)
         render_report_button()
 
@@ -314,7 +295,7 @@ def render_chat_page():
         render_chat_history()
 
         # Input area (fixed at bottom visually)
-        st.markdown("<div style='margin-top: 20px;'></div>",
+        st.markdown("<div style='margin-top: 8px;'></div>",
                     unsafe_allow_html=True)
         # Check for pending text from example prompt clicks
         pending = st.session_state.pop("chat_pending_text", None)
