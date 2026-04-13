@@ -60,19 +60,20 @@ def render_custom_css():
     st.markdown(css_content, unsafe_allow_html=True)
 
 
-def apply_driver_pill_colors(selected_drivers):
+def apply_driver_pill_colors(selected_drivers, year=None):
     """
     Apply team colors to driver pills based on selection order using nth-of-type.
 
     Args:
         selected_drivers (list): List of selected driver codes in order
+        year (int, optional): Season year for correct team colors
     """
     if not selected_drivers:
         return
 
     css = "<style>"
     for i, driver_code in enumerate(selected_drivers, start=1):
-        color = get_driver_color(driver_code)
+        color = get_driver_color(driver_code, year=year)
         css += f"""
         span[data-baseweb="tag"]:nth-of-type({i}) span,
         div[data-baseweb="tag"]:nth-of-type({i}) span {{
