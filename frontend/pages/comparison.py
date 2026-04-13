@@ -130,7 +130,7 @@ def render_comparison_page():
     selected_drivers = [d for d in [driver1, driver2] if d is not None]
     if selected_drivers:
         render_custom_css()  # Remove backgrounds
-        apply_driver_pill_colors(selected_drivers)  # Apply text colors
+        apply_driver_pill_colors(selected_drivers, year=year)  # Apply text colors
 
     # Add spacing before compare button
     st.markdown("<br>", unsafe_allow_html=True)
