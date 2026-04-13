@@ -31,7 +31,7 @@ def render_circuit_comparison(comparison_data: Dict) -> None:
     _render_lap_times_info(comparison_data)
 
     fig = _create_circuit_animation(comparison_data)
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 
 
 def _render_section_title() -> None:

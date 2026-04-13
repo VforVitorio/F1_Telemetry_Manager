@@ -28,7 +28,7 @@ def render_speed_comparison_graph(comparison_data: Dict) -> None:
     pilot2 = comparison_data['pilot2']
 
     fig = _create_speed_figure(pilot1, pilot2)
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 
 
 def _render_section_title() -> None:

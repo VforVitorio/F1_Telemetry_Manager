@@ -69,7 +69,7 @@ def render_animation_figure(comparison_data: Dict) -> None:
     _render_chart_header_with_button(fig, comparison_data)
 
     # Display figure
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 
 
 def _render_section_title() -> None:

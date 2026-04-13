@@ -32,7 +32,7 @@ def render_delta_time_graph(comparison_data: Dict) -> None:
     delta = comparison_data['delta']
 
     fig = _create_delta_figure(delta, pilot1, pilot2)
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 
 
 def _render_section_title() -> None:
