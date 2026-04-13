@@ -1,8 +1,8 @@
 """
-Chat Sidebar — Compact chat management panel.
+Chat Sidebar — Modern, polished chat management panel.
 
-Tight layout: new chat + delete as icon row, chat history as a scrollable
-list with active highlight, reports in a collapsed expander.
+Clean header, prominent New Chat button, scrollable chat history with
+active highlight, reports collapsed, Material Icons throughout.
 """
 
 import streamlit as st
@@ -21,99 +21,166 @@ from utils.report_storage import (
 
 
 def render_chat_sidebar() -> None:
-    """Render the full chat sidebar."""
-    _render_action_row()
+    """Render the full modern chat sidebar."""
+    _inject_sidebar_css()
+    _render_new_chat_button()
     _render_chat_list()
     st.divider()
     _render_reports_section()
 
 
 # ---------------------------------------------------------------------------
-# Private helpers
+# Sections
 # ---------------------------------------------------------------------------
 
-def _render_action_row() -> None:
-    """New chat + delete current in a compact row."""
-    c1, c2 = st.columns(2)
-    with c1:
-        if st.button(
-            ":material/add: New",
-            key="new_chat_btn",
-            use_container_width=True,
-        ):
-            create_new_chat()
-            st.rerun()
-    with c2:
-        if st.button(
-            ":material/delete: Delete",
-            key="delete_chat_btn",
-            use_container_width=True,
-        ):
-            delete_current_chat()
-            st.rerun()
+def _render_new_chat_button() -> None:
+    """Prominent New Chat button at top."""
+    if st.button(
+        ":material/add: New Chat",
+        key="sidebar_new_chat",
+        use_container_width=True,
+        type="primary",
+    ):
+        create_new_chat()
+        st.rerun()
+    st.caption("")  # small spacer
 
 
 def _render_chat_list() -> None:
-    """Scrollable list of saved chats with active highlight."""
+    """Scrollable chat history with active highlight."""
     chat_names = get_saved_chat_names()
+
     if not chat_names:
-        st.caption("No saved chats yet.")
+        st.caption("No chats yet — start a conversation.")
         return
 
-    st.caption(f"History ({len(chat_names)})")
+    st.markdown(
+        f'<div class="sidebar-section-header">'
+        f'<span>History</span>'
+        f'<span class="sidebar-count">{len(chat_names)}</span>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
 
     current = st.session_state.get("current_chat_name")
-    for name in chat_names:
+    for idx, name in enumerate(chat_names):
+        display = name if len(name) <= 35 else name[:32] + "..."
+
         if name == current:
             st.markdown(
-                f'<div style="background:#23234a; padding:8px 12px; border-radius:6px; '
-                f'border-left:3px solid #a78bfa; margin:4px 0; font-size:0.85rem; '
-                f'font-weight:600; color:#a78bfa;">{name}</div>',
+                f'<div class="sidebar-chat-active" title="{name}">'
+                f'{display}</div>',
                 unsafe_allow_html=True,
             )
         else:
-            if st.button(name, key=f"load_{name}", use_container_width=True):
+            if st.button(display, key=f"load_{idx}_{name}", use_container_width=True):
                 load_chat(name)
                 st.rerun()
 
+    # Delete button at the bottom of chat list (subtle)
+    st.caption("")
+    if st.button(
+        ":material/delete_outline: Delete current",
+        key="sidebar_delete_chat",
+        use_container_width=True,
+    ):
+        delete_current_chat()
+        st.rerun()
+
 
 def _render_reports_section() -> None:
-    """Exported reports in a collapsed expander."""
-    report_count = get_report_count()
+    """Reports in a collapsed expander."""
+    count = get_report_count()
 
-    with st.expander(
-        f":material/description: Reports ({report_count})",
-        expanded=False,
-    ):
-        if report_count == 0:
+    with st.expander(f":material/description: Reports ({count})", expanded=False):
+        if count == 0:
             st.caption("No reports yet.")
             return
 
-        if st.button(":material/delete_sweep: Clear all", key="clear_all_reports", use_container_width=True):
+        if st.button(":material/delete_sweep: Clear all", key="sidebar_clear_reports", use_container_width=True):
             clear_all_reports()
             st.rerun()
 
-        reports = get_all_reports()
-        for report in reversed(reports):
-            _render_report_item(report)
+        for i, report in enumerate(reversed(get_all_reports())):
+            ts = report["timestamp"].strftime("%m/%d %H:%M")
+            chat = report.get("chat_name", "")
+            c1, c2 = st.columns([4, 1])
+            with c1:
+                st.download_button(
+                    f"{ts} — {chat}",
+                    data=report["content"],
+                    file_name=report["filename"],
+                    mime="text/markdown",
+                    key=f"dl_{i}_{report['id']}",
+                    use_container_width=True,
+                )
+            with c2:
+                if st.button(":material/close:", key=f"del_{i}_{report['id']}"):
+                    delete_report(report["id"])
+                    st.rerun()
 
 
-def _render_report_item(report: dict) -> None:
-    """Single report row: timestamp + download + delete."""
-    ts = report["timestamp"].strftime("%d/%m %H:%M")
-    chat = report.get("chat_name", "")
+# ---------------------------------------------------------------------------
+# CSS
+# ---------------------------------------------------------------------------
 
-    c1, c2 = st.columns([4, 1])
-    with c1:
-        st.download_button(
-            label=f"{ts} — {chat}",
-            data=report["content"],
-            file_name=report["filename"],
-            mime="text/markdown",
-            key=f"dl_{report['id']}",
-            use_container_width=True,
-        )
-    with c2:
-        if st.button(":material/close:", key=f"del_{report['id']}", help="Delete"):
-            delete_report(report["id"])
-            st.rerun()
+def _inject_sidebar_css() -> None:
+    """Sidebar-specific CSS for modern look."""
+    st.markdown("""
+    <style>
+    /* Sidebar background */
+    [data-testid="stSidebar"] {
+        background: linear-gradient(180deg, #1e1b4b 0%, #16132f 100%) !important;
+        border-right: 1px solid #2d2d3a !important;
+    }
+    [data-testid="stSidebar"] > div:first-child {
+        background: transparent !important;
+    }
+
+    /* Section header */
+    .sidebar-section-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 8px 4px;
+        margin-bottom: 8px;
+        color: #9ca3af;
+        font-size: 0.8rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    .sidebar-count {
+        background: rgba(167, 139, 250, 0.2);
+        color: #a78bfa;
+        font-size: 0.7rem;
+        font-weight: 700;
+        padding: 2px 8px;
+        border-radius: 10px;
+    }
+
+    /* Active chat item */
+    .sidebar-chat-active {
+        padding: 10px 12px;
+        border-radius: 8px;
+        border-left: 3px solid #a78bfa;
+        background: rgba(167, 139, 250, 0.1);
+        color: #ffffff;
+        font-weight: 600;
+        font-size: 0.88rem;
+        margin: 4px 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    /* Sidebar button hover */
+    [data-testid="stSidebar"] button {
+        transition: all 0.2s ease !important;
+        border-radius: 8px !important;
+    }
+    [data-testid="stSidebar"] button:hover {
+        background-color: rgba(167, 139, 250, 0.1) !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
