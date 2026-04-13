@@ -46,7 +46,7 @@ def _render_section_title() -> None:
     Renders the section title
     """
     st.markdown(
-        "<h3 style='text-align: center;'> BRAKE (%) </h3>",
+        "<h3 style='text-align: center;'> BRAKE </h3>",
         unsafe_allow_html=True
     )
 
@@ -57,7 +57,7 @@ def _render_section_title_with_button(fig: go.Figure, driver: str, graph_type: s
 
     with col1:
         st.markdown(
-            "<h3 style='text-align: center;'> BRAKE (%) </h3>",
+            "<h3 style='text-align: center;'> BRAKE </h3>",
             unsafe_allow_html=True
         )
 
@@ -126,7 +126,7 @@ def render_brake_graph(telemetry_data_multi, selected_drivers, color_palette):
             fig = _create_brake_figure(
                 combined_df, drivers_with_data, colors_with_data)
             _render_section_title_with_button(fig, drivers_with_data[0], "brake")
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="stretch")
         else:
             _render_section_title()
             render_loading_spinner()
@@ -162,7 +162,7 @@ def _create_brake_figure(telemetry_data, selected_drivers, color_palette):
                     name=driver,
                     line=dict(color=color_palette[idx], width=2),
                     mode='lines',
-                    hovertemplate='<b>%{fullData.name}</b><br>Distance: %{x:.0f}m<br>Brake: %{y:.1f}%<extra></extra>'
+                    hovertemplate='<b>%{fullData.name}</b><br>Distance: %{x:.0f}m<br>Brake: %{y}<extra></extra>'
                 )
             )
 
@@ -170,7 +170,7 @@ def _create_brake_figure(telemetry_data, selected_drivers, color_palette):
     fig.update_layout(
         template="plotly_dark",
         xaxis_title="Distance (m)",
-        yaxis_title="Brake",
+        yaxis_title="Brake (on/off)",
         height=400,
         margin=dict(l=40, r=40, t=40, b=40),
         plot_bgcolor=Color.PRIMARY_BG,
