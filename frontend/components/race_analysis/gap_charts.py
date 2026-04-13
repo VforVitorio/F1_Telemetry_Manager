@@ -21,11 +21,16 @@ from utils.race_viz import (
 def render_gap_charts(
     gap_data: pd.DataFrame,
     driver_number: Optional[int] = None,
+    driver_colors: Optional[dict] = None,
+    driver_code_map: Optional[dict] = None,
 ) -> None:
     """Render the gap analysis section.
 
     Shows gap evolution, undercut/overcut zones, consistency bars,
     and a summary of strategic windows.
+
+    When driver_colors is provided (multi-driver mode), chart lines are
+    colored by driver team color. driver_code_map maps DriverNumber → code for labels.
     """
     if gap_data.empty:
         st.warning("No gap data available.")
@@ -39,23 +44,23 @@ def render_gap_charts(
     col1, col2 = st.columns(2)
 
     with col1:
-        fig = st_plot_gap_evolution(gap_data, driver_number)
+        fig = st_plot_gap_evolution(gap_data, driver_number, driver_colors=driver_colors, driver_code_map=driver_code_map)
         if fig:
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="stretch")
         else:
-            st.info("Gap evolution data not available.")
+            st.caption("Gap evolution data not available.")
 
     with col2:
-        fig = st_plot_undercut_opportunities(gap_data, driver_number)
+        fig = st_plot_undercut_opportunities(gap_data, driver_number, driver_colors=driver_colors, driver_code_map=driver_code_map)
         if fig:
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="stretch")
         else:
-            st.info("Undercut opportunities data not available.")
+            st.caption("Undercut opportunities data not available.")
 
     # --- Row 2: gap consistency ---
-    fig = st_plot_gap_consistency(gap_data, driver_number)
+    fig = st_plot_gap_consistency(gap_data, driver_number, driver_colors=driver_colors, driver_code_map=driver_code_map)
     if fig:
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
 
     # --- Strategic windows summary ---
     windows = calculate_strategic_windows(gap_data)
