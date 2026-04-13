@@ -7,8 +7,12 @@ RUN pip install --no-cache-dir uv
 
 COPY backend/requirements.txt .
 
-# Install dependencies with uv (much faster than pip)
-RUN uv pip install --system -r requirements.txt
+# setuptools needed by openai-whisper (pkg_resources) — must disable
+# build isolation so uv uses the system setuptools during wheel build
+RUN uv pip install --system setuptools wheel
+
+# Install dependencies with uv
+RUN uv pip install --system --no-build-isolation -r requirements.txt
 
 COPY backend/ ./backend/
 
