@@ -4,10 +4,11 @@ Telemetry Service
 This module handles API calls to the backend for fetching F1 telemetry data.
 """
 
+import logging
+from typing import Dict, List, Optional
+
 import requests
 from config import BACKEND_URL
-from typing import Optional, Dict, List
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +17,14 @@ class TelemetryService:
     """
     Service for fetching telemetry data from the backend API.
     """
+
+    @staticmethod
+    def _safe_detail(response, fallback: str = "Unknown error") -> str:
+        """Extract error detail from a response without crashing on non-JSON."""
+        try:
+            return str(response.json().get("detail", fallback))
+        except (ValueError, AttributeError):
+            return response.text or f"HTTP {response.status_code}"
 
     @staticmethod
     def get_circuit_domination(
@@ -67,19 +76,10 @@ class TelemetryService:
                 logger.info(f"Successfully fetched {len(data.get('x', []))} points")
                 return True, data, None
 
-            elif response.status_code == 404:
-                error_detail = response.json().get('detail', 'Session or data not found')
-                logger.warning(f"404 error: {error_detail}")
-                return False, None, error_detail
-
-            elif response.status_code == 400:
-                error_detail = response.json().get('detail', 'Invalid parameters')
-                logger.warning(f"400 error: {error_detail}")
-                return False, None, error_detail
-
             else:
-                error_msg = f"Server error: {response.status_code}"
-                logger.error(error_msg)
+                detail = TelemetryService._safe_detail(response, "Request failed")
+                error_msg = f"circuit-domination {response.status_code}: {detail}"
+                logger.warning(error_msg)
                 return False, None, error_msg
 
         except requests.exceptions.Timeout:
@@ -92,6 +92,47 @@ class TelemetryService:
             logger.error(error_msg)
             return False, None, error_msg
 
+        except Exception as e:
+            error_msg = f"Unexpected error: {str(e)}"
+            logger.error(error_msg, exc_info=True)
+            return False, None, error_msg
+
+    @staticmethod
+    def get_race_data(
+        year: int,
+        gp: str,
+        driver: Optional[str] = None,
+    ) -> tuple[bool, Optional[Dict], Optional[str]]:
+        """Fetch the full featured DataFrame for a GP from the parquet cache."""
+        try:
+            params: Dict = {"year": year, "gp": gp}
+            if driver:
+                params["driver"] = driver
+            logger.info(f"Fetching race data: {params}")
+
+            response = requests.get(
+                f"{BACKEND_URL}/api/v1/telemetry/race-data",
+                params=params,
+                timeout=30,
+            )
+
+            if response.status_code == 200:
+                data = response.json()
+                logger.info(f"Fetched {data.get('count', '?')} rows of race data")
+                return True, data, None
+
+            detail = TelemetryService._safe_detail(response, "Race data error")
+            logger.warning(f"race-data {response.status_code}: {detail}")
+            return False, None, detail
+
+        except requests.exceptions.Timeout:
+            error_msg = "Request timeout fetching race data."
+            logger.error(error_msg)
+            return False, None, error_msg
+        except requests.exceptions.ConnectionError:
+            error_msg = "Cannot connect to backend server. Is it running?"
+            logger.error(error_msg)
+            return False, None, error_msg
         except Exception as e:
             error_msg = f"Unexpected error: {str(e)}"
             logger.error(error_msg, exc_info=True)
@@ -362,14 +403,10 @@ class TelemetryService:
                 logger.info(f"Successfully fetched telemetry for {driver} lap {lap_number}")
                 return True, telemetry_data, None
 
-            elif response.status_code == 404:
-                error_detail = response.json().get('detail', 'Telemetry not found')
-                logger.warning(f"404 error: {error_detail}")
-                return False, None, error_detail
-
             else:
-                error_msg = f"Server error: {response.status_code}"
-                logger.error(error_msg)
+                detail = TelemetryService._safe_detail(response, "Telemetry not found")
+                error_msg = f"lap-telemetry {response.status_code}: {detail}"
+                logger.warning(error_msg)
                 return False, None, error_msg
 
         except requests.exceptions.Timeout:

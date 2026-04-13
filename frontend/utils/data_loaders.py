@@ -1,5 +1,5 @@
 """
-Data loading utilities with caching for F1 Telemetry Manager.
+Data loading utilities with caching for F1 Strat Manager.
 Provides cached functions to load GPs, sessions, and drivers.
 """
 

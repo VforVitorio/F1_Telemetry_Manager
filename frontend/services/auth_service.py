@@ -44,7 +44,10 @@ class AuthService:
             if response.status_code == 200:
                 return True, "Account created successfully", None
             else:
-                error = response.json().get("detail", "Registration failed")
+                try:
+                    error = response.json().get("detail", "Registration failed")
+                except (ValueError, AttributeError):
+                    error = "Registration failed"
                 return False, None, error
 
         except Exception as e:
