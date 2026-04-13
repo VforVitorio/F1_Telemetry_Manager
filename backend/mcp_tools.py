@@ -241,3 +241,75 @@ def get_lap_range(gp: str, driver: str, year: int = 2025) -> str:
     """Get the min and max lap numbers available for a driver in a GP."""
     from backend.api.v1.endpoints.strategy import lap_range
     return _format_result(lap_range(gp, driver, year))
+
+
+# ---------------------------------------------------------------------------
+# MCP Tools — Phase 2: Telemetry & Comparison (auto-generated from OpenAPI)
+# ---------------------------------------------------------------------------
+#
+# Phase 1 tools (above) are defined manually because they wrap complex ML
+# agents with simplified params (gp, driver, lap) that are easy for the LLM
+# to reason about.  The raw FastAPI endpoints accept lap_state dicts, which
+# are too complex for direct LLM consumption.
+#
+# Phase 2 tools cover telemetry and comparison endpoints that already have
+# simple query-string params (year, gp, session, driver).  These are
+# auto-generated from the FastAPI OpenAPI spec using FastMCP.from_openapi(),
+# which reads /openapi.json at startup and converts every GET/POST endpoint
+# into an MCP tool — zero manual maintenance.
+#
+# The auto-generated sub-server is mounted on the main `mcp` instance so
+# all tools (Phase 1 manual + Phase 2 auto) are available under one server.
+
+import httpx as _httpx
+
+def _mount_openapi_tools() -> None:
+    """Mount auto-generated MCP tools from the FastAPI OpenAPI spec.
+
+    Called lazily on first request to avoid circular imports at module load.
+    Fetches /openapi.json from the running backend and converts telemetry +
+    comparison endpoints into MCP tools.
+    """
+    global _openapi_mounted
+    if _openapi_mounted:
+        return
+
+    try:
+        # Fetch the OpenAPI spec from our own backend
+        resp = _httpx.get("http://localhost:8000/openapi.json", timeout=5)
+        if resp.status_code != 200:
+            logger.warning("Could not fetch OpenAPI spec: HTTP %s", resp.status_code)
+            return
+
+        spec = resp.json()
+
+        # Filter to only telemetry + comparison paths (skip strategy/chat/auth)
+        filtered_paths = {}
+        for path, methods in spec.get("paths", {}).items():
+            if any(prefix in path for prefix in ["/telemetry/", "/comparison/", "/circuit-domination/"]):
+                filtered_paths[path] = methods
+
+        if not filtered_paths:
+            logger.info("No telemetry/comparison paths found in OpenAPI spec")
+            return
+
+        filtered_spec = {**spec, "paths": filtered_paths}
+
+        client = _httpx.AsyncClient(base_url="http://localhost:8000")
+        sub = FastMCP.from_openapi(
+            openapi_spec=filtered_spec,
+            client=client,
+            name="telemetry",
+        )
+
+        # Mount the sub-server's tools onto our main mcp instance
+        mcp.mount("telemetry", sub)
+        logger.info("Mounted %d telemetry/comparison tools from OpenAPI", len(filtered_paths))
+
+    except Exception as exc:
+        logger.warning("Failed to mount OpenAPI tools: %s", exc)
+
+    _openapi_mounted = True
+
+
+_openapi_mounted = False
