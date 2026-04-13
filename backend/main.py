@@ -1,5 +1,6 @@
 from backend.api.v1.endpoints import auth, circuit_domination, comparison, telemetry, chat, voice, strategy
 from backend.core.config import FRONTEND_URL
+from backend.mcp_tools import mcp as mcp_server
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import FastAPI
 import sys
@@ -11,7 +12,10 @@ if str(backend_parent) not in sys.path:
     sys.path.insert(0, str(backend_parent))
 
 
-app = FastAPI(title="F1 Telemetry API")
+# Build the MCP ASGI sub-app (Streamable HTTP, FastMCP 3.x)
+mcp_app = mcp_server.http_app(path="/mcp")
+
+app = FastAPI(title="F1 Telemetry API", lifespan=mcp_app.lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -40,6 +44,10 @@ app.include_router(voice.router, prefix="/api/v1/voice", tags=["voice"])
 
 # Add strategy router (N25–N31 agent pipeline)
 app.include_router(strategy.router, prefix="/api/v1")
+
+
+# Mount FastMCP server — MCP clients connect via Streamable HTTP at /mcp
+app.mount("/mcp", mcp_app)
 
 
 @app.get("/")
