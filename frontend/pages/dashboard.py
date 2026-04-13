@@ -36,7 +36,7 @@ def render_header():
     """
     Display page header.
     """
-    st.markdown("<h1 style='text-align: center;'>F1 TELEMETRY MANAGER</h1>",
+    st.markdown("<h1 style='text-align: center;'>F1 STRAT MANAGER</h1>",
                 unsafe_allow_html=True)
     st.markdown("---")
 
@@ -55,7 +55,7 @@ def render_dashboard():
     selected_year, selected_gp, selected_session, selected_drivers, color_palette = render_data_selectors()
 
     # Apply colors to driver pills based on selection (must be after selectors)
-    apply_driver_pill_colors(selected_drivers)
+    apply_driver_pill_colors(selected_drivers, year=selected_year)
 
     lap_times_data = render_lap_graph(selected_year, selected_gp,
                                        selected_session, selected_drivers, color_palette,
