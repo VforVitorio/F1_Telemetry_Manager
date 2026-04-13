@@ -1,42 +1,45 @@
-"""Cached loader for the featured laps parquet."""
+"""Cached loader for the featured laps parquet (multi-year)."""
 
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import Dict, Optional
 
 import pandas as pd
 
 logger = logging.getLogger(__name__)
 
-_REPO_ROOT = Path(__file__).resolve()
-while not (_REPO_ROOT / ".git").exists():
+_REPO_ROOT = Path(__file__).resolve().parent
+while not (_REPO_ROOT / ".git").exists() and _REPO_ROOT != _REPO_ROOT.parent:
     _REPO_ROOT = _REPO_ROOT.parent
+# Docker fallback: no .git found → assume /app is the mount point
+if not (_REPO_ROOT / ".git").exists():
+    _REPO_ROOT = Path("/app")
 
-_cache: Optional[pd.DataFrame] = None
+_cache: Dict[int, pd.DataFrame] = {}
 
 
-def get_laps_df() -> Optional[pd.DataFrame]:
-    """Load the featured parquet once and cache it in memory."""
-    global _cache
-    if _cache is not None:
-        return _cache
-    path = _REPO_ROOT / "data" / "processed" / "laps_featured_2025.parquet"
+def get_laps_df(year: int = 2025) -> Optional[pd.DataFrame]:
+    """Load the featured parquet for *year* and cache it in memory."""
+    if year in _cache:
+        return _cache[year]
+    path = _REPO_ROOT / "data" / "processed" / f"laps_featured_{year}.parquet"
     if not path.exists():
         logger.warning("Featured parquet not found: %s", path)
         return None
-    _cache = pd.read_parquet(path)
-    logger.info("Loaded laps_df: %d rows", len(_cache))
-    return _cache
+    df = pd.read_parquet(path)
+    _cache[year] = df
+    logger.info("Loaded laps_df %d: %d rows", year, len(df))
+    return df
 
 
-def require_laps_df() -> pd.DataFrame:
+def require_laps_df(year: int = 2025) -> pd.DataFrame:
     """Like get_laps_df but raises HTTPException(503) if unavailable."""
     from fastapi import HTTPException
 
-    df = get_laps_df()
+    df = get_laps_df(year)
     if df is None:
         raise HTTPException(
             status_code=503,
-            detail="Featured parquet (data/processed/laps_featured_2025.parquet) not available.",
+            detail=f"Featured parquet (data/processed/laps_featured_{year}.parquet) not available.",
         )
     return df
