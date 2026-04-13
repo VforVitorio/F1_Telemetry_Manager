@@ -12,8 +12,9 @@ import base64
 import imghdr
 
 
-# Backend API configuration
-BACKEND_BASE_URL = "http://localhost:8000"  # Adjust as needed
+# Backend API configuration — reads BACKEND_URL from env (set by docker-compose)
+import os
+BACKEND_BASE_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
 CHAT_API_BASE = f"{BACKEND_BASE_URL}/api/v1/chat"
 
 
@@ -199,6 +200,56 @@ def send_message(
     except Exception as e:
         st.error(f"Error sending message: {e}")
         return f"Error: {str(e)}"
+
+
+def send_tool_message(
+    text: str,
+    image: Optional[str] = None,
+    chat_history: Optional[List[Dict[str, Any]]] = None,
+    context: Optional[Dict[str, Any]] = None,
+    model: str = "llama3.2-vision",
+    temperature: float = 0.1,
+) -> Dict[str, Any]:
+    """Send a message to the tool-aware chat endpoint.
+
+    Calls POST /api/v1/chat/tool-message which automatically detects
+    strategy queries, extracts parameters, and invokes the appropriate
+    ML agent.  Returns both a text response and an optional structured
+    tool_result for rich rendering in the chat.
+
+    Returns:
+        dict with keys: response (str), tool_result (dict | None),
+        llm_model (str | None), tokens_used (int | None).
+    """
+    try:
+        image_data_uri = None
+        if image:
+            if isinstance(image, bytes):
+                image_data_uri = format_image_for_vision_model(image)
+            elif isinstance(image, str) and not image.startswith("data:image"):
+                image_data_uri = f"data:image/jpeg;base64,{image}"
+            else:
+                image_data_uri = image
+
+        response = httpx.post(
+            f"{CHAT_API_BASE}/tool-message",
+            json={
+                "text": text,
+                "image": image_data_uri,
+                "chat_history": chat_history or [],
+                "context": context or {},
+                "model": model,
+                "temperature": temperature,
+                "max_tokens": 1000,
+            },
+            timeout=300,
+        )
+
+        if response.status_code == 200:
+            return response.json()
+        return {"response": f"Backend error: {response.status_code}", "tool_result": None}
+    except Exception as e:
+        return {"response": f"Error: {e}", "tool_result": None}
 
 
 def generate_report(
