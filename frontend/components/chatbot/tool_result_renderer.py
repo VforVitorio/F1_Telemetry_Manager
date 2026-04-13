@@ -171,17 +171,71 @@ def _render_card_metrics(data: Dict[str, Any], tool_name: str) -> None:
 
 
 def _render_table(data: Dict[str, Any], tool_name: str) -> None:
-    """Render tabular data (radio events, alerts)."""
+    """Render tabular data (radio events, lap times, telemetry, comparison)."""
     import pandas as pd
 
-    alerts = data.get("alerts", [])
-    radio_events = data.get("radio_events", [])
+    # Try multiple known list keys
+    for key in ("alerts", "radio_events", "lap_times", "telemetry"):
+        items = data.get(key, [])
+        if items and isinstance(items[0], dict):
+            st.dataframe(pd.DataFrame(items), use_container_width=True)
+            return
 
-    items = alerts or radio_events
-    if items and isinstance(items[0], dict):
-        st.dataframe(pd.DataFrame(items), use_container_width=True)
-    else:
+    # Comparison summary — render as metrics
+    if tool_name == "compare_drivers":
+        _render_comparison(data)
+        return
+
+    # Race data summary
+    if tool_name == "get_race_data":
+        _render_race_data_summary(data)
+        return
+
+    # Telemetry summary
+    if "speed" in data or "distance" in data:
+        st.caption(f"{len(data.get('speed', data.get('distance', [])))} data points")
         _render_text(data, tool_name)
+        return
+
+    _render_text(data, tool_name)
+
+
+def _render_comparison(data: Dict[str, Any]) -> None:
+    """Render driver comparison result as metric cards."""
+    d1 = data.get("driver1", "?")
+    d2 = data.get("driver2", "?")
+
+    c1, c2 = st.columns(2)
+    with c1:
+        st.metric(d1, data.get("driver1_lap_time", "N/A"))
+    with c2:
+        st.metric(d2, data.get("driver2_lap_time", "N/A"))
+
+    if data.get("final_delta"):
+        st.metric("Final delta", data["final_delta"])
+
+    if data.get("error"):
+        st.warning(data["error"])
+
+
+def _render_race_data_summary(data: Dict[str, Any]) -> None:
+    """Render race data overview as compact metrics."""
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        st.metric("GP", data.get("gp", "—"))
+    with c2:
+        st.metric("Records", str(data.get("total_records", 0)))
+    with c3:
+        lr = data.get("lap_range", [])
+        st.metric("Laps", f"{lr[0]}–{lr[1]}" if len(lr) == 2 else "—")
+
+    drivers = data.get("drivers", [])
+    if drivers:
+        st.markdown("**Drivers:** " + ", ".join(drivers))
+
+    note = data.get("note")
+    if note:
+        st.caption(note)
 
 
 def _render_text(data: Dict[str, Any], tool_name: str) -> None:
