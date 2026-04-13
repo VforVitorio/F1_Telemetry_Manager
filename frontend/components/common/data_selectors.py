@@ -75,21 +75,20 @@ def render_comparison_data_selectors() -> Tuple[Optional[int], Optional[str], Op
     col_left, col_center, col_right = st.columns([2, 1, 2])
 
     with col_center:
-        # F1 2024 Complete driver lineup (24 drivers)
+        # F1 driver lineup — covers 2023-2025 grid
         selected_drivers = st.multiselect(
             "Drivers",
             options=[
-                "VER", "PER",  # Red Bull
-                "LEC", "SAI",  # Ferrari
-                "HAM", "RUS",  # Mercedes
-                "NOR", "PIA",  # McLaren
-                "ALO", "STR",  # Aston Martin
-                "GAS", "OCO",  # Alpine
-                "ALB", "COL", "SAR",  # Williams
-                "TSU", "RIC", "LAW",  # RB
-                "BOT", "ZHO",  # Sauber
-                "MAG", "HUL", "BEA",  # Haas
-                "DOO",  # Reserve/Test
+                "VER", "PER", "TSU",         # Red Bull
+                "LEC", "SAI", "HAM",         # Ferrari
+                "RUS", "ANT",                # Mercedes
+                "NOR", "PIA",                # McLaren
+                "ALO", "STR",                # Aston Martin
+                "GAS", "OCO", "DOO",         # Alpine
+                "ALB", "COL", "SAR",         # Williams
+                "RIC", "LAW", "HAD",         # RB
+                "BOT", "ZHO", "HUL", "BOR", # Sauber
+                "MAG", "BEA",                # Haas
             ],
             max_selections=2,
             placeholder="Select exactly 2 drivers to compare",
@@ -115,7 +114,7 @@ def _render_year_selector() -> Optional[int]:
     # years = fetch_available_years()  # GET /api/v1/telemetry/years
     year = st.selectbox(
         "YEAR",
-        options=[2024, 2023],
+        options=[2025, 2024, 2023],
         index=None,
         placeholder="Select Season",
         key="comparison_year_selector"
