@@ -1,9 +1,13 @@
 """
-Speech-to-Text Service using NVIDIA Nemotron Speech
+Speech-to-Text Service using OpenAI Whisper
 
-Provides low-latency audio transcription via the HuggingFace transformers
-pipeline wrapping nvidia/nemotron-speech-streaming-en-0.6b (Cache-Aware
-FastConformer-RNNT, ~160ms chunk latency, English-only).
+Provides audio transcription via the HuggingFace ``transformers.pipeline``
+wrapping ``openai/whisper-small`` by default. Whisper ships with custom
+``model_type`` entries registered in transformers, so no NeMo toolkit or
+``trust_remote_code`` is required \u2014 a plain ``pip install transformers``
+is enough. Swapped in after Nemotron-Speech-Streaming turned out to need the
+NVIDIA NeMo framework, which would have pulled ~5 GB of extra dependencies
+into the backend image.
 
 Install: pip install transformers accelerate
 """
@@ -16,8 +20,8 @@ from pathlib import Path
 from typing import Dict, Optional
 
 from backend.core.voice_config import (
-    NEMOTRON_DEVICE,
-    NEMOTRON_MODEL,
+    WHISPER_DEVICE,
+    WHISPER_MODEL,
 )
 
 # Add backend to path for imports (when running as script)
@@ -29,14 +33,14 @@ logger = logging.getLogger(__name__)
 
 
 class STTService:
-    """Speech-to-Text service using NVIDIA Nemotron Speech (via transformers)."""
+    """Speech-to-Text service using OpenAI Whisper (via transformers pipeline)."""
 
-    def __init__(self, model_name: str = NEMOTRON_MODEL):
+    def __init__(self, model_name: str = WHISPER_MODEL):
         """
-        Initialize the Nemotron ASR pipeline.
+        Initialize the Whisper ASR pipeline.
 
         Args:
-            model_name: HuggingFace model ID (default: NEMOTRON_MODEL from voice_config)
+            model_name: HuggingFace model ID (default: WHISPER_MODEL from voice_config)
         """
         self.model_name = model_name
         self._pipe = None
@@ -47,19 +51,19 @@ class STTService:
         try:
             from transformers import pipeline as hf_pipeline
 
-            logger.info("Loading Nemotron ASR pipeline '%s'...", self.model_name)
+            logger.info("Loading Whisper ASR pipeline '%s'...", self.model_name)
             self._pipe = hf_pipeline(
                 "automatic-speech-recognition",
                 model=self.model_name,
-                device=NEMOTRON_DEVICE,
+                device=WHISPER_DEVICE,
             )
-            logger.info("Nemotron ASR pipeline loaded successfully")
+            logger.info("Whisper ASR pipeline loaded successfully")
         except Exception as e:
-            logger.error("Failed to load Nemotron ASR pipeline: %s", e)
-            raise RuntimeError(f"Failed to load Nemotron ASR pipeline: {e}")
+            logger.error("Failed to load Whisper ASR pipeline: %s", e)
+            raise RuntimeError(f"Failed to load Whisper ASR pipeline: {e}")
 
     # ------------------------------------------------------------------
-    # Internal helpers (unchanged contract from Whisper version)
+    # Internal helpers
     # ------------------------------------------------------------------
 
     def _save_audio_to_temp(self, audio_bytes: bytes) -> str:
@@ -89,21 +93,30 @@ class STTService:
         if len(audio_bytes) < 100:
             raise ValueError("Audio data too small to be valid")
 
-    def _transcribe_file(self, audio_path: str) -> str:
+    def _transcribe_file(self, audio_path: str, language: str = "en") -> str:
         """
-        Run the Nemotron pipeline on a WAV file.
+        Run the Whisper pipeline on a WAV file.
+
+        Whisper is multilingual; passing the language via ``generate_kwargs``
+        lets us pin the decoder to English by default and matches the public
+        contract the previous Nemotron version advertised. The pipeline returns
+        a dict with a ``text`` field that we strip on exit.
 
         Args:
             audio_path: Absolute path to a WAV file
+            language: ISO language hint forwarded to Whisper's generate step
 
         Returns:
             Transcribed text string
         """
-        output = self._pipe(audio_path)
+        output = self._pipe(
+            audio_path,
+            generate_kwargs={"language": language, "task": "transcribe"},
+        )
         return output["text"]
 
     # ------------------------------------------------------------------
-    # Public contract (identical to the Whisper version)
+    # Public contract
     # ------------------------------------------------------------------
 
     def transcribe_audio(
@@ -114,18 +127,20 @@ class STTService:
         """
         Transcribe audio bytes to text.
 
-        The `language` argument is accepted for API compatibility but Nemotron
-        Speech is English-only; passing any other value is a no-op.
+        Whisper supports multilingual input, but we default to English because
+        every F1 radio corpus and UI copy in this project is English. Callers
+        can override by passing a different ISO code \u2014 Whisper will then
+        attempt language detection on the input.
 
         Args:
             audio_bytes: Raw WAV audio data
-            language: Language hint (accepted for compat; only 'en' supported)
+            language: Language hint forwarded to Whisper (default: 'en')
 
         Returns:
             Dictionary with keys:
                 - text (str): Transcribed text
-                - language (str): 'en'
-                - duration (float): 0.0 (Nemotron does not return duration)
+                - language (str): Language used for decoding
+                - duration (float): 0.0 (pipeline does not expose duration)
 
         Raises:
             ValueError: If audio_bytes are invalid
@@ -138,10 +153,10 @@ class STTService:
             temp_path = self._save_audio_to_temp(audio_bytes)
             logger.info("Transcribing audio (%d bytes)", len(audio_bytes))
 
-            text = self._transcribe_file(temp_path)
+            text = self._transcribe_file(temp_path, language=language)
 
             logger.info("Transcription complete: '%s...'", text[:50])
-            return {"text": text.strip(), "language": "en", "duration": 0.0}
+            return {"text": text.strip(), "language": language, "duration": 0.0}
 
         except ValueError:
             raise
@@ -156,11 +171,11 @@ class STTService:
         """Return True if the ASR pipeline is ready."""
         return self._pipe is not None
 
-    def get_model_info(self) -> Dict[str, str]:
+    def get_model_info(self) -> Dict[str, object]:
         """Return model metadata dict."""
         return {
             "model_name": self.model_name,
-            "device": str(NEMOTRON_DEVICE),
+            "device": str(WHISPER_DEVICE),
             "loaded": self.is_model_loaded(),
         }
 
@@ -180,7 +195,7 @@ def get_stt_service() -> STTService:
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
 
-    print("STT Service Test — NVIDIA Nemotron")
+    print("STT Service Test \u2014 OpenAI Whisper")
     print("=" * 50)
 
     stt = STTService()
@@ -189,4 +204,4 @@ if __name__ == "__main__":
     for key, value in stt.get_model_info().items():
         print(f"  {key}: {value}")
 
-    print("\nSTT Service ready — call transcribe_audio(wav_bytes) to test.")
+    print("\nSTT Service ready \u2014 call transcribe_audio(wav_bytes) to test.")
