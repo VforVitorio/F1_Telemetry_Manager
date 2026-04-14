@@ -10,6 +10,7 @@ it into sys.path so that `src.agents.*` imports work regardless of how the
 telemetry backend is started.
 """
 
+import json
 import logging
 import sys
 from pathlib import Path
@@ -17,6 +18,7 @@ from typing import Any, Dict, List, Optional
 
 import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 # ---------------------------------------------------------------------------
@@ -869,3 +871,58 @@ def radio_transcript(gp: str, driver: str, lap: int, year: int = 2025):
         })
 
     return {"messages": results}
+
+
+# ---------------------------------------------------------------------------
+# Simulation streaming endpoint \u2014 /api/v1/strategy/simulate
+# ---------------------------------------------------------------------------
+
+
+class SimulateRequest(BaseModel):
+    """Inputs for a streamed race simulation run.
+
+    Mirrors the ``SimConfig`` dataclass in the simulation service; we keep a
+    Pydantic equivalent here so FastAPI can validate and document the payload
+    without importing the service module at schema-generation time.
+    """
+
+    year: int = Field(2025, ge=2023, le=2025)
+    gp: str
+    driver: str
+    team: str
+    driver2: Optional[str] = None
+    lap_range: Optional[tuple[int, int]] = None
+    risk_tolerance: float = Field(0.5, ge=0.0, le=1.0)
+    no_llm: bool = False
+    provider: str = Field("lmstudio", pattern="^(lmstudio|openai)$")
+    interval_s: float = Field(0.0, ge=0.0, le=10.0)
+
+
+@router.post("/simulate")
+def simulate(req: SimulateRequest):
+    """Stream per-lap strategy decisions as Server-Sent Events.
+
+    Each event is a JSON blob in the ``data: ...\\n\\n`` SSE frame format. The
+    stream begins with a single ``start`` event, then emits one ``lap`` (or
+    ``error``) event per processed lap, and closes with a ``summary``. A
+    heartbeat comment is sent every 15 lap events so long runs survive proxy
+    idle timeouts.
+    """
+    from backend.services.simulation import SimConfig, simulate_race
+
+    def event_stream():
+        config = SimConfig(**req.model_dump())
+        lap_count = 0
+        try:
+            for event in simulate_race(config):
+                yield f"data: {json.dumps(event, default=str)}\n\n"
+                if event.get("type") == "lap":
+                    lap_count += 1
+                    if lap_count % 15 == 0:
+                        yield ":\n\n"
+        except Exception as exc:
+            logger.error("Simulation stream failed: %s", exc, exc_info=True)
+            err = {"type": "error", "data": {"lap": 0, "message": str(exc)}}
+            yield f"data: {json.dumps(err)}\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
