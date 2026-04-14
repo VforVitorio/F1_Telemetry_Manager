@@ -251,7 +251,8 @@ class StrategyHandler(BaseHandler):
         """
         try:
             raw_result = self._execute_tool(tool_call)
-            summary = self._summarise_result(message, tool_call, raw_result)
+            llm_result = self._trim_for_llm(raw_result)
+            summary = self._summarise_result(message, tool_call, llm_result)
             display_type = TOOL_DISPLAY_MAP.get(tool_call.tool, DisplayType.TEXT)
 
             tool_result = ToolResultData(
@@ -330,7 +331,12 @@ class StrategyHandler(BaseHandler):
         endpoint_map = {
             ToolName.GET_LAP_TIMES: (
                 f"{base}/telemetry/lap-times",
-                {"year": p.year, "gp": p.gp or "", "session": "R", "drivers": p.driver or ""},
+                {
+                    "year": p.year,
+                    "gp": p.gp or "",
+                    "session": "R",
+                    "drivers": ",".join(code for code in (p.driver, p.driver2) if code),
+                },
             ),
             ToolName.GET_TELEMETRY: (
                 f"{base}/telemetry/lap-telemetry",
@@ -354,18 +360,29 @@ class StrategyHandler(BaseHandler):
         try:
             resp = _req.get(url, params=params, timeout=60)
             resp.raise_for_status()
-            data = resp.json()
-
-            # Trim large payloads for chat (keep first 20 records max)
-            if isinstance(data, dict):
-                for key in ("lap_times", "race_data"):
-                    if key in data and isinstance(data[key], list) and len(data[key]) > 20:
-                        total = len(data[key])
-                        data[key] = data[key][:20]
-                        data[f"{key}_note"] = f"Showing 20 of {total} records"
-            return data
+            return resp.json()
         except _req.exceptions.RequestException as exc:
             return {"error": str(exc)}
+
+    @staticmethod
+    def _trim_for_llm(raw: Dict[str, Any]) -> Dict[str, Any]:
+        """Return a shallow copy of the tool payload with long lists capped.
+
+        The frontend renderer needs the full arrays to draw meaningful charts,
+        but the LLM summariser only needs a representative slice to describe
+        the result.  Trimming happens here — not inside the tool itself — so
+        that `tool_result.data` keeps the complete payload.
+        """
+        if not isinstance(raw, dict):
+            return raw
+
+        trimmed = dict(raw)
+        for key in ("lap_times", "race_data"):
+            value = trimmed.get(key)
+            if isinstance(value, list) and len(value) > 20:
+                trimmed[key] = value[:20]
+                trimmed[f"{key}_note"] = f"Showing 20 of {len(value)} records"
+        return trimmed
 
     def _summarise_result(
         self,

@@ -33,21 +33,56 @@ _DRIVER_CODES = {
     "RIC", "LAW", "HAD", "BOT", "ZHO", "HUL", "BOR", "MAG", "BEA",
 }
 
-# Keywords → ToolName (order matters — first match wins)
+# Surname → 3-letter code for natural-language queries.  Keys are
+# lowercase and unaccented so the matcher can be case/diacritic-agnostic.
+_DRIVER_SURNAMES = {
+    "verstappen": "VER", "perez": "PER", "leclerc": "LEC", "sainz": "SAI",
+    "hamilton": "HAM", "russell": "RUS", "antonelli": "ANT", "norris": "NOR",
+    "piastri": "PIA", "alonso": "ALO", "stroll": "STR", "gasly": "GAS",
+    "ocon": "OCO", "doohan": "DOO", "colapinto": "COL", "albon": "ALB",
+    "sargeant": "SAR", "tsunoda": "TSU", "ricciardo": "RIC", "lawson": "LAW",
+    "hadjar": "HAD", "bottas": "BOT", "zhou": "ZHO", "hulkenberg": "HUL",
+    "bortoleto": "BOR", "magnussen": "MAG", "bearman": "BEA",
+}
+
+# Keywords → ToolName (order matters — first match wins).  Mixes English
+# and Spanish variants so mixed-language chat messages route correctly.
 _KEYWORD_TOOL_MAP: list[tuple[list[str], ToolName]] = [
-    (["regulation", "rule", "article", "fia", "sporting code"], ToolName.QUERY_REGULATIONS),
-    (["recommend", "strategy", "full analysis", "what should"],   ToolName.RECOMMEND_STRATEGY),
-    (["compare", "versus", "vs", "head to head"],                 ToolName.COMPARE_DRIVERS),
-    (["telemetry", "speed trace", "throttle", "brake trace"],     ToolName.GET_TELEMETRY),
-    (["lap times", "laptimes", "lap time chart"],                 ToolName.GET_LAP_TIMES),
-    (["race data", "race overview", "full race"],                 ToolName.GET_RACE_DATA),
-    (["tire", "tyre", "degradation", "cliff", "compound"],        ToolName.PREDICT_TIRE),
-    (["pit", "stop", "undercut", "overcut", "box box"],           ToolName.PREDICT_PIT),
-    (["overtake", "pass", "drs", "safety car", "sc prob"],        ToolName.PREDICT_SITUATION),
-    (["pace", "lap time", "laptime", "fast", "slow"],             ToolName.PREDICT_PACE),
-    (["radio", "message", "team radio"],                          ToolName.ANALYZE_RADIO),
-    (["gps", "races", "calendar", "events"],                      ToolName.LIST_GPS),
-    (["drivers", "who raced", "driver list"],                     ToolName.LIST_DRIVERS),
+    (["regulation", "rule", "article", "fia", "sporting code",
+      "reglamento", "norma", "artículo", "articulo"],             ToolName.QUERY_REGULATIONS),
+    (["recommend", "strategy", "full analysis", "what should",
+      "recomienda", "recomendación", "recomendacion",
+      "qué hago", "que hago", "estrategia"],                      ToolName.RECOMMEND_STRATEGY),
+    (["compare", "versus", " vs ", "head to head",
+      "compara", "comparar", "comparación", "comparacion",
+      "contra"],                                                  ToolName.COMPARE_DRIVERS),
+    (["telemetry", "speed trace", "throttle", "brake trace",
+      "telemetría", "telemetria", "traza de velocidad",
+      "acelerador", "freno"],                                     ToolName.GET_TELEMETRY),
+    (["lap times", "laptimes", "lap time chart",
+      "tiempos de vuelta", "tiempos por vuelta",
+      "tiempos de", "tiempos por"],                               ToolName.GET_LAP_TIMES),
+    (["race data", "race overview", "full race",
+      "datos de carrera", "resumen de carrera", "toda la carrera",
+      "posiciones", "evolución de la carrera", "evolucion de la carrera"],
+                                                                  ToolName.GET_RACE_DATA),
+    (["tire", "tyre", "degradation", "cliff", "compound",
+      "neumático", "neumatico", "neumáticos", "neumaticos",
+      "degradación", "degradacion", "compuesto"],                 ToolName.PREDICT_TIRE),
+    (["pit", "stop", "undercut", "overcut", "box box",
+      "parada", "boxes", "entra a boxes"],                        ToolName.PREDICT_PIT),
+    (["overtake", "pass", "drs", "safety car", "sc prob",
+      "adelantamiento", "adelantar",
+      "coche de seguridad", "sc"],                                ToolName.PREDICT_SITUATION),
+    (["pace", "lap time", "laptime", "fast", "slow",
+      "ritmo", "tiempo de vuelta", "rápido", "rapido", "lento"], ToolName.PREDICT_PACE),
+    (["radio", "message", "team radio",
+      "mensaje", "radio del equipo"],                             ToolName.ANALYZE_RADIO),
+    (["gps", "races", "calendar", "events",
+      "carreras", "calendario", "eventos"],                       ToolName.LIST_GPS),
+    (["drivers", "who raced", "driver list",
+      "pilotos", "quiénes corrieron", "quienes corrieron",
+      "lista de pilotos"],                                        ToolName.LIST_DRIVERS),
 ]
 
 # Structured prompt sent to LM Studio for JSON extraction
@@ -55,19 +90,36 @@ _EXTRACTION_PROMPT = """\
 You are a parameter extractor for an F1 strategy tool system.
 Given the user message below, determine which tool to call and extract the parameters.
 
-Available tools:
-- predict_pace: lap time prediction (needs gp, driver, lap)
-- predict_tire: tyre degradation analysis (needs gp, driver, lap)
-- predict_situation: overtake + safety car probability (needs gp, driver, lap)
-- predict_pit: pit stop strategy recommendation (needs gp, driver, lap)
-- analyze_radio: team radio NLP analysis (needs gp, driver, lap)
-- query_regulations: FIA rule lookup (needs question)
-- recommend_strategy: full strategy analysis (needs gp, driver, lap)
+Phase 1 — strategy tools (need gp + driver + lap):
+- predict_pace: lap time prediction
+- predict_tire: tyre degradation analysis
+- predict_situation: overtake + safety car probability
+- predict_pit: pit stop strategy recommendation
+- analyze_radio: team radio NLP analysis
+- recommend_strategy: full strategy analysis
+- query_regulations: FIA rule lookup (needs question, no gp/driver/lap)
+
+Phase 2 — telemetry tools (need gp + drivers, lap optional):
+- get_lap_times: lap-time chart for one or more drivers (driver + optional driver2)
+- get_telemetry: speed/throttle/brake vs distance for a single driver on a specific lap (needs gp, driver, lap)
+- compare_drivers: head-to-head telemetry overlay (needs gp, driver, driver2)
+- get_race_data: full race overview — positions and lap times for a GP (needs gp, driver optional)
+
+Helpers (no lap):
 - list_gps: list available Grand Prix (optional year)
 - list_drivers: list drivers for a GP (needs gp)
 
+Driver codes are 3 letters (VER, HAM, NOR, LEC, PIA, RUS, ALO, ...).  Map
+surnames to codes: Verstappen→VER, Hamilton→HAM, Norris→NOR, Leclerc→LEC,
+Piastri→PIA, Russell→RUS, Alonso→ALO, Sainz→SAI, Perez→PER.
+
+GP names — use the English form (Bahrain, Jeddah, Monaco, Silverstone,
+Monza, Spa, Zandvoort, Austin, Abu Dhabi, ...).  Translate Spanish /
+Italian / French spellings: Bahréin→Bahrain, Bélgica→Spa, Países Bajos→Zandvoort,
+Italia→Monza, Gran Bretaña→Silverstone, Hungría→Budapest, Azerbaiyán→Baku.
+
 Return ONLY valid JSON with no additional text:
-{{"tool": "<tool_name>", "params": {{"gp": "...", "driver": "...", "lap": N, "year": N, "question": "..."}}}}
+{{"tool": "<tool_name>", "params": {{"gp": "...", "driver": "...", "driver2": "...", "lap": N, "year": N, "question": "..."}}}}
 
 Use null for parameters you cannot determine.
 
@@ -148,11 +200,13 @@ class ToolParameterExtractor:
         params_raw = data.get("params", {})
         gp = self._normalize_gp(params_raw.get("gp")) if params_raw.get("gp") else None
         driver = self._normalize_driver(params_raw.get("driver"))
+        driver2 = self._normalize_driver(params_raw.get("driver2"))
         lap = _safe_int(params_raw.get("lap"))
 
         params = ToolCallParams(
             gp=gp,
             driver=driver,
+            driver2=driver2,
             lap=lap,
             year=_safe_int(params_raw.get("year")) or 2025,
             question=params_raw.get("question"),
@@ -205,9 +259,33 @@ class ToolParameterExtractor:
         return None
 
     def _extract_all_drivers(self, upper_msg: str) -> list[str]:
-        """Find all 3-letter F1 driver codes in the message."""
-        words = re.findall(r"\b[A-Z]{3}\b", upper_msg)
-        return [w for w in words if w in _DRIVER_CODES]
+        """Find all driver codes in the message, supporting surnames.
+
+        Matches explicit 3-letter codes (VER, HAM, ...) and also common
+        surnames in any language ("Verstappen", "Hamilton", "Leclerc").
+        Order is preserved and duplicates are removed so downstream logic
+        can reliably pick the first and second mentioned driver.
+        """
+        lower_msg = upper_msg.lower()
+        hits: list[tuple[int, str]] = []
+        seen: set[str] = set()
+
+        for match in re.finditer(r"\b[A-Z]{3}\b", upper_msg):
+            code = match.group()
+            if code in _DRIVER_CODES and code not in seen:
+                hits.append((match.start(), code))
+                seen.add(code)
+
+        for surname, code in _DRIVER_SURNAMES.items():
+            if code in seen:
+                continue
+            idx = lower_msg.find(surname)
+            if idx >= 0:
+                hits.append((idx, code))
+                seen.add(code)
+
+        hits.sort(key=lambda t: t[0])
+        return [code for _, code in hits]
 
     def _extract_lap(self, message: str) -> Optional[int]:
         """Extract a lap number from patterns like 'lap 30', 'L30', 'vuelta 30'."""
@@ -236,38 +314,87 @@ class ToolParameterExtractor:
         return self._extract_gp_heuristic(message)
 
     def _extract_gp_heuristic(self, message: str) -> Optional[str]:
-        """Keyword-based GP detection when no GP list is available."""
-        # Values must match GP_Name in the featured parquet (circuit/city names)
+        """Keyword-based GP detection when no GP list is available.
+
+        Keys cover English, Spanish, Italian, French and other common
+        spellings — the chat often arrives in mixed language ("Bahrein
+        2025", "Países Bajos", "Japón").  Values must match the GP_Name
+        column in the featured parquet (circuit/city names).
+        """
         gp_keywords = {
+            # Bahrain
             "bahrain": "Sakhir", "sakhir": "Sakhir",
+            "bahrein": "Sakhir", "baréin": "Sakhir", "baréin": "Sakhir",
+            # Saudi Arabia
             "jeddah": "Jeddah", "saudi": "Jeddah",
+            "arabia": "Jeddah", "yeda": "Jeddah",
+            # Australia
             "australia": "Melbourne", "melbourne": "Melbourne",
-            "japan": "Suzuka", "suzuka": "Suzuka",
+            # Japan
+            "japan": "Suzuka", "japón": "Suzuka", "japon": "Suzuka",
+            "suzuka": "Suzuka",
+            # China
             "china": "Shanghai", "shanghai": "Shanghai",
+            # Miami
             "miami": "Miami",
+            # Imola
             "imola": "Imola", "emilia": "Imola",
-            "monaco": "Monaco",
-            "canada": "Montréal", "montreal": "Montréal",
-            "spain": "Barcelona", "barcelona": "Barcelona",
+            # Monaco
+            "monaco": "Monaco", "mónaco": "Monaco",
+            # Canada
+            "canada": "Montréal", "canadá": "Montréal",
+            "montreal": "Montréal", "montréal": "Montréal",
+            # Spain
+            "spain": "Barcelona", "españa": "Barcelona", "espana": "Barcelona",
+            "barcelona": "Barcelona", "cataluña": "Barcelona",
+            # Austria
             "austria": "Spielberg", "spielberg": "Spielberg",
-            "britain": "Silverstone", "silverstone": "Silverstone",
-            "hungary": "Budapest", "budapest": "Budapest",
-            "belgium": "Spa-Francorchamps", "spa": "Spa-Francorchamps",
-            "netherlands": "Zandvoort", "zandvoort": "Zandvoort",
-            "italy": "Monza", "monza": "Monza",
-            "azerbaijan": "Baku", "baku": "Baku",
-            "singapore": "Marina Bay", "marina bay": "Marina Bay",
-            "united states": "Austin", "austin": "Austin", "cota": "Austin",
-            "mexico": "Mexico City",
-            "brazil": "São Paulo", "interlagos": "São Paulo", "sao paulo": "São Paulo",
-            "las vegas": "Las Vegas",
-            "qatar": "Lusail", "lusail": "Lusail",
+            "red bull ring": "Spielberg",
+            # Britain
+            "britain": "Silverstone", "gran bretaña": "Silverstone",
+            "uk": "Silverstone", "reino unido": "Silverstone",
+            "silverstone": "Silverstone",
+            # Hungary
+            "hungary": "Budapest", "hungría": "Budapest", "hungria": "Budapest",
+            "budapest": "Budapest",
+            # Belgium
+            "belgium": "Spa-Francorchamps", "bélgica": "Spa-Francorchamps",
+            "belgica": "Spa-Francorchamps", "spa": "Spa-Francorchamps",
+            # Netherlands
+            "netherlands": "Zandvoort", "países bajos": "Zandvoort",
+            "paises bajos": "Zandvoort", "holanda": "Zandvoort",
+            "zandvoort": "Zandvoort",
+            # Italy
+            "italy": "Monza", "italia": "Monza", "monza": "Monza",
+            # Azerbaijan
+            "azerbaijan": "Baku", "azerbaiyán": "Baku", "azerbaiyan": "Baku",
+            "baku": "Baku", "bakú": "Baku",
+            # Singapore
+            "singapore": "Marina Bay", "singapur": "Marina Bay",
+            "marina bay": "Marina Bay",
+            # United States
+            "united states": "Austin", "austin": "Austin",
+            "cota": "Austin", "estados unidos": "Austin", "usa": "Austin",
+            # Mexico
+            "mexico": "Mexico City", "méxico": "Mexico City",
+            "mexico city": "Mexico City",
+            # Brazil
+            "brazil": "São Paulo", "brasil": "São Paulo",
+            "interlagos": "São Paulo",
+            "sao paulo": "São Paulo", "são paulo": "São Paulo",
+            # Las Vegas
+            "las vegas": "Las Vegas", "vegas": "Las Vegas",
+            # Qatar
+            "qatar": "Lusail", "lusail": "Lusail", "catar": "Lusail",
+            # Abu Dhabi
             "abu dhabi": "Yas Island", "yas marina": "Yas Island",
+            "yas island": "Yas Island",
         }
         lower = message.lower()
-        for keyword, gp_name in gp_keywords.items():
+        # Longer keywords first — "red bull ring" must win over "ring" fragments.
+        for keyword in sorted(gp_keywords, key=len, reverse=True):
             if keyword in lower:
-                return gp_name
+                return gp_keywords[keyword]
         return None
 
     def _normalize_gp(self, gp_raw: Optional[str]) -> Optional[str]:
@@ -282,12 +409,23 @@ class ToolParameterExtractor:
         return self._extract_gp_heuristic(gp_raw)
 
     def _normalize_driver(self, driver_raw: Optional[str]) -> Optional[str]:
-        """Normalize a driver string to a 3-letter code."""
+        """Normalize a driver string to a 3-letter code.
+
+        Accepts either a valid 3-letter code ("VER"), a full surname
+        ("Verstappen" → "VER") or anything whose first three letters
+        happen to match a known code.  Surname lookup covers the case
+        where the LLM emits the full name instead of the code.
+        """
         if not driver_raw:
             return None
         upper = driver_raw.upper().strip()
         if upper in _DRIVER_CODES:
             return upper
+
+        surname_code = _DRIVER_SURNAMES.get(driver_raw.lower().strip())
+        if surname_code:
+            return surname_code
+
         code = upper[:3]
         if code in _DRIVER_CODES:
             return code

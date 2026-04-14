@@ -63,10 +63,10 @@ TOOL_DISPLAY_MAP: dict[ToolName, DisplayType] = {
     ToolName.LIST_DRIVERS: DisplayType.TEXT,
     ToolName.GET_LAP_RANGE: DisplayType.TEXT,
     # Phase 2
-    ToolName.GET_LAP_TIMES: DisplayType.TABLE,
-    ToolName.GET_TELEMETRY: DisplayType.TABLE,
-    ToolName.COMPARE_DRIVERS: DisplayType.TABLE,
-    ToolName.GET_RACE_DATA: DisplayType.TABLE,
+    ToolName.GET_LAP_TIMES: DisplayType.CHART,
+    ToolName.GET_TELEMETRY: DisplayType.CHART,
+    ToolName.COMPARE_DRIVERS: DisplayType.CHART,
+    ToolName.GET_RACE_DATA: DisplayType.CHART,
 }
 
 

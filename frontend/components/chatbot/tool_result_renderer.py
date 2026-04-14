@@ -5,6 +5,7 @@ Each display_type maps to a Streamlit rendering pattern:
 - metrics: st.metric columns (pace, probabilities)
 - strategy_card: bordered container with action, confidence, compound
 - table: st.dataframe for tabular results
+- chart: st.plotly_chart for telemetry / comparison / race data
 - text: st.markdown for plain text (regulations, listings)
 """
 
@@ -12,6 +13,9 @@ import json
 from typing import Any, Dict
 
 import streamlit as st
+
+from components.chatbot.chart_builders import build_figure
+from components.common.chart_styles import apply_telemetry_chart_styles
 
 
 def render_tool_result(tool_result: Dict[str, Any]) -> None:
@@ -171,71 +175,21 @@ def _render_card_metrics(data: Dict[str, Any], tool_name: str) -> None:
 
 
 def _render_table(data: Dict[str, Any], tool_name: str) -> None:
-    """Render tabular data (radio events, lap times, telemetry, comparison)."""
+    """Render the first list-of-dicts in the payload as a DataFrame.
+
+    Generic by design: any tool mapped to DisplayType.TABLE works as long
+    as its result contains at least one list-of-dicts (radio alerts today,
+    future event-style tools tomorrow).  Falls back to the text renderer
+    when no such list is present.
+    """
     import pandas as pd
 
-    # Try multiple known list keys
-    for key in ("alerts", "radio_events", "lap_times", "telemetry"):
-        items = data.get(key, [])
-        if items and isinstance(items[0], dict):
-            st.dataframe(pd.DataFrame(items), use_container_width=True)
+    for value in data.values():
+        if isinstance(value, list) and value and isinstance(value[0], dict):
+            st.dataframe(pd.DataFrame(value), use_container_width=True)
             return
 
-    # Comparison summary — render as metrics
-    if tool_name == "compare_drivers":
-        _render_comparison(data)
-        return
-
-    # Race data summary
-    if tool_name == "get_race_data":
-        _render_race_data_summary(data)
-        return
-
-    # Telemetry summary
-    if "speed" in data or "distance" in data:
-        st.caption(f"{len(data.get('speed', data.get('distance', [])))} data points")
-        _render_text(data, tool_name)
-        return
-
     _render_text(data, tool_name)
-
-
-def _render_comparison(data: Dict[str, Any]) -> None:
-    """Render driver comparison result as metric cards."""
-    d1 = data.get("driver1", "?")
-    d2 = data.get("driver2", "?")
-
-    c1, c2 = st.columns(2)
-    with c1:
-        st.metric(d1, data.get("driver1_lap_time", "N/A"))
-    with c2:
-        st.metric(d2, data.get("driver2_lap_time", "N/A"))
-
-    if data.get("final_delta"):
-        st.metric("Final delta", data["final_delta"])
-
-    if data.get("error"):
-        st.warning(data["error"])
-
-
-def _render_race_data_summary(data: Dict[str, Any]) -> None:
-    """Render race data overview as compact metrics."""
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        st.metric("GP", data.get("gp", "—"))
-    with c2:
-        st.metric("Records", str(data.get("total_records", 0)))
-    with c3:
-        lr = data.get("lap_range", [])
-        st.metric("Laps", f"{lr[0]}–{lr[1]}" if len(lr) == 2 else "—")
-
-    drivers = data.get("drivers", [])
-    if drivers:
-        st.markdown("**Drivers:** " + ", ".join(drivers))
-
-    note = data.get("note")
-    if note:
-        st.caption(note)
 
 
 def _render_text(data: Dict[str, Any], tool_name: str) -> None:
@@ -293,10 +247,36 @@ def _action_color(action: str) -> str:
     return "#6366f1"
 
 
+def _render_chart(data: Dict[str, Any], tool_name: str) -> None:
+    """Render one or more Plotly figures inline in the chat bubble.
+
+    Builders can return either a single go.Figure or a list of figures
+    (used by get_race_data to avoid cramped subplots).  Falls back to
+    the text renderer when no builder is registered or when construction
+    raises — the conversation must keep flowing even if a payload is
+    malformed.
+    """
+    try:
+        result = build_figure(tool_name, data)
+    except Exception as exc:  # noqa: BLE001 — defensive: any builder failure
+        st.caption(f"Chart render failed: {exc}")
+        _render_text(data, tool_name)
+        return
+
+    if result is None:
+        _render_text(data, tool_name)
+        return
+
+    figures = result if isinstance(result, list) else [result]
+    st.markdown(apply_telemetry_chart_styles(), unsafe_allow_html=True)
+    for fig in figures:
+        st.plotly_chart(fig, width="stretch")
+
+
 _RENDERERS = {
     "metrics": _render_metrics,
     "strategy_card": _render_strategy_card,
     "table": _render_table,
     "text": _render_text,
-    "chart": _render_text,  # chart rendering TODO: plotly from base64
+    "chart": _render_chart,
 }
