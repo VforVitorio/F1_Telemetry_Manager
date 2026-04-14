@@ -11,10 +11,11 @@ Contains all configuration constants for STT, TTS, and audio processing.
 WHISPER_MODEL  = "openai/whisper-small"
 WHISPER_DEVICE = 0  # CUDA GPU index; set to "cpu" if no NVIDIA GPU available
 
-# TTS — Qwen3-TTS (Alibaba Qwen team)
-# 0.6B params, ~97ms latency, 10 languages including English
-QWEN3_TTS_MODEL   = "Qwen/Qwen3-TTS-12Hz-0.6B-Base"
-QWEN3_SAMPLE_RATE = 24000
+# TTS — Microsoft Edge-TTS (Azure Neural voices over the Edge read-aloud endpoint)
+# Swapped in after Qwen3-TTS required the qwen_tts package + ~600MB of weights
+# that were out of scope for the backend image. Edge-TTS is already declared in
+# the submodule pyproject and streams MP3 chunks in ~300-500 ms for short replies.
+EDGE_TTS_DEFAULT_VOICE = "en-US-AriaNeural"
 
 # Audio Processing
 AUDIO_SAMPLE_RATE = 16000
