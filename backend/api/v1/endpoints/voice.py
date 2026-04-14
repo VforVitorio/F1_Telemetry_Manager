@@ -48,6 +48,37 @@ def _get_stt_service():
     return _stt_service
 
 
+def _build_voice_system_prompt() -> str:
+    """Return the system prompt that frames Caronte for a voice conversation.
+
+    The prompt is tuned specifically for TTS playback: clipped sentences over
+    lists, contractions instead of formal phrasing, spoken-friendly number
+    handling, and a humility clause so the model does not fabricate F1 stats
+    that will be read aloud as if authoritative. Keeping it in a helper keeps
+    the ``voice_chat`` handler focused on orchestration and makes the prompt
+    easy to tweak or A/B test without touching the request flow.
+    """
+    return (
+        "You are Caronte, an F1 strategy co-pilot in a live voice conversation.\n"
+        "\n"
+        "SPOKEN STYLE\n"
+        "- Speak like a paddock engineer talking to a friend: warm, concise, confident.\n"
+        "- Keep replies to one to three short sentences. No lists, no markdown, no code blocks.\n"
+        "- Use contractions (you're, it's, that's). Avoid section headers or bullet phrasing.\n"
+        "- Write numbers the way you want them spoken: \"lap forty-eight\" beats \"L48\", "
+        "\"two point three seconds\" beats \"2.3s\". Team and driver names stay verbatim.\n"
+        "- Skip disclaimers and filler like \"Great question!\" or \"As an AI\".\n"
+        "\n"
+        "BEHAVIOUR\n"
+        "- Only commit to a fact when you are sure. If you are guessing, say so in one clause.\n"
+        "- If the user asks for strategy, deliver the call first, then a one-sentence reason.\n"
+        "- End with a follow-up question only when it moves the conversation forward \u2014 "
+        "silence is fine when the answer is complete.\n"
+        "\n"
+        "Every reply you produce will be read aloud by a neural TTS. Make it easy on the ear."
+    )
+
+
 def _get_tts_service():
     """Get or initialize TTS service."""
     global _tts_service
@@ -206,20 +237,26 @@ async def synthesize_speech(request: TTSRequest):
     "/voice-chat",
     response_model=VoiceChatResponse,
     summary="Full voice chat flow",
-    description="Complete flow: STT → LM Studio LLM → TTS"
+    description="Complete flow: STT (Nemotron, local) \u2192 LLM (provider via F1_LLM_PROVIDER) \u2192 TTS (Qwen3, local)"
 )
 async def voice_chat(
     audio: UploadFile = File(...),
     # context is sent as form data, will be parsed manually if needed
 ):
     """
-    Full voice chat flow: STT → LM Studio LLM → TTS
+    Full voice chat flow: STT \u2192 LLM \u2192 TTS.
+
+    The STT (Nemotron) and TTS (Qwen3) run in-process within this backend.
+    The middle LLM step is dispatched through lmstudio_service, which reads
+    the ``F1_LLM_PROVIDER`` env var to route to either LM Studio (default)
+    or the OpenAI API. This lets voice chat reuse the same provider plumbing
+    as the text chat and the strategy orchestrator without duplicating it.
 
     Args:
         audio: Audio file with user's question
 
     Returns:
-        Transcript, LM Studio response text, and synthesized audio
+        Transcript, LLM response text, and synthesized audio
 
     Note:
         Voice chat is currently single-turn (no conversation history).
@@ -239,22 +276,9 @@ async def voice_chat(
 
         logger.info(f"Transcribed: '{user_text}'")
 
-        # Step 2: Get LLM response from LM Studio
+        # Step 2: Get LLM response (provider routed by F1_LLM_PROVIDER)
         try:
-            # Voice-optimized system prompt for natural conversation
-            voice_system_prompt = """You are Caronte, an F1 Strategy Assistant having a casual voice conversation.
-
-IMPORTANT VOICE RESPONSE GUIDELINES:
-- Speak naturally and conversationally, like you're talking to a friend
-- Keep responses SHORT and CONCISE (2-3 sentences max)
-- Avoid lists, bullet points, or numbered items
-- Don't use markdown formatting (**, *, -, etc.)
-- Use contractions (you're, it's, that's) for natural flow
-- Be friendly, engaging, and enthusiastic about F1
-- If explaining something complex, break it into simple spoken phrases
-- End with a question or natural conversation point when appropriate
-
-Remember: Your response will be read aloud, so make it sound natural for speech!"""
+            voice_system_prompt = _build_voice_system_prompt()
 
             # Build messages array (no chat history for voice chat - single turn)
             messages = build_messages(
@@ -264,12 +288,12 @@ Remember: Your response will be read aloud, so make it sound natural for speech!
                 context={}  # Could add F1 context in future
             )
 
-            # Send to LM Studio
+            # Send to the configured LLM provider (LM Studio or OpenAI)
             lm_response = lm_send_message(
                 messages=messages,
-                model=None,  # Use default model
-                temperature=0.7,  # Balanced creativity
-                max_tokens=500,  # Reasonable length for TTS
+                model=None,  # Use provider default
+                temperature=0.6,  # Slightly lower so the spoken output stays on-topic
+                max_tokens=220,  # ~3 short sentences; keeps TTS latency in check
                 stream=False
             )
 
@@ -277,15 +301,18 @@ Remember: Your response will be read aloud, so make it sound natural for speech!
             if "choices" in lm_response and len(lm_response["choices"]) > 0:
                 response_text = lm_response["choices"][0]["message"]["content"]
             else:
-                logger.warning("No response from LM Studio, using fallback")
-                response_text = "I'm sorry, I couldn't generate a response. Please try again."
+                logger.warning("Empty LLM response, using fallback")
+                response_text = "Sorry, I couldn't put that together just now. Mind trying again?"
 
         except LMStudioError as e:
-            logger.error(f"LM Studio error: {e}")
-            response_text = "I'm having trouble connecting to the language model. Please ensure LM Studio is running."
+            logger.error(f"LLM provider error: {e}")
+            response_text = (
+                "I'm having trouble reaching the language model right now. "
+                "Check that your configured provider is running."
+            )
         except Exception as e:
-            logger.error(f"Unexpected error with LM Studio: {e}")
-            response_text = "An unexpected error occurred. Please try again."
+            logger.error(f"Unexpected error calling LLM: {e}")
+            response_text = "Something went sideways on my end. Give it another go?"
 
         logger.info(f"Generated response: '{response_text[:50]}...'")
 
