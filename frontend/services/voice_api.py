@@ -5,6 +5,7 @@ Handles communication with the backend voice API.
 Provides functions for speech-to-text, text-to-speech, and voice chat.
 """
 
+import os
 import httpx
 import base64
 from typing import Optional, Dict, List, Any
@@ -12,8 +13,11 @@ from pathlib import Path
 import streamlit as st
 
 
-# Backend API configuration
-BACKEND_BASE_URL = "http://localhost:8000"
+# Backend API configuration \u2014 read BACKEND_URL from env so docker-compose can
+# route voice traffic to the "backend" service hostname instead of localhost
+# (which inside the frontend container resolves to the frontend itself and
+# fails with Connection refused).
+BACKEND_BASE_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
 VOICE_API_BASE = f"{BACKEND_BASE_URL}/api/v1/voice"
 
 # Request timeouts
