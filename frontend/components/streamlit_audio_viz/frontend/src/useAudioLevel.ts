@@ -72,8 +72,14 @@ export function useAudioLevel(): UseAudioLevelReturn {
         // Normalize to 0-1 range
         const norm = Math.min(1, Math.max(0, (avg - 16) / 90));
 
-        // Smooth with easing
-        levelRef.current += (norm - levelRef.current) * 0.15;
+        // Asymmetric envelope follower: fast attack so the orb jumps up with
+        // the voice, slow release so vocal harmonics don't make it bounce.
+        // Mirrors what VU meters and speech visualisers use, and is what
+        // removed the "trembling" problem while keeping reactivity high.
+        const attack = 0.35;
+        const release = 0.08;
+        const factor = norm > levelRef.current ? attack : release;
+        levelRef.current += (norm - levelRef.current) * factor;
 
         rafRef.current = requestAnimationFrame(tick);
       };

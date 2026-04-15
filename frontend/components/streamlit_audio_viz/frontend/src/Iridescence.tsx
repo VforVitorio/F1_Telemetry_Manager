@@ -84,16 +84,13 @@ export const Iridescence: React.FC<IridescenceProps> = ({
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
-    // Set clear color to match app background
-    // Dark theme: #14132e = rgb(20, 19, 46) = (0.078, 0.075, 0.180)
-    // Light theme: #ffffff = rgb(255, 255, 255) = (1.0, 1.0, 1.0)
-    if (theme === 'dark') {
-      gl.clearColor(0.078, 0.075, 0.180, 1.0);
-      gl.canvas.style.backgroundColor = '#14132e';
-    } else {
-      gl.clearColor(1.0, 1.0, 1.0, 1.0);
-      gl.canvas.style.backgroundColor = '#ffffff';
-    }
+    // Fully transparent clear color so the canvas blends with whatever is
+    // behind the iframe \u2014 the previous #14132e opaque clear is exactly the
+    // rectangle the user kept seeing around the orb. alpha: true on the
+    // renderer plus clearColor(_, _, _, 0) plus no inline backgroundColor
+    // gives a true-transparent canvas over any theme.
+    gl.clearColor(0.0, 0.0, 0.0, 0.0);
+    gl.canvas.style.backgroundColor = 'transparent';
 
     // Set canvas size (high resolution, CSS scales to 200x200)
     renderer.setSize(400, 400);

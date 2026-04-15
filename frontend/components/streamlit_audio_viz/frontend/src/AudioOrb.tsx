@@ -155,11 +155,13 @@ export const AudioOrb: React.FC<ComponentProps> = ({
       const average = voiceFreqData.reduce((sum, val) => sum + val, 0) / voiceFreqData.length;
       const normalized = average / 255;
 
-      // CRITICAL: Attenuate to EXTREME levels (like breathing intensity)
-      // User reports: still trembling - reduce to 5% of original intensity
-      const attenuated = normalized * 0.05; // Reduce to 5% of original (was 0.15)
+      // Playback reactivity: previously attenuated to 5% because a symmetric
+      // EMA upstream turned vocal harmonics into bounce. With the asymmetric
+      // attack/release envelope follower in useAudioLevel (fast up, slow
+      // down) we can keep much more signal here. 0.20 = 20% intensity, which
+      // is enough for the shader to visibly breathe with the TTS voice.
+      const attenuated = normalized * 0.20;
 
-      // Simply update the ref - let the continuous useEffect do all the smoothing
       playbackLevelRef.current = attenuated;
 
       animationFrame = requestAnimationFrame(updatePlaybackLevel);
@@ -229,15 +231,19 @@ export const AudioOrb: React.FC<ComponentProps> = ({
         ]
       : [0.6, 0.3, 0.95];
 
-    // More fluid, wavy movement when speaking - INCREASED waves
-    shaderSpeed = 0.6 + (playbackLevel * 1.0); // Faster shader movement with more waves
-    shaderAmp = 0.6 + (playbackLevel * 0.8);   // More waves/ripples
-    glowOpacity = 0.4 + (playbackLevel * 0.3); // Subtle glow
+    // Speaking: amplify playbackLevel so the shader actually breathes with
+    // the TTS voice now that the attenuation and envelope follower keep the
+    // signal clean. Multipliers were 1.0/0.8/0.3; bumped to 2.4/2.0/1.2 so
+    // pauses vs peaks read clearly without bouncing.
+    shaderSpeed  = 0.6 + (playbackLevel * 2.4);
+    shaderAmp    = 0.6 + (playbackLevel * 2.0);
+    glowOpacity  = 0.4 + (playbackLevel * 1.2);
   } else if (currentState === 'recording') {
-    // Recording: React to mic input
-    shaderSpeed = 0.2 + level * 0.3;
-    shaderAmp = 0.2 + level * 0.3;
-    glowOpacity = 0.3 + level * 0.4;
+    // Recording: react to mic input. Coefficients doubled now that the
+    // asymmetric envelope in useAudioLevel gives us a clean, fast signal.
+    shaderSpeed  = 0.2 + level * 0.6;
+    shaderAmp    = 0.2 + level * 0.6;
+    glowOpacity  = 0.3 + level * 0.8;
   }
   // Idle: use default values (already set above)
 
@@ -245,11 +251,6 @@ export const AudioOrb: React.FC<ComponentProps> = ({
     <div
       className={`orb-container ${theme}`}
       ref={orbRef}
-      style={{
-        background: theme === 'dark'
-          ? 'linear-gradient(135deg, #121127 0%, #1e1b4b 100%)'
-          : '#ffffff'
-      }}
     >
       <div className="orb-wrapper">
         {/* Glow effect */}
@@ -282,12 +283,20 @@ export const AudioOrb: React.FC<ComponentProps> = ({
       {/* Error display */}
       {error && currentState === 'recording' && (
         <div className="orb-error">
-          <span>🎤 {error}</span>
+          <span>{error}</span>
         </div>
       )}
 
-      {/* Debug state indicator (optional) */}
-      {/* <div className="state-indicator">{currentState} - level: {level.toFixed(2)}</div> */}
+      {/* State badge — visible pill below the orb when active.
+          Idle keeps the orb quiet, other states label what it is doing so
+          users can tell recording apart from thinking apart from playing. */}
+      {currentState !== 'idle' && (
+        <div className="state-indicator" data-state={currentState}>
+          {currentState === 'recording' && 'LISTENING'}
+          {currentState === 'processing' && 'THINKING'}
+          {currentState === 'playing' && 'SPEAKING'}
+        </div>
+      )}
     </div>
   );
 };
