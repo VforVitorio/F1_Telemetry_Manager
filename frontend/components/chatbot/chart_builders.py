@@ -27,6 +27,130 @@ _CHAT_TEXT = "#e5e7eb"
 _CHAT_MUTED = "#9ca3af"
 
 
+# ---------------------------------------------------------------------------
+# Tyre compound palette + pit detection helpers
+#
+# Colours are the Plotly-hex mirror of the Rich palette used by the CLI
+# (scripts/run_simulation_cli.py L152-L160). Keeping a single source of
+# truth here means lap-time and race-data charts can speak the same visual
+# language as the CLI without pulling Rich into the frontend bundle.
+# ---------------------------------------------------------------------------
+
+COMPOUND_COLORS: Dict[str, str] = {
+    "SOFT":         "#ef4444",  # red-500
+    "MEDIUM":       "#facc15",  # yellow-400
+    "HARD":         "#e5e7eb",  # gray-200, readable over the chat bg
+    "INTERMEDIATE": "#22c55e",  # green-500
+    "INT":          "#22c55e",
+    "WET":          "#3b82f6",  # blue-500
+}
+_COMPOUND_FALLBACK = "#a78bfa"  # violet-400 when a row ships an unknown compound
+
+
+def _compound_color(name: Any) -> str:
+    """Map a compound label (any case, any alias) to its Plotly hex colour.
+
+    Accepts the usual ``SOFT``/``MEDIUM``/``HARD``/``INTERMEDIATE``/``WET``
+    plus the ``INT`` shorthand that shows up in FastF1 payloads. Unknown or
+    missing values fall through to the violet accent so the hover does not
+    crash on weird data \u2014 the caller can still show the raw label text.
+    """
+    if not name:
+        return _COMPOUND_FALLBACK
+    key = str(name).strip().upper()
+    if key == "INT":
+        key = "INTERMEDIATE"
+    return COMPOUND_COLORS.get(key, _COMPOUND_FALLBACK)
+
+
+def _detect_pit_laps(
+    rows: List[Dict[str, Any]],
+    lap_key: str = "lap_number",
+    stint_key: str = "Stint",
+    compound_key: str = "compound",
+    driver: str = "",
+) -> List[tuple]:
+    """Walk a driver's lap records and return the laps where a pit happened.
+
+    Two signals, in order of reliability:
+    1. ``Stint`` column increments (race-data payloads carry it and it ticks
+       up once per pit stop regardless of compound selection).
+    2. ``compound`` changes between consecutive laps (fallback for
+       lap-times payloads that drop Stint; a driver switching compounds is
+       implicitly a pit-stop boundary).
+
+    The returned lap is the first lap of the *new* stint \u2014 where the pit
+    vline logically belongs on a lap-indexed chart. ``driver`` is forwarded
+    verbatim into each tuple so the caller can stamp the vline annotation
+    with the pilot code (``VER - HAR``) and tell overlapping pits apart.
+
+    Args:
+        rows: Driver laps already sorted by ``lap_key`` ascending.
+        lap_key: Lap number field in each row.
+        stint_key: Stint field; if absent, compound-diff fallback kicks in.
+        compound_key: Compound label field.
+        driver: Pilot code used purely for the returned tuples.
+
+    Returns:
+        List of ``(lap_number, new_compound, driver)`` tuples, one per pit.
+    """
+    if not rows:
+        return []
+
+    events: List[tuple] = []
+    prev_stint = None
+    prev_compound = None
+    for row in rows:
+        lap = row.get(lap_key)
+        if lap is None:
+            continue
+        stint = row.get(stint_key)
+        compound = str(row.get(compound_key, "") or "").upper()
+
+        pit_happened = False
+        if stint is not None and prev_stint is not None and stint > prev_stint:
+            pit_happened = True
+        elif stint is None and prev_compound and compound and compound != prev_compound:
+            pit_happened = True
+
+        if pit_happened and compound:
+            events.append((lap, compound, driver))
+
+        prev_stint = stint if stint is not None else prev_stint
+        if compound:
+            prev_compound = compound
+    return events
+
+
+def _add_pit_vlines(
+    fig: go.Figure,
+    pit_events: List[tuple],
+    row: int = None,
+    col: int = None,
+) -> None:
+    """Draw dashed vertical markers at each pit lap, coloured by new compound.
+
+    The annotation text combines the pilot code and the 3-letter compound
+    tag (``VER - HAR``) so when multiple drivers pit at nearby laps the
+    reader can tell their vlines apart at a glance. ``row`` and ``col``
+    are forwarded for subplot figures; on single-panel charts they can be
+    left ``None``.
+    """
+    for event in pit_events:
+        lap, compound, driver = (event + ("",))[:3]  # tolerate legacy 2-tuples
+        colour = _compound_color(compound)
+        label = f"{driver} - {compound[:3]}" if driver else compound[:3]
+        fig.add_vline(
+            x=lap,
+            line=dict(color=colour, width=1, dash="dash"),
+            annotation_text=label,
+            annotation_position="top",
+            annotation_font=dict(size=9, color=colour),
+            row=row,
+            col=col,
+        )
+
+
 def _apply_base_layout(fig: go.Figure, title: str, height: int = 340) -> go.Figure:
     """Apply the dark-purple layout used across chat chart bubbles."""
     fig.update_layout(
@@ -58,7 +182,15 @@ def _apply_base_layout(fig: go.Figure, title: str, height: int = 340) -> go.Figu
 # ---------------------------------------------------------------------------
 
 def build_lap_times_figure(data: Dict[str, Any]) -> go.Figure:
-    """Line chart of lap time vs lap number, one trace per driver."""
+    """Line chart of lap time vs lap number, one trace per driver.
+
+    Beyond the raw times we surface the compound per lap: marker borders
+    are tinted by compound so a reader can spot stint boundaries visually,
+    and the hover template prints the compound explicitly. Where consecutive
+    laps of the same driver report different compounds we drop a dashed
+    vertical marker \u2014 the backend filters pit laps out of this payload so
+    compound transitions are the best pit-stop signal available here.
+    """
     lap_records: List[Dict[str, Any]] = data.get("lap_times", [])
     if not lap_records:
         return _empty_figure("No lap time data available")
@@ -69,24 +201,49 @@ def build_lap_times_figure(data: Dict[str, Any]) -> go.Figure:
         by_driver[code].append(rec)
 
     fig = go.Figure()
+    all_pit_events: List[tuple] = []
     for driver, rows in by_driver.items():
         rows_sorted = sorted(rows, key=lambda r: r.get("lap_number", 0))
         laps = [r.get("lap_number") for r in rows_sorted]
         times = [r.get("lap_time") for r in rows_sorted]
         valid = [r.get("is_valid", True) for r in rows_sorted]
+        compounds = [str(r.get("compound", "") or "UNK").upper() for r in rows_sorted]
         color = get_driver_color(driver)
-        marker_line = dict(width=1, color=color)
         marker_colors = [color if v else _CHAT_BG for v in valid]
 
+        customdata = [[compound] for compound in compounds]
         fig.add_trace(go.Scatter(
             x=laps,
             y=times,
             mode="lines+markers",
             name=driver,
             line=dict(color=color, width=2),
-            marker=dict(size=6, color=marker_colors, line=marker_line),
-            hovertemplate="Lap %{x}<br>%{y:.3f}s<extra>" + driver + "</extra>",
+            marker=dict(
+                size=6,
+                color=marker_colors,
+                line=dict(width=1, color=color),
+            ),
+            customdata=customdata,
+            hovertemplate=(
+                "Lap %{x}<br>"
+                "%{y:.3f}s<br>"
+                "Compound: <b>%{customdata[0]}</b>"
+                "<extra>" + driver + "</extra>"
+            ),
         ))
+
+        all_pit_events.extend(
+            _detect_pit_laps(
+                rows_sorted,
+                lap_key="lap_number",
+                compound_key="compound",
+                driver=driver,
+            )
+        )
+
+    # Per-driver pit markers: each pilot's pits get their own annotation so
+    # overlapping vlines remain distinguishable at the annotation level.
+    _add_pit_vlines(fig, all_pit_events)
 
     _apply_base_layout(fig, "Lap times")
     fig.update_xaxes(title_text="Lap")
@@ -241,31 +398,64 @@ def build_race_data_figure(data: Dict[str, Any]) -> List[go.Figure]:
     positions_fig = go.Figure()
     lap_times_fig = go.Figure()
 
+    all_pit_events: List[tuple] = []
+
     for driver, rows in by_driver.items():
         rows_sorted = sorted(rows, key=lambda r: r.get("LapNumber", 0))
         laps = [r.get("LapNumber") for r in rows_sorted]
         positions = [r.get("Position") for r in rows_sorted]
         lap_times_raw = [r.get("LapTime_s") for r in rows_sorted]
         lap_times = _mask_pit_lap_outliers(lap_times_raw)
+        compounds = [str(r.get("Compound", "") or "UNK").upper() for r in rows_sorted]
+        tyre_ages = [r.get("TyreLife", 0) or 0 for r in rows_sorted]
+        stints = [r.get("Stint", 0) or 0 for r in rows_sorted]
         color = get_driver_color(driver)
+        customdata = list(zip(compounds, tyre_ages, stints))
 
         positions_fig.add_trace(go.Scatter(
             x=laps, y=positions,
             mode="lines+markers",
             line=dict(color=color, width=2),
-            marker=dict(size=5),
+            marker=dict(size=5, color=color, line=dict(width=1, color=color)),
             name=driver,
-            hovertemplate="Lap %{x}<br>P%{y}<extra>" + driver + "</extra>",
+            customdata=customdata,
+            hovertemplate=(
+                "Lap %{x}<br>"
+                "P%{y}<br>"
+                "Compound: <b>%{customdata[0]}</b> "
+                "(age %{customdata[1]}, stint %{customdata[2]})"
+                "<extra>" + driver + "</extra>"
+            ),
         ))
 
         lap_times_fig.add_trace(go.Scatter(
             x=laps, y=lap_times,
             mode="lines+markers",
             line=dict(color=color, width=1.6),
-            marker=dict(size=4),
+            marker=dict(size=4, color=color, line=dict(width=1, color=color)),
             name=driver,
-            hovertemplate="Lap %{x}<br>%{y:.3f}s<extra>" + driver + "</extra>",
+            customdata=customdata,
+            hovertemplate=(
+                "Lap %{x}<br>"
+                "%{y:.3f}s<br>"
+                "Compound: <b>%{customdata[0]}</b> "
+                "(age %{customdata[1]}, stint %{customdata[2]})"
+                "<extra>" + driver + "</extra>"
+            ),
         ))
+
+        all_pit_events.extend(
+            _detect_pit_laps(
+                rows_sorted,
+                lap_key="LapNumber",
+                stint_key="Stint",
+                compound_key="Compound",
+                driver=driver,
+            )
+        )
+
+    _add_pit_vlines(positions_fig, all_pit_events)
+    _add_pit_vlines(lap_times_fig, all_pit_events)
 
     _apply_base_layout(positions_fig, "Race positions", height=340)
     positions_fig.update_xaxes(title_text="Lap")
