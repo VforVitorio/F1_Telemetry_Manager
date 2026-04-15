@@ -76,6 +76,34 @@ class TTSService:
     # Public contract (matches the previous Qwen3/EdgeTTS signatures)
     # ------------------------------------------------------------------
 
+    async def synthesize_speech_async(
+        self,
+        text: str,
+        rate: Optional[int] = None,
+        volume: Optional[float] = None,
+    ) -> bytes:
+        """
+        Async variant that streams Edge-TTS audio and returns MP3 bytes.
+
+        FastAPI handlers are already async, so awaiting this directly avoids
+        the ``asyncio.run() cannot be called from a running event loop``
+        error that the sync wrapper hits when invoked from an async route.
+        Prefer this method from any coroutine; the sync ``synthesize_speech``
+        exists only so non-async callers (CLI smoke tests, scripts) keep
+        working.
+        """
+        if not text or not text.strip():
+            raise ValueError("Text cannot be empty")
+
+        try:
+            logger.info("Synthesizing: '%s...'", text[:50])
+            audio_bytes = await self._synthesize_chunks(text, rate=rate, volume=volume)
+            logger.info("Generated %d bytes of audio", len(audio_bytes))
+            return audio_bytes
+        except Exception as e:
+            logger.error("Speech synthesis failed: %s", e)
+            raise RuntimeError(f"Failed to synthesize speech: {e}")
+
     def synthesize_speech(
         self,
         text: str,
@@ -83,40 +111,15 @@ class TTSService:
         volume: Optional[float] = None,
     ) -> bytes:
         """
-        Convert text to speech and return MP3 audio bytes.
+        Sync wrapper around ``synthesize_speech_async``.
 
-        The ``rate`` and ``volume`` controls are honoured \u2014 Edge-TTS accepts
-        them as SSML-style percentage strings and bakes them into the neural
-        voice output. The returned MP3 plays in ``st.audio`` and browsers
-        without any additional codec work.
-
-        Args:
-            text: Text to synthesize (non-empty)
-            rate: Speech rate delta in percent (e.g. ``-10`` or ``20``)
-            volume: Volume multiplier (``1.0`` neutral, ``0.5`` half, etc.)
-
-        Returns:
-            Audio bytes in MP3 format
-
-        Raises:
-            ValueError: If ``text`` is empty
-            RuntimeError: If synthesis fails
+        Only safe to call from code that is NOT already inside an event loop
+        (e.g. a plain script or the ``__main__`` block below). Async callers
+        must ``await synthesize_speech_async`` instead.
         """
-        if not text or not text.strip():
-            raise ValueError("Text cannot be empty")
+        return asyncio.run(self.synthesize_speech_async(text, rate=rate, volume=volume))
 
-        try:
-            logger.info("Synthesizing: '%s...'", text[:50])
-            audio_bytes = asyncio.run(
-                self._synthesize_async(text, rate=rate, volume=volume)
-            )
-            logger.info("Generated %d bytes of audio", len(audio_bytes))
-            return audio_bytes
-        except Exception as e:
-            logger.error("Speech synthesis failed: %s", e)
-            raise RuntimeError(f"Failed to synthesize speech: {e}")
-
-    async def _synthesize_async(
+    async def _synthesize_chunks(
         self,
         text: str,
         rate: Optional[int] = None,
