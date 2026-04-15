@@ -4,11 +4,12 @@ Voice Chat API Endpoints
 Provides endpoints for speech-to-text, text-to-speech, and full voice chat flow.
 """
 
-from fastapi import APIRouter, UploadFile, File, HTTPException, status
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, status
 from fastapi.responses import Response
 import base64
 import time
 import logging
+from typing import Optional
 
 from backend.models.voice_models import (
     TranscriptionResponse,
@@ -241,7 +242,7 @@ async def synthesize_speech(request: TTSRequest):
 )
 async def voice_chat(
     audio: UploadFile = File(...),
-    # context is sent as form data, will be parsed manually if needed
+    voice: Optional[str] = Form(None),
 ):
     """
     Full voice chat flow: STT \u2192 LLM \u2192 TTS.
@@ -316,9 +317,14 @@ async def voice_chat(
 
         logger.info(f"Generated response: '{response_text[:50]}...'")
 
-        # Step 3: Synthesize response (TTS)
+        # Step 3: Synthesize response (TTS) \u2014 await the async path so the
+        # running event loop is reused instead of tripping asyncio.run().
+        # If the caller selected a voice in the UI, swap it on the singleton
+        # before synthesising so subsequent replies keep that choice.
         tts = _get_tts_service()
-        response_audio = tts.synthesize_speech(response_text)
+        if voice:
+            tts.set_voice(voice)
+        response_audio = await tts.synthesize_speech_async(response_text)
 
         # Encode audio as base64
         audio_base64 = base64.b64encode(response_audio).decode('utf-8')
