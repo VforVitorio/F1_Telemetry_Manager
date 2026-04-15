@@ -191,13 +191,19 @@ def synthesize_speech(
         return None
 
 
-def voice_chat(audio_bytes: bytes, filename: str = "audio.wav") -> Optional[Dict[str, Any]]:
+def voice_chat(
+    audio_bytes: bytes,
+    filename: str = "audio.wav",
+    voice: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
     """
-    Full voice chat flow: STT → LLM → TTS.
+    Full voice chat flow: STT \u2192 LLM \u2192 TTS.
 
     Args:
         audio_bytes: Raw audio file bytes with user's question
         filename: Original filename (for content type detection)
+        voice: Optional Azure voice ID for the TTS reply (e.g. ``en-US-AriaNeural``).
+            When omitted, the backend synthesises with its default voice.
 
     Returns:
         Dict with voice chat result:
@@ -216,10 +222,12 @@ def voice_chat(audio_bytes: bytes, filename: str = "audio.wav") -> Optional[Dict
         files = {
             "audio": (filename, audio_bytes, _get_audio_content_type(filename))
         }
+        data = {"voice": voice} if voice else None
 
         response = httpx.post(
             f"{VOICE_API_BASE}/voice-chat",
             files=files,
+            data=data,
             timeout=VOICE_CHAT_TIMEOUT
         )
 
