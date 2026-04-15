@@ -97,22 +97,22 @@ class STTService:
         """
         Run the Whisper pipeline on a WAV file.
 
-        Whisper is multilingual; passing the language via ``generate_kwargs``
-        lets us pin the decoder to English by default and matches the public
-        contract the previous Nemotron version advertised. The pipeline returns
-        a dict with a ``text`` field that we strip on exit.
+        We call the pipeline without ``generate_kwargs`` because forcing
+        ``language``/``task`` in some ``transformers`` versions clashes with
+        the model's generation config and raises a ``ValueError`` that the
+        endpoint was remapping to a confusing HTTP 400. Whisper-small is
+        multilingual and auto-detects the language reliably for the short
+        utterances typical of voice chat, so the hint is not load-bearing.
 
         Args:
             audio_path: Absolute path to a WAV file
-            language: ISO language hint forwarded to Whisper's generate step
+            language: ISO language hint (currently informational only; kept
+                in the signature so callers and tests do not need to change)
 
         Returns:
             Transcribed text string
         """
-        output = self._pipe(
-            audio_path,
-            generate_kwargs={"language": language, "task": "transcribe"},
-        )
+        output = self._pipe(audio_path)
         return output["text"]
 
     # ------------------------------------------------------------------
@@ -158,10 +158,21 @@ class STTService:
             logger.info("Transcription complete: '%s...'", text[:50])
             return {"text": text.strip(), "language": language, "duration": 0.0}
 
-        except ValueError:
+        except ValueError as e:
+            # Legitimate ValueErrors from `_validate_audio_bytes` don't need
+            # context (the message itself says what's wrong), but anything the
+            # Whisper pipeline raises as ValueError \u2014 typically a decode error
+            # when ffmpeg is missing or the audio container is unknown \u2014 goes
+            # undiagnosed if we just re-raise. Log with exc_info so the root
+            # cause lands in docker logs before the endpoint maps to HTTP 400.
+            logger.error("Transcription ValueError: %s", e, exc_info=True)
             raise
         except Exception as e:
-            logger.error("Transcription failed: %s", e)
+            # Wrap every other failure (Whisper pipeline errors, ffmpeg decode
+            # issues, etc.) as RuntimeError so the endpoint returns 500 instead
+            # of misleading 400s. Log with exc_info so the traceback reaches
+            # docker logs.
+            logger.error("Transcription failed: %s", e, exc_info=True)
             raise RuntimeError(f"Failed to transcribe audio: {e}")
         finally:
             if temp_path:
