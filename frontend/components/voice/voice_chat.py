@@ -2,12 +2,24 @@
 Voice Chat Component
 
 Main voice chat interface component.
-Handles voice chat flow: recording → transcription → LLM → TTS → playback.
+Handles voice chat flow: recording \u2192 transcription \u2192 LLM \u2192 TTS \u2192 playback.
 """
 
 import streamlit as st
 from typing import Optional, Dict, Any
 import time
+
+
+# Azure Neural voices exposed to the user. The backend accepts any valid Azure
+# voice ID via the /voice-chat ``voice`` form field; we surface a curated set
+# that sounds natural for F1 strategy chatter and stays English-first.
+VOICE_CATALOG: Dict[str, str] = {
+    "en-US-AriaNeural":  "Aria \u2014 US female, conversational",
+    "en-US-GuyNeural":   "Guy \u2014 US male, newscast",
+    "en-GB-RyanNeural":  "Ryan \u2014 UK male, engineer tone",
+    "en-GB-SoniaNeural": "Sonia \u2014 UK female, calm",
+}
+DEFAULT_VOICE_ID = "en-US-AriaNeural"
 
 from services.voice_api import (
     voice_chat as api_voice_chat,
@@ -45,6 +57,9 @@ def initialize_voice_state():
 
     if 'play_start_time' not in st.session_state:
         st.session_state.play_start_time = None
+
+    if 'selected_voice' not in st.session_state:
+        st.session_state.selected_voice = DEFAULT_VOICE_ID
 
 
 def add_voice_exchange(
@@ -94,8 +109,8 @@ def render_voice_exchange(exchange: Dict[str, Any], index: int):
                 max-width: 70%;
                 box-shadow: 0 2px 8px rgba(142, 68, 173, 0.15);
             '>
-                <div style='font-size: 12px; color: #6b4684; margin-bottom: 4px; font-weight: 600;'>
-                    👤 You
+                <div style='font-size: 11px; color: #6b4684; margin-bottom: 6px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase;'>
+                    YOU
                 </div>
                 <div style='color: #2d1b3d; line-height: 1.5;'>
                     {exchange['transcript']}
@@ -104,11 +119,10 @@ def render_voice_exchange(exchange: Dict[str, Any], index: int):
         </div>
     """, unsafe_allow_html=True)
 
-    # User audio player (small, inline)
-    if exchange.get('user_audio'):
-        col1, col2 = st.columns([1, 2])
-        with col2:
-            st.audio(exchange['user_audio'], format="audio/wav")
+    # User audio is intentionally not rendered: the transcript in the bubble
+    # is the canonical record and showing a second full-width WAV player per
+    # turn made the history feel macizo. If listeners ever need the raw audio
+    # again, expose it behind a disclosure.
 
     # AI bubble (left side, dark purple)
     st.markdown(f"""
@@ -120,27 +134,34 @@ def render_voice_exchange(exchange: Dict[str, Any], index: int):
                 max-width: 70%;
                 box-shadow: 0 2px 8px rgba(142, 68, 173, 0.3);
             '>
-                <div style='font-size: 12px; color: #e8d5f2; margin-bottom: 4px; font-weight: 600;'>
-                    🤖 Caronte
+                <div style='font-size: 11px; color: #e8d5f2; margin-bottom: 6px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase;'>
+                    AI ASSISTANT
                 </div>
                 <div style='color: white; line-height: 1.5;'>
                     {exchange['response_text']}
-                </div>
-                <div style='font-size: 11px; color: rgba(255, 255, 255, 0.7); margin-top: 8px;'>
-                    ⏱️ {exchange['processing_time']:.2f}s
                 </div>
             </div>
         </div>
     """, unsafe_allow_html=True)
 
-    # AI audio player (small, inline)
+    # AI audio player \u2014 MP3 now that the backend uses Edge-TTS. The last
+    # exchange autoplays; older ones sit silent so revisits do not burst into
+    # audio on rerun.
     if exchange.get('response_audio'):
-        col1, col2 = st.columns([2, 1])
-        with col1:
-            st.audio(exchange['response_audio'], format="audio/wav")
+        is_latest = index == len(st.session_state.voice_history) - 1
+        should_autoplay = bool(
+            is_latest and st.session_state.get("is_playing")
+        )
+        col_a, col_b = st.columns([2, 1])
+        with col_a:
+            st.audio(
+                exchange['response_audio'],
+                format="audio/mp3",
+                autoplay=should_autoplay,
+            )
 
     # Spacing between exchanges
-    st.markdown("<div style='margin-bottom: 20px;'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='margin-bottom: 24px;'></div>", unsafe_allow_html=True)
 
 
 def render_voice_history():
@@ -148,9 +169,12 @@ def render_voice_history():
     if not st.session_state.voice_history:
         return
 
-    # Separator and title
-    st.markdown("---")
-    st.markdown("### 💬 Chat History")
+    # Subtle separator and section title
+    st.markdown(
+        "<div style='border-top: 1px solid #2d2d3a; margin: 40px 0 20px 0;'></div>",
+        unsafe_allow_html=True,
+    )
+    st.subheader(":material/chat: Conversation")
 
     # Render exchanges in order
     for idx, exchange in enumerate(st.session_state.voice_history):
@@ -171,13 +195,22 @@ def handle_voice_message(audio_bytes: bytes, filename: str = "recording.wav"):
         st.error(f"Invalid audio: {error_msg}")
         return
 
+    # Clear any previous playback flag so the SPEAKING badge goes idle while
+    # we transcribe + wait for the LLM; it will flip back on once the new
+    # reply lands at the end of this function.
+    st.session_state.is_playing = False
+
     # Set processing state
     st.session_state.voice_processing = True
     st.session_state.voice_status = "transcribing"
 
     try:
-        # Call voice chat API
-        result = api_voice_chat(audio_bytes, filename)
+        # Call voice chat API with the selected voice (if any).
+        result = api_voice_chat(
+            audio_bytes,
+            filename,
+            voice=st.session_state.get("selected_voice", DEFAULT_VOICE_ID),
+        )
 
         if not result:
             st.error("Voice chat failed. Please try again.")
@@ -201,7 +234,7 @@ def handle_voice_message(audio_bytes: bytes, filename: str = "recording.wav"):
         st.session_state.is_playing = True
         st.session_state.play_start_time = time.time()
 
-        st.success("✅ Voice message processed!")
+        st.success("Voice message processed")
 
     except Exception as e:
         st.session_state.voice_status = "error"
@@ -211,19 +244,73 @@ def handle_voice_message(audio_bytes: bytes, filename: str = "recording.wav"):
         st.session_state.voice_processing = False
 
 
-def check_voice_services():
-    """
-    Check if voice services are available.
+def _is_health_ready(health: dict) -> bool:
+    """Return True only when both STT and TTS report ready via a healthy status."""
+    return (
+        health.get("status") == "healthy"
+        and health.get("stt_ready", False)
+        and health.get("tts_ready", False)
+    )
 
-    Returns:
-        bool: True if services are ready, False otherwise
+
+def check_voice_services(poll_timeout_s: int = 60, poll_interval_s: float = 2.0) -> bool:
     """
+    Check if voice services are available, polling during cold starts.
+
+    The first time a user opens the voice chat the backend still has to
+    download the Whisper weights (~240 MB) and initialise Edge-TTS, which
+    can take between 30 and 60 seconds depending on HF Hub throughput. A
+    single health request with a short timeout was surfacing a misleading
+    "voice services not available" banner every cold start. This version
+    caches the first ``healthy`` reply in ``st.session_state`` and, while
+    it has not seen one yet, polls the health endpoint with a visible
+    spinner so the user understands the service is warming up instead of
+    broken.
+    """
+    if st.session_state.get("voice_services_ready"):
+        return True
+
+    import time
+
     health = check_voice_health()
+    if _is_health_ready(health):
+        st.session_state.voice_services_ready = True
+        return True
 
-    if health.get('status') != 'healthy':
-        return False
+    with st.spinner("Warming up voice services \u2014 this takes up to a minute on first launch..."):
+        deadline = time.time() + poll_timeout_s
+        while time.time() < deadline:
+            time.sleep(poll_interval_s)
+            health = check_voice_health()
+            if _is_health_ready(health):
+                st.session_state.voice_services_ready = True
+                return True
 
-    return health.get('stt_ready', False) and health.get('tts_ready', False)
+    return False
+
+
+def render_voice_selector():
+    """Render the Azure voice dropdown that controls the TTS reply voice.
+
+    The selector is centred under the orb and narrow so it does not compete
+    with the microphone button. The chosen voice is stored in
+    ``st.session_state.selected_voice`` and forwarded to the backend on every
+    ``voice_chat`` call via the ``voice`` form field added to the endpoint.
+    """
+    col_l, col_c, col_r = st.columns([2, 2, 2])
+    with col_c:
+        voice_ids = list(VOICE_CATALOG.keys())
+        current = st.session_state.get("selected_voice", DEFAULT_VOICE_ID)
+        index = voice_ids.index(current) if current in voice_ids else 0
+        chosen = st.selectbox(
+            "Assistant voice",
+            options=voice_ids,
+            index=index,
+            format_func=lambda vid: VOICE_CATALOG.get(vid, vid),
+            key="voice_selector",
+            label_visibility="collapsed",
+        )
+        st.session_state.selected_voice = chosen
 
 
 def render_voice_report_button():
@@ -234,7 +321,7 @@ def render_voice_report_button():
     if len(voice_history) >= 1:
         col1, col2, col3 = st.columns([2, 1, 2])
         with col2:
-            if st.button("📄 Download Report", use_container_width=True, type="secondary", key="voice_report_btn"):
+            if st.button(":material/download: Download report", use_container_width=True, type="secondary", key="voice_report_btn"):
                 with st.spinner("Generating report..."):
                     # Convert voice history to chat history format for report generation
                     chat_history = []
@@ -269,14 +356,14 @@ def render_voice_report_button():
 
                         # Show download button
                         st.download_button(
-                            label="⬇️ Download Markdown Report",
+                            label=":material/download: Download markdown",
                             data=report_content,
                             file_name=filename,
                             mime="text/markdown",
                             use_container_width=True,
                             key=f"voice_download_{timestamp}"
                         )
-                        st.success("✅ Report generated successfully!")
+                        st.success("Report generated successfully")
 
 
 def render_voice_chat():
@@ -289,7 +376,7 @@ def render_voice_chat():
 
     # Check voice services
     if not check_voice_services():
-        st.error("⚠️ Voice services are not available. Please ensure:")
+        st.error("Voice services are not available. Please ensure:")
         st.markdown("""
         1. Backend server is running (http://localhost:8000)
         2. Voice services are initialized
@@ -302,26 +389,63 @@ def render_voice_chat():
         st.json(health)
         return
 
-    # Header
-    st.markdown(
-        "<h2 style='text-align: center;'>🎤 Voice Chat Mode</h2>",
-        unsafe_allow_html=True
-    )
-
-    # Description
+    # Page-level CSS nukes. Streamlit custom-component iframes carry their own
+    # dark backgrounds and cannot be styled from inside the sandbox, so the
+    # only reliable path is to override them from the host page. Previous
+    # attempts used specific ``title`` and ``data-testid`` selectors that did
+    # not match in this Streamlit build; this version goes blanket \u2014 every
+    # iframe and its standard Streamlit wrappers are made transparent.
     st.markdown(
         """
-        <p style='text-align: center; color: #a78bfa; font-size: 14px; margin-top: -10px; margin-bottom: 20px;'>
-        Have a casual, conversational discussion about F1 strategies, race analysis, and telemetry insights with our AI assistant.
-        </p>
+        <style>
+        /* Every iframe on this page blends with the background. */
+        iframe {
+            background: transparent !important;
+            background-color: transparent !important;
+            border: none !important;
+            box-shadow: none !important;
+            color-scheme: normal !important;
+        }
+
+        /* Streamlit's standard custom-component wrappers. Class names are
+           emotion-hashed per build, so we cast a wide net with attribute
+           substrings + :has() to catch any div that actually holds an iframe. */
+        [data-testid="stIFrame"],
+        [data-testid="stCustomComponentV1"],
+        [class*="stIFrame"],
+        div.element-container:has(iframe),
+        div.stVerticalBlock > div > div:has(> iframe) {
+            background: transparent !important;
+            background-color: transparent !important;
+            border: none !important;
+            box-shadow: none !important;
+        }
+
+        /* audio_recorder_streamlit used to render a sandboxed iframe whose
+           internal body carried a dark background we could not reach from
+           the host page. We switched to st.audio_input (native Streamlit)
+           so the widget now honours the page theme and no iframe clip is
+           needed. Selectors kept only for the orb iframe above. */
+        </style>
         """,
-        unsafe_allow_html=True
+        unsafe_allow_html=True,
     )
 
-    st.markdown("---")
+    # Header
+    st.markdown(
+        "<h1 style='text-align: center; color: #ffffff; font-weight: 600; "
+        "margin-bottom: 8px;'>Voice Chat</h1>",
+        unsafe_allow_html=True,
+    )
 
-    # Report download button (appears when there's voice history)
-    render_voice_report_button()
+    # Tagline
+    st.markdown(
+        "<p style='text-align: center; color: #d1d5db; font-size: 0.9rem; "
+        "margin-bottom: 28px;'>"
+        "Conversational strategy analysis and F1 insights"
+        "</p>",
+        unsafe_allow_html=True,
+    )
 
     # Audio Orb Visualization (auto-plays when response is ready)
     with st.container():
@@ -352,38 +476,20 @@ def render_voice_chat():
                 key="voice_orb"
             )
 
-            # Auto-stop playing when audio ends (without rerun to avoid page reload)
-            if orb_result and orb_result.get('audio_ended') and is_playing:
-                st.session_state.is_playing = False
-                # Don't rerun - let natural refresh handle it
+            # The orb's internal audio element used to emit ``audio_ended``
+            # which we'd mirror back into ``is_playing = False``. That fired
+            # earlier than the st.audio widget's own playback in some
+            # browsers and made the SPEAKING badge flicker off mid-reply. We
+            # now ignore it and reset ``is_playing`` only at the start of the
+            # next recording (see handle_voice_message) \u2014 the badge stays up
+            # cleanly while Caronte is talking.
 
-    # Latest response audio playback
-    if st.session_state.voice_history and st.session_state.is_playing:
-        latest_exchange = st.session_state.voice_history[-1]
-        if latest_exchange.get('response_audio'):
-            with st.container():
-                col1, col2, col3 = st.columns([1, 2, 1])
-                with col2:
-                    st.markdown("### 🔊 Playing Response")
-                    st.audio(
-                        latest_exchange['response_audio'], format="audio/wav")
+    # Voice selector (choose the TTS reply voice)
+    render_voice_selector()
 
-                    # Inject JavaScript to attempt autoplay
-                    st.markdown("""
-                        <script>
-                        // Attempt to autoplay the audio element
-                        setTimeout(function() {
-                            const audioElements = document.querySelectorAll('audio');
-                            if (audioElements.length > 0) {
-                                const lastAudio = audioElements[audioElements.length - 1];
-                                lastAudio.play().catch(e => {
-                                    console.log('Autoplay blocked by browser:', e);
-                                    // If blocked, user can click play manually
-                                });
-                            }
-                        }, 100);
-                        </script>
-                    """, unsafe_allow_html=True)
+    # Note: the dedicated "Latest response" audio block is gone. Autoplay
+    # now lives on the last exchange's AI audio inside render_voice_exchange
+    # (st.audio(autoplay=True) \u2014 Streamlit 1.31+ native, no JS hack).
 
     # Voice input section
     with st.container():
@@ -409,10 +515,18 @@ def render_voice_chat():
                 unsafe_allow_html=True)
     render_voice_history()
 
-    # Clear history button
+    # Footer \u2014 Download report + Clear, both secondary, right-aligned so
+    # they do not compete with the orb for attention.
     if st.session_state.voice_history:
-        col1, col2, col3 = st.columns([1, 1, 1])
-        with col2:
-            if st.button("🗑️ Clear Voice History", use_container_width=True):
+        render_voice_report_button()
+        st.markdown("<div style='height: 12px;'></div>", unsafe_allow_html=True)
+        footer_spacer, footer_clear = st.columns([4, 1])
+        with footer_clear:
+            if st.button(
+                ":material/delete: Clear",
+                use_container_width=True,
+                type="secondary",
+                key="voice_clear_history_btn",
+            ):
                 st.session_state.voice_history = []
                 st.rerun()
