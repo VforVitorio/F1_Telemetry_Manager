@@ -4,7 +4,7 @@ Pydantic Models for Voice Chat API
 Defines request/response schemas for voice endpoints.
 """
 
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from typing import Optional
 
 
@@ -15,14 +15,15 @@ class TranscriptionResponse(BaseModel):
     language: str = Field(..., description="Detected or specified language code")
     duration: float = Field(..., description="Audio duration in seconds", ge=0)
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "text": "Why did Verstappen pit on lap 15?",
                 "language": "en",
-                "duration": 3.5
+                "duration": 3.5,
             }
         }
+    )
 
 
 class TTSRequest(BaseModel):
@@ -33,30 +34,32 @@ class TTSRequest(BaseModel):
         175,
         description="Speech rate in words per minute",
         ge=50,
-        le=400
+        le=400,
     )
     volume: Optional[float] = Field(
         0.9,
         description="Volume level",
         ge=0.0,
-        le=1.0
+        le=1.0,
     )
 
-    @validator('text')
-    def validate_text_not_empty(cls, v):
+    @field_validator("text")
+    @classmethod
+    def validate_text_not_empty(cls, v: str) -> str:
         """Ensure text is not just whitespace."""
         if not v.strip():
             raise ValueError("Text cannot be empty or only whitespace")
         return v.strip()
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "text": "Hello, I am Caronte, your F1 assistant.",
                 "rate": 175,
-                "volume": 0.9
+                "volume": 0.9,
             }
         }
+    )
 
 
 class VoiceChatRequest(BaseModel):
@@ -64,20 +67,21 @@ class VoiceChatRequest(BaseModel):
 
     context: Optional[dict] = Field(
         None,
-        description="F1 telemetry context (year, gp, session, drivers, etc.)"
+        description="F1 telemetry context (year, gp, session, drivers, etc.)",
     )
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "context": {
                     "year": 2024,
                     "gp": "Spanish Grand Prix",
                     "session": "Q",
-                    "drivers": ["VER", "HAM"]
+                    "drivers": ["VER", "HAM"],
                 }
             }
         }
+    )
 
 
 class VoiceChatResponse(BaseModel):
@@ -86,17 +90,20 @@ class VoiceChatResponse(BaseModel):
     transcript: str = Field(..., description="User's transcribed question")
     response_text: str = Field(..., description="Assistant's text response")
     audio_base64: str = Field(..., description="Base64 encoded audio response")
-    processing_time: float = Field(..., description="Total processing time in seconds", ge=0)
+    processing_time: float = Field(
+        ..., description="Total processing time in seconds", ge=0
+    )
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "transcript": "Why did Verstappen pit on lap 15?",
                 "response_text": "Verstappen pitted on lap 15 to switch to soft tires...",
                 "audio_base64": "UklGRiQAAABXQVZFZm10IBAAAAABAAEA...",
-                "processing_time": 3.2
+                "processing_time": 3.2,
             }
         }
+    )
 
 
 class VoiceHealthResponse(BaseModel):
@@ -108,15 +115,16 @@ class VoiceHealthResponse(BaseModel):
     stt_model: Optional[str] = Field(None, description="STT model name")
     error: Optional[str] = Field(None, description="Error message if unhealthy")
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "status": "healthy",
                 "stt_ready": True,
                 "tts_ready": True,
-                "stt_model": "base"
+                "stt_model": "base",
             }
         }
+    )
 
 
 class AvailableVoicesResponse(BaseModel):
@@ -125,16 +133,17 @@ class AvailableVoicesResponse(BaseModel):
     voices: list = Field(..., description="List of available voices")
     count: int = Field(..., description="Number of available voices", ge=0)
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "voices": [
                     {
                         "id": "HKEY_LOCAL_MACHINE\\...\\David",
                         "name": "Microsoft David Desktop",
-                        "languages": ["en-US"]
+                        "languages": ["en-US"],
                     }
                 ],
-                "count": 1
+                "count": 1,
             }
         }
+    )
