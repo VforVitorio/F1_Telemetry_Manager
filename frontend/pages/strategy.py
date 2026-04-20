@@ -19,14 +19,12 @@ from components.common.chart_styles import apply_telemetry_chart_styles  # noqa:
 from components.strategy.agent_tabs import render_agent_tabs  # noqa: E402
 from components.strategy.scenario_chart import render_scenario_chart  # noqa: E402
 from components.strategy.strategy_card import render_strategy_card  # noqa: E402
+from components.layout.titles import render_centered_title
 from services.strategy_service import StrategyService  # noqa: E402
 
 
 def render_header() -> None:
-    st.markdown(
-        "<h1 style='text-align: center;'>Strategy Advisor</h1>",
-        unsafe_allow_html=True,
-    )
+    render_centered_title("Strategy Advisor")
 
 
 def _render_strategy_selectors() -> tuple:
