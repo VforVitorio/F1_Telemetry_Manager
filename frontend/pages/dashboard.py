@@ -27,6 +27,7 @@ from components.common.link_button import render_link_button
 from components.dashboard.css_styles import render_custom_css, apply_driver_pill_colors
 from components.dashboard.data_selectors import render_data_selectors
 from components.dashboard.lap_graph import render_lap_graph
+from components.layout.titles import render_centered_title
 import services.telemetry_service  # noqa: F401 — imported for side effects (module registration)
 
 
@@ -34,8 +35,7 @@ def render_header():
     """
     Display page header.
     """
-    st.markdown("<h1 style='text-align: center;'>F1 STRAT MANAGER</h1>",
-                unsafe_allow_html=True)
+    render_centered_title("F1 STRAT MANAGER")
 
 
 def render_dashboard():
