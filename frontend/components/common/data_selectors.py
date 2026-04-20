@@ -62,7 +62,6 @@ def render_comparison_data_selectors() -> Tuple[Optional[int], Optional[str], Op
     with col3:
         session = _render_session_selector(year, gp)
 
-    st.markdown("---")
 
     # Info message about fastest laps
     st.info("🏁 Only fastest laps will be compared for each driver")
