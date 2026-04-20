@@ -21,16 +21,14 @@ from components.dashboard.css_styles import apply_driver_pill_colors, render_cus
 from components.race_analysis.gap_charts import render_gap_charts  # noqa: E402
 from components.race_analysis.radio_panel import render_radio_panel  # noqa: E402
 from components.race_analysis.tire_charts import render_tire_charts  # noqa: E402
+from components.layout.titles import render_centered_title
 from services.strategy_service import StrategyService  # noqa: E402
 from services.telemetry_service import TelemetryService  # noqa: E402
 from utils.race_processing import add_race_lap_column  # noqa: E402
 
 
 def render_header() -> None:
-    st.markdown(
-        "<h1 style='text-align: center;'>Race Analysis</h1>",
-        unsafe_allow_html=True,
-    )
+    render_centered_title("Race Analysis")
 
 
 # ---------------------------------------------------------------------------
