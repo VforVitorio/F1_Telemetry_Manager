@@ -31,6 +31,7 @@ from components.chatbot.chat_sidebar import render_chat_sidebar
 from components.chatbot.chat_history import render_chat_history
 from components.chatbot.chat_input import render_chat_input
 from components.voice.voice_chat import render_voice_chat
+from components.layout.titles import render_centered_title
 
 # Service imports
 from services.chat_service import check_lm_studio_health, generate_report
@@ -48,10 +49,7 @@ def initialize_chat_mode():
 
 def render_header():
     """Display page header — mode toggle moved to sidebar."""
-    st.markdown(
-        "<h1 style='text-align: center; margin-bottom: 0;'>F1 Strategy Chat</h1>",
-        unsafe_allow_html=True,
-    )
+    render_centered_title("F1 Strategy Chat", margin_bottom="0")
 
 
 def handle_pending_message():
