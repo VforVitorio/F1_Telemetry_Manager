@@ -16,6 +16,7 @@ import plotly.graph_objects as go  # noqa: E402
 import streamlit as st  # noqa: E402
 from components.common.chart_styles import apply_telemetry_chart_styles  # noqa: E402
 from components.strategy.agent_tabs import _metric_html, _warning_badge  # noqa: E402
+from components.layout.titles import render_centered_title
 from services.strategy_service import StrategyService  # noqa: E402
 from utils.race_viz import _base_layout, _styled_axes  # noqa: E402
 
@@ -29,10 +30,7 @@ COMPOUND_COLORS = {
 # ---------------------------------------------------------------------------
 
 def _render_header() -> None:
-    st.markdown(
-        "<h1 style='text-align: center;'>Model Lab</h1>",
-        unsafe_allow_html=True,
-    )
+    render_centered_title("Model Lab")
     st.caption("Run individual ML agents on any race lap without the full orchestrator.")
 
 
