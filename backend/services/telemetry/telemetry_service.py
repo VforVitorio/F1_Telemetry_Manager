@@ -6,8 +6,6 @@ from typing import List, Dict
 
 
 def get_telemetry_data_from_db(year: int, gp: str, session: str, drivers: list):
-    print(f"Backend recibió -> Year: {year}, GP: {gp}, Session: {session}, Drivers: {drivers}")
-
     session_data = SessionData(
         year=year,
         circuit=gp,
@@ -16,8 +14,6 @@ def get_telemetry_data_from_db(year: int, gp: str, session: str, drivers: list):
     )
 
     laps_data = session_data.get_driver_lap_times()
-
-    print(laps_data)
 
     # Reemplazar NaN y valores infinitos antes de serializar
     if not laps_data.empty:
