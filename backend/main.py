@@ -3,14 +3,6 @@ from backend.core.config import FRONTEND_URL
 from backend.mcp_tools import mcp as mcp_server, _mount_openapi_tools
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import FastAPI
-import sys
-from pathlib import Path
-
-# Add parent directory to path so 'backend' module can be found
-backend_parent = Path(__file__).resolve().parent.parent
-if str(backend_parent) not in sys.path:
-    sys.path.insert(0, str(backend_parent))
-
 
 # Build the MCP ASGI sub-app (Streamable HTTP, FastMCP 3.x)
 mcp_app = mcp_server.http_app(path="/mcp")
