@@ -73,7 +73,6 @@ def render_circuit_domination_section(
         session: Session type (FP1, FP2, FP3, Q, R)
     """
     # Horizontal separator
-    st.markdown("---")
 
     # Check if all required data is selected and telemetry data exists
     if (year is None or gp is None or session is None or
