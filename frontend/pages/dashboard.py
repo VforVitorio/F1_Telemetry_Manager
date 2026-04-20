@@ -10,7 +10,6 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) 
 
 # Standard library imports
 import streamlit as st
-import importlib
 
 # Project imports
 from components.telemetry.circuit_domination import render_circuit_domination_section
@@ -28,8 +27,7 @@ from components.common.link_button import render_link_button
 from components.dashboard.css_styles import render_custom_css, apply_driver_pill_colors
 from components.dashboard.data_selectors import render_data_selectors
 from components.dashboard.lap_graph import render_lap_graph
-import services.telemetry_service
-importlib.reload(services.telemetry_service)
+import services.telemetry_service  # noqa: F401 — imported for side effects (module registration)
 
 
 def render_header():
@@ -38,7 +36,6 @@ def render_header():
     """
     st.markdown("<h1 style='text-align: center;'>F1 STRAT MANAGER</h1>",
                 unsafe_allow_html=True)
-    st.markdown("---")
 
 
 def render_dashboard():
@@ -91,7 +88,6 @@ def render_dashboard():
     )
 
     # Link button to comparison page
-    st.markdown("---")
     render_link_button(
         text="If you want to compare the lap progress between your 2 selected drivers, click here",
         target_page="comparison",
