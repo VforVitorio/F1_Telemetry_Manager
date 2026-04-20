@@ -52,7 +52,6 @@ def render_delta_graph(telemetry_data_multi, selected_drivers, color_palette):
         color_palette: List of colors for each driver
     """
     # Add separator before the section
-    st.markdown("---")
 
     # Convert multi-driver telemetry data to DataFrame format
     if telemetry_data_multi is not None and isinstance(telemetry_data_multi, dict) and telemetry_data_multi:
