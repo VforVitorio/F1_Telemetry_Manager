@@ -24,9 +24,7 @@ from components.common.chart_styles import apply_telemetry_chart_styles
 from components.layout.navbar import show_error_toast, show_warning_toast
 # Reuse dashboard functions
 from pages.dashboard import apply_driver_pill_colors, render_custom_css
-
-
-BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
+from config import BACKEND_URL
 
 
 def render_header():
@@ -35,20 +33,6 @@ def render_header():
         "<h1 style='text-align: center;'>DRIVER COMPARISON</h1>",
         unsafe_allow_html=True
     )
-    st.markdown("---")
-
-
-def _apply_driver_selectbox_colors(driver1, driver2):
-    """
-    Apply team colors to driver selectboxes based on selected drivers.
-    DISABLED - Not working correctly yet.
-
-    Args:
-        driver1 (str): First driver code (or None)
-        driver2 (str): Second driver code (or None)
-    """
-    # TODO: Fix selectbox coloring - needs different approach
-    pass
 
 
 def fetch_comparison_data(year, gp, session, driver1, driver2):
