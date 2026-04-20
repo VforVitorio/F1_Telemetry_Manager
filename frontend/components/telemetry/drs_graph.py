@@ -114,7 +114,6 @@ def render_drs_graph(telemetry_data_multi, selected_drivers, color_palette):
         selected_drivers: List of driver codes
         color_palette: List of colors for each driver
     """
-    st.markdown("---")
 
     # Convert multi-driver telemetry data to DataFrame format
     if telemetry_data_multi is not None and isinstance(telemetry_data_multi, dict) and telemetry_data_multi:
