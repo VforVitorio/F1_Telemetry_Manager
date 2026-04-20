@@ -22,6 +22,7 @@ from components.comparison.synchronized_comparison_animation import (
 )
 from components.common.chart_styles import apply_telemetry_chart_styles
 from components.layout.navbar import show_error_toast, show_warning_toast
+from components.layout.titles import render_centered_title
 # Reuse dashboard functions
 from pages.dashboard import apply_driver_pill_colors, render_custom_css
 from config import BACKEND_URL
@@ -29,10 +30,7 @@ from config import BACKEND_URL
 
 def render_header():
     """Display page header."""
-    st.markdown(
-        "<h1 style='text-align: center;'>DRIVER COMPARISON</h1>",
-        unsafe_allow_html=True
-    )
+    render_centered_title("DRIVER COMPARISON")
 
 
 def fetch_comparison_data(year, gp, session, driver1, driver2):
@@ -147,10 +145,7 @@ def render_comparison_page():
 
     if comparison_data:
         # Render section title
-        st.markdown(
-            "<h2 style='text-align: center;'>SYNCHRONIZED TELEMETRY ANALYSIS</h2>",
-            unsafe_allow_html=True
-        )
+        render_centered_title("SYNCHRONIZED TELEMETRY ANALYSIS", level=2)
 
         # Render lap times info boxes immediately
         render_lap_times_info(comparison_data)
