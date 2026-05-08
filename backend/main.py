@@ -1,4 +1,4 @@
-from backend.api.v1.endpoints import auth, circuit_domination, comparison, telemetry, chat, voice, strategy
+from backend.api.v1.endpoints import circuit_domination, comparison, telemetry, chat, voice, strategy
 from backend.core.config import FRONTEND_URL
 from backend.mcp_tools import mcp as mcp_server, _mount_openapi_tools
 from fastapi.middleware.cors import CORSMiddleware
@@ -16,8 +16,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"]
 )
-
-app.include_router(auth.router, prefix="/api/v1")
 
 # Add telemetry router
 app.include_router(telemetry.router, prefix="/api/v1")
