@@ -1,5 +1,5 @@
 """
-Navbar component - Fixed top navigation bar with logout button using hydralit_components.
+Navbar component - Fixed top navigation bar using hydralit_components.
 """
 
 import hydralit_components as hc
@@ -8,9 +8,9 @@ import streamlit as st
 
 def render_navbar():
     """
-    Renders a fixed navigation bar at the top with logout button using hydralit_components.
+    Renders a fixed navigation bar at the top using hydralit_components.
     The navbar stays pinned to the top when scrolling.
-    Returns the selected menu item or logout action.
+    Returns the selected menu item.
     """
     # Theme customization matching styles.py color scheme
     override_theme = {
@@ -53,7 +53,7 @@ def render_navbar():
         </style>
     """, unsafe_allow_html=True)
 
-    # Render navbar with hydralit_components (menu items between Home and Logout)
+    # Render navbar with hydralit_components
     menu_id = hc.nav_bar(
         menu_definition=[
             {'id': 'Strategy', 'icon': "fa fa-chess", 'label': "Strategy"},
@@ -64,7 +64,6 @@ def render_navbar():
         ],
         override_theme=override_theme,
         home_name='Home',
-        login_name='Logout',  # This creates the logout button
         sticky_nav=True,  # Makes navbar sticky
         sticky_mode='pinned',  # Pinned mode (no jumping)
         hide_streamlit_markers=False
@@ -77,15 +76,8 @@ def render_navbar():
     if menu_id != last_menu_id:
         st.session_state['last_navbar_menu_id'] = menu_id
 
-        # Handle logout action
-        if menu_id == 'Logout':
-            st.session_state['authenticated'] = False
-            st.session_state['welcome_shown'] = False
-            st.session_state['current_page'] = 'dashboard'
-            st.rerun()
-
         # Handle home navigation
-        elif menu_id == 'Home':
+        if menu_id == 'Home':
             if st.session_state.get('current_page') != 'dashboard':
                 st.session_state['current_page'] = 'dashboard'
                 st.rerun()
@@ -155,11 +147,6 @@ def _show_toast(message: str, color_start: str, color_end: str,
         </script>
     """
     st.markdown(toast_html, unsafe_allow_html=True)
-
-
-def show_welcome_toast(username: str) -> None:
-    """Welcome toast — green, 3 s."""
-    _show_toast(f"Welcome {username}!", "#10b981", "#059669", 3000, "welcome")
 
 
 def show_error_toast(message: str) -> None:
