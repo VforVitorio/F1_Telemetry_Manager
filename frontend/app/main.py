@@ -7,8 +7,7 @@ import os
 import sys
 
 import streamlit as st
-from components.auth.auth_form import render_auth_form
-from components.layout.navbar import render_navbar, show_welcome_toast
+from components.layout.navbar import render_navbar
 from pages.chat import render_chat_page
 from pages.comparison import render_comparison_page
 
@@ -36,41 +35,26 @@ if pages_dir not in sys.path:
     sys.path.insert(0, pages_dir)
 
 
-# Initialize session state
-if 'authenticated' not in st.session_state:
-    st.session_state['authenticated'] = False
-
-# Initialize current page (only after authentication)
+# Initialize current page
 if 'current_page' not in st.session_state:
     st.session_state['current_page'] = 'dashboard'
 
-# Check authentication
-if not st.session_state['authenticated']:
-    render_auth_form()
+# Render fixed navbar
+render_navbar()
+
+# Multi-page navigation logic
+current_page = st.session_state.get('current_page', 'dashboard')
+
+if current_page == 'comparison':
+    render_comparison_page()
+elif current_page == 'chat':
+    render_chat_page()
+elif current_page == 'strategy':
+    render_strategy_page()
+elif current_page == 'race_analysis':
+    render_race_analysis_page()
+elif current_page == 'model_lab':
+    render_model_lab_page()
 else:
-    # User is authenticated - show dashboard
-
-    # Render fixed navbar with logout button
-    render_navbar()
-
-    # Show welcome notification (appears temporarily and fades away)
-    if 'welcome_shown' not in st.session_state:
-        show_welcome_toast(st.session_state.get('email', 'User'))
-        st.session_state['welcome_shown'] = True
-
-    # Multi-page navigation logic
-    current_page = st.session_state.get('current_page', 'dashboard')
-
-    if current_page == 'comparison':
-        render_comparison_page()
-    elif current_page == 'chat':
-        render_chat_page()
-    elif current_page == 'strategy':
-        render_strategy_page()
-    elif current_page == 'race_analysis':
-        render_race_analysis_page()
-    elif current_page == 'model_lab':
-        render_model_lab_page()
-    else:
-        # Default to dashboard
-        render_dashboard()
+    # Default to dashboard
+    render_dashboard()
