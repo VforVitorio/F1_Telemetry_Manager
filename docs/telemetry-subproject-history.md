@@ -503,3 +503,16 @@ Foundation (Phase 1)
 **Project Status:** v1.1 Complete  
 **Documentation:** Updated November 2025  
 **Next Release:** v2.0 (Planned)
+
+---
+
+## Auth layer removed (May 2026)
+
+The user authentication and authorization layer (Supabase + JWT) listed
+above was removed from the codebase in May 2026 to simplify the deployment
+and remove the only external service dependency of the project. The
+`/api/v1/auth/*` endpoints, the `auth_form` Streamlit component, the
+`get_current_user` dependency and the entire Supabase integration are no
+longer present in the codebase. This historical record is preserved as
+documentation of the original requirement, not as a description of the
+current system.
