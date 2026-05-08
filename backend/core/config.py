@@ -13,7 +13,3 @@ load_dotenv(_d / ".env")
 load_dotenv(Path(__file__).resolve().parent.parent.parent / ".env", override=True)
 
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:8501")
-
-# Supabase 
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY")
