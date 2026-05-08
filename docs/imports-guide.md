@@ -15,10 +15,7 @@ frontend/
 │   ├── setup_path.py             # ⭐ Path configuration module
 │   └── main.py                   # Main application
 ├── components/
-│   ├── __init__.py
-│   └── auth/
-│       ├── __init__.py
-│       └── auth_form.py
+│   └── __init__.py
 ├── pages/
 │   └── __init__.py
 ├── services/
@@ -58,7 +55,6 @@ import requests
 import streamlit as st
 
 # Project imports (now work because setup_path configured sys.path)
-from components.auth.auth_form import render_auth_form
 from config import BACKEND_URL
 ```
 
@@ -74,7 +70,6 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Now you can import
 from config import BACKEND_URL
-from components.auth.auth_form import render_auth_form
 ```
 
 ## Special Comments for Linters
