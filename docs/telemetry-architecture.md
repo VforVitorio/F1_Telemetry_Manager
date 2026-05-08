@@ -47,7 +47,6 @@ The system is organized into five distinct layers:
 
 * Exposes RESTful endpoints
 * Validates incoming requests
-* Handles authentication/authorization
 * Formats responses
 * Routes requests to appropriate services
 
@@ -70,16 +69,6 @@ The system is organized into five distinct layers:
 * Implements data persistence logic
 * Manages queries and transactions
 * Ensures data integrity
-
-### 5. Database Layer (Supabase/PostgreSQL)
-
-**Responsibility:** Data Persistence
-
-* Stores user information
-* Maintains chat history
-* Caches session data
-* Manages Grand Prix metadata
-* Tracks download history
 
 ---
 
@@ -104,9 +93,6 @@ F1_Telemetry_Manager/
 │   │   └── 📄 5_⚙️_Admin.py
 │   │
 │   ├── 📂 components/             # Reusable UI
-│   │   ├── 📂 auth/
-│   │   │   ├── 📄 login_form.py
-│   │   │   └── 📄 register_form.py
 │   │   ├── 📂 chatbot/
 │   │   │   ├── 📄 chat_interface.py
 │   │   │   ├── 📄 message_bubble.py
@@ -127,7 +113,6 @@ F1_Telemetry_Manager/
 │   │
 │   ├── 📂 services/               # API clients
 │   │   ├── 📄 api_client.py
-│   │   ├── 📄 auth_service.py
 │   │   ├── 📄 telemetry_service.py
 │   │   ├── 📄 chatbot_service.py
 │   │   ├── 📄 comparison_service.py
@@ -146,7 +131,6 @@ F1_Telemetry_Manager/
 │   │   ├── 📂 v1/
 │   │   │   ├── 📄 __init__.py
 │   │   │   ├── 📂 endpoints/
-│   │   │   │   ├── 📄 auth.py
 │   │   │   │   ├── 📄 telemetry.py
 │   │   │   │   ├── 📄 chatbot.py
 │   │   │   │   ├── 📄 comparison.py
@@ -175,9 +159,6 @@ F1_Telemetry_Manager/
 │   │   └── 📄 permission.py
 │   │
 │   ├── 📂 services/              # Business Logic
-│   │   ├── 📂 auth/
-│   │   │   ├── 📄 auth_service.py
-│   │   │   └── 📄 permission_service.py
 │   │   ├── 📂 telemetry/
 │   │   │   ├── 📄 telemetry_service.py
 │   │   │   ├── 📄 fastf1_adapter.py
@@ -286,7 +267,7 @@ F1_Telemetry_Manager/
 
 1. **User Action:** User selects year, GP, session, and driver in UI
 2. **API Client:** Frontend telemetry service makes HTTP request to FastAPI
-3. **API Endpoint:** Controller validates request and checks authentication
+3. **API Endpoint:** Controller validates incoming request
 4. **Service Layer:**
    * Telemetry service orchestrates the operation
    * Calls FastF1 adapter to fetch external data
@@ -300,32 +281,9 @@ F1_Telemetry_Manager/
 
 ## 🧩 Feature Modules
 
-The application is organized into seven primary feature modules:
+The application is organized into the following primary feature modules:
 
-### 1. Authentication Module
-
-**Core Responsibilities:**
-
-* User registration and login
-* JWT token generation and validation
-* Permission management (feature-based, not role-based)
-* Session handling
-
-**Key Components:**
-
-* Frontend: Login form, register form, auth service
-* Backend: Auth endpoints, auth service, permission service, user repository, security utilities
-
-**Key Operations:**
-
-* Register new user with email/password
-* Authenticate user and issue JWT token
-* Validate token on protected endpoints
-* Check user permissions for specific features
-
----
-
-### 2. Telemetry Module
+### 1. Telemetry Module
 
 **Core Responsibilities:**
 
@@ -349,7 +307,7 @@ The application is organized into seven primary feature modules:
 
 ---
 
-### 3. Chatbot Module (Caronte)
+### 2. Chatbot Module (Caronte)
 
 **Core Responsibilities:**
 
@@ -412,7 +370,7 @@ Multimodal Query Flow:
 
 ---
 
-### 4. Comparison Module
+### 3. Comparison Module
 
 **Core Responsibilities:**
 
@@ -435,7 +393,7 @@ Multimodal Query Flow:
 
 ---
 
-### 5. Downloads Module
+### 4. Downloads Module
 
 **Core Responsibilities:**
 
@@ -458,7 +416,7 @@ Multimodal Query Flow:
 
 ---
 
-### 6. Reports Module
+### 5. Reports Module
 
 **Core Responsibilities:**
 
@@ -480,7 +438,7 @@ Multimodal Query Flow:
 
 ---
 
-### 7. Admin Module
+### 6. Admin Module
 
 **Core Responsibilities:**
 
@@ -501,30 +459,6 @@ Multimodal Query Flow:
 * Manage GP metadata (add, edit, delete)
 * View system statistics
 * (Future: Data import wizard)
-
----
-
-## 🔐 Security Architecture
-
-### Authentication Flow
-
-1. **User Login:** User submits credentials through frontend
-2. **Token Generation:** Backend validates credentials and generates JWT token
-3. **Token Storage:** Frontend stores token in Streamlit session state
-4. **Protected Requests:** Every API request includes token in Authorization header
-5. **Token Validation:** Backend middleware validates token and extracts user
-6. **Permission Check:** System checks user's feature flags before allowing access
-
-### Permission System (Feature-Based, Not Role-Based)
-
-**User Permission Flags:**
-
-* `can_download`: Ability to export datasets
-* `can_compare`: Access to comparison features
-* `can_generate_reports`: Ability to create reports
-* `can_admin`: Admin panel access
-
-**Key Principle:** Users are not assigned fixed roles. Instead, they have individual feature permissions that can be granted/revoked independently.
 
 ---
 
@@ -602,23 +536,6 @@ Multimodal Query Flow:
 * Telemetry metrics: Speed, throttle, brake, RPM, gear, DRS, etc.
 
 ---
-
-### 3. Supabase (PostgreSQL Database)
-
-**Purpose:** Persistent data storage for users, chats, and caches
-
-**Integration Approach:**
-
-* Supabase client initialized in core configuration
-* Repository layer abstracts database operations
-* JSONB columns for flexible data storage (context, session data)
-* Row-level security can be enabled for additional protection
-
-**Connection Management:**
-
-* Connection pooling handled by Supabase client
-* Environment variables for credentials
-* Dependency injection for database client
 
 ---
 
@@ -744,19 +661,16 @@ External services are wrapped in adapters:
 │   ┌─────────────────────────────────┐   │
 │   │  Repositories (Data Access)     │   │
 │   └─────────────────────────────────┘   │
-└───────┬─────────────────────┬───────────┘
-        │                     │
-        ↓                     ↓
-┌──────────────┐    ┌────────────────────┐
-│  SUPABASE    │    │  EXTERNAL APIs     │
-│  (PostgreSQL)│    │                    │
-│              │    │  • FastF1          │
-│  Tables:     │    │  • LM Studio       │
-│  • users     │    │                    │
-│  • chat      │    └────────────────────┘
-│  • cache     │
-│  • gp        │
-└──────────────┘
+└─────────────────────┬───────────────────┘
+                      │
+                      ↓
+               ┌────────────────────┐
+               │  EXTERNAL APIs     │
+               │                    │
+               │  • FastF1          │
+               │  • LM Studio       │
+               │                    │
+               └────────────────────┘
 ```
 
 ---
@@ -768,13 +682,11 @@ External services are wrapped in adapters:
 * **Streamlit:** `http://localhost:8501`
 * **FastAPI:** `http://localhost:8000`
 * **LM Studio:** `http://localhost:1234`
-* **Supabase:** Cloud-hosted (supabase.co)
 
 ### Production Environment (MVP)
 
 * **Frontend:** Streamlit Cloud (free tier)
 * **Backend:** Railway / Render / Fly.io (free or low-cost tier)
-* **Database:** Supabase (cloud-hosted, free tier available)
 * **LLM:** Self-hosted server or alternative API
 
 **Important Note:** LM Studio is for local development only. Production requires either:
@@ -814,7 +726,7 @@ External services are wrapped in adapters:
 **Priority Testing:**
 
 * ✅ Unit tests for core service functions
-* ✅ Integration tests for critical API endpoints (auth, telemetry, chatbot)
+* ✅ Integration tests for critical API endpoints (telemetry, chatbot)
 * ✅ Manual testing of UI flows
 
 **Deferred to V2.0:**
@@ -840,15 +752,8 @@ External services are wrapped in adapters:
 * **Framework:** FastAPI 0.109+
 * **Server:** Uvicorn 0.27+
 * **Data Validation:** Pydantic 2.5+
-* **Authentication:** python-jose 3.3+ (JWT), passlib 1.7+ (password hashing)
-* **Database Client:** supabase 2.3+
 * **F1 Data:** fastf1 3.2+
 * **Data Processing:** Pandas 2.1+, NumPy 1.26+
-
-### Database
-
-* **Primary:** Supabase (PostgreSQL-based)
-* **Features Used:** User authentication, JSONB columns, row-level security (optional)
 
 ### External Services
 
@@ -866,8 +771,6 @@ External services are wrapped in adapters:
 | **Data Access**         | Repository Pattern        | Database abstraction, testable                          |
 | **API Design**          | RESTful with FastAPI      | Industry standard, well-documented, auto-generated docs |
 | **Frontend State**      | Streamlit session_state   | Native solution, simple to use                          |
-| **Authentication**      | JWT tokens                | Stateless, scalable, industry standard                  |
-| **Permissions**         | Feature flags (no roles)  | Flexible as required by design specs                    |
 | **External APIs**       | Adapter pattern           | Decoupled, easily replaceable                           |
 | **Testing Approach**    | Unit + Integration        | Balance between quality and development time            |
 | **Deployment**          | Separate frontend/backend | Scalable, follows modern practices                      |
@@ -880,7 +783,6 @@ External services are wrapped in adapters:
 
 **Core Functionality:**
 
-* ✅ User authentication (register, login, logout)
 * ✅ Dashboard with data selectors (Year, GP, Session, Drivers)
 * ✅ Basic visualizations (Lap Graphs, Circuit Animation, Telemetry Tabs)
 * ✅ Text-based chatbot (Caronte) with contextual "Ask about this" buttons
@@ -913,17 +815,12 @@ External services are wrapped in adapters:
 
 ## 📅 Implementation Checklist by Module
 
-### Week 1: Setup + Authentication
+### Week 1: Setup
 
 * [ ] Project structure setup
 * [ ] FastAPI configuration with CORS
 * [ ] Streamlit multi-page setup
-* [ ] Supabase connection
 * [ ] Base repository implementation
-* [ ] User repository
-* [ ] Auth endpoints (register, login)
-* [ ] JWT token system
-* [ ] Frontend auth forms
 * [ ] Session management
 
 ### Week 2: Telemetry Module
@@ -1007,7 +904,7 @@ External services are wrapped in adapters:
 
 * Never expose sensitive information in frontend
 * Validate all user inputs on backend
-* Use parameterized queries (Supabase handles this)
+* Use parameterized queries
 * Implement rate limiting for sensitive endpoints (optional for MVP)
 
 ---
@@ -1046,7 +943,6 @@ External services are wrapped in adapters:
 
 * [Streamlit Documentation](https://docs.streamlit.io/)
 * [FastAPI Documentation](https://fastapi.tiangolo.com/)
-* [Supabase Documentation](https://supabase.com/docs)
 * [FastF1 Documentation](https://theoehrly.github.io/Fast-F1/)
 
 **Best Practices:**
