@@ -110,14 +110,14 @@ The system uses a layered architecture with feature-based organization:
 ┌─────────────────────────────────────────┐
 │   FASTAPI BACKEND                       │
 │   (API + Service + Repository Layers)  │
-└────────┬──────────────────┬─────────────┘
-         │                  │
-         ↓                  ↓
-┌──────────────┐    ┌────────────────────┐
-│  SUPABASE    │    │  EXTERNAL APIs     │
-│  (PostgreSQL)│    │  • FastF1          │
-│              │    │  • LM Studio       │
-└──────────────┘    └────────────────────┘
+└──────────────────┬──────────────────────┘
+                   │
+                   ↓
+            ┌────────────────────┐
+            │  EXTERNAL APIs     │
+            │  • FastF1          │
+            │  • LM Studio       │
+            └────────────────────┘
 ```
 
 ### Tech Stack
@@ -132,10 +132,7 @@ The system uses a layered architecture with feature-based organization:
 **Backend:**
 - FastAPI 0.109+ (REST API)
 - Pydantic 2.5+ (data validation)
-- python-jose (JWT tokens)
-- passlib + bcrypt (password hashing)
 - FastF1 3.4.0 (F1 telemetry source)
-- Supabase 2.10.0 (PostgreSQL database)
 
 **AI/ML:**
 - LM Studio (local LLM via OpenAI-compatible API)
@@ -185,7 +182,6 @@ _Complete user flow showing authentication, dashboard navigation, telemetry anal
 
 - Docker & Docker Compose
 - LM Studio (running on `http://localhost:1234` with a loaded model)
-- Supabase account
 - Python 3.10+ (for manual installation)
 
 ### Quick Start with Docker
@@ -197,8 +193,8 @@ cd F1_Telemetry_Manager
 
 # Set up environment variables
 cp .env.example .env
-# Edit .env with your Supabase credentials:
-# SUPABASE_URL, SUPABASE_KEY, SECRET_KEY, BACKEND_URL
+# Edit .env with your configuration:
+# BACKEND_URL
 
 # Start all services
 docker-compose up -d
@@ -255,14 +251,6 @@ Terminal 3 - LM Studio:
 
 ### Configuration
 
-#### Generate Secret Key
-
-```bash
-python backend/utils/generate_secret.py
-```
-
-Copy the output to your `.env` file under `SECRET_KEY`.
-
 #### Environment Variables
 
 Required variables in `.env`:
@@ -270,15 +258,6 @@ Required variables in `.env`:
 ```bash
 # Backend API
 BACKEND_URL=http://localhost:8000
-
-# Supabase
-SUPABASE_URL=<your-supabase-project-url>
-SUPABASE_KEY=<your-supabase-anon-key>
-
-# JWT Security
-SECRET_KEY=<generated-secret-key>
-ALGORITHM=HS256
-ACCESS_TOKEN_EXPIRE_MINUTES=30
 ```
 
 #### Voice Configuration
@@ -318,12 +297,6 @@ See [QUERY_ROUTER_GUIDE.md](docs/QUERY_ROUTER_GUIDE.md) for detailed examples.
 ---
 
 ## 📊 API Endpoints
-
-### Authentication (`/api/v1/auth`)
-- `POST /signup` - Register new user
-- `POST /signin` - Login user
-- `GET /me` - Get current user
-- `POST /signout` - Logout
 
 ### Telemetry (`/api/v1/telemetry`)
 - `GET /gps` - Available GPs for year
@@ -396,7 +369,6 @@ limitations under the License.
 - [FastF1](https://github.com/theOehrly/Fast-F1) for F1 telemetry data access
 - [Streamlit](https://streamlit.io/) for the frontend framework
 - [FastAPI](https://fastapi.tiangolo.com/) for the backend API framework
-- [Supabase](https://supabase.com/) for database infrastructure
 - [LM Studio](https://lmstudio.ai/) for local LLM inference
 
 ---
