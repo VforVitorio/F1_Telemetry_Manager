@@ -1,5 +1,5 @@
 """
-Data loading utilities with caching for F1 Strat Manager.
+Data loading utilities with caching for F1 StratLab.
 Provides cached functions to load GPs, sessions, and drivers.
 """
 
