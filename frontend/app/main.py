@@ -20,7 +20,7 @@ from styles import GLOBAL_CSS
 
 # Page configuration - MUST be first Streamlit command
 st.set_page_config(
-    page_title="F1 Strat Manager",
+    page_title="F1 StratLab",
     page_icon="🏎️",
     layout="wide"
 )
