@@ -1,1 +1,1 @@
-"""F1 Strat Manager Frontend Package."""
+"""F1 StratLab Frontend Package."""
