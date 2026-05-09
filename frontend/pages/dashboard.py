@@ -35,7 +35,7 @@ def render_header():
     """
     Display page header.
     """
-    render_centered_title("F1 STRAT MANAGER")
+    render_centered_title("F1 STRATLAB")
 
 
 def render_dashboard():
