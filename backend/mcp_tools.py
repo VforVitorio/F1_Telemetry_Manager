@@ -471,56 +471,78 @@ import httpx as _httpx
 def _mount_openapi_tools() -> None:
     """Mount auto-generated MCP tools from the FastAPI OpenAPI spec.
 
-    Called lazily on first request to avoid circular imports at module load.
-    Fetches /openapi.json from the running backend and converts telemetry +
-    comparison endpoints into MCP tools.
+    Called lazily on first request to avoid circular imports at module
+    load.  Fetches ``/openapi.json`` from the running backend and converts
+    the telemetry / comparison endpoints into MCP tools so the chat can
+    dispatch them through the same protocol as the Phase 1 strategy
+    tools.
+
+    Resilience:
+    - Generous timeout (30 s) so the bootstrap survives a slow uvicorn
+      reload — the previous 5 s default raced the server's own readiness
+      and silently dropped every Phase 2 tool.
+    - The ``_openapi_mounted`` latch is set ONLY on a successful mount.
+      If the fetch errors or the conversion blows up, the next request
+      retries the mount instead of locking the chat into a degraded
+      Phase-1-only mode for the rest of the process's lifetime.
     """
     global _openapi_mounted
     if _openapi_mounted:
         return
 
     try:
-        # Fetch the OpenAPI spec from our own backend
-        resp = _httpx.get("http://localhost:8000/openapi.json", timeout=5)
-        if resp.status_code != 200:
-            logger.warning("Could not fetch OpenAPI spec: HTTP %s", resp.status_code)
+        spec = _fetch_openapi_spec()
+        if spec is None:
             return
 
-        spec = resp.json()
-
-        # Filter to only telemetry + comparison paths (skip strategy/chat/auth)
-        filtered_paths = {}
-        for path, methods in spec.get("paths", {}).items():
-            if any(prefix in path for prefix in ["/telemetry/", "/comparison/", "/circuit-domination/"]):
-                filtered_paths[path] = methods
-
+        filtered_paths = _filter_phase2_paths(spec)
         if not filtered_paths:
             logger.info("No telemetry/comparison paths found in OpenAPI spec")
             return
 
-        filtered_spec = {**spec, "paths": filtered_paths}
-
-        # 300s matches the timeout the legacy strategy_handler used for the
-        # same endpoints — the telemetry / comparison endpoints fan out to
-        # FastF1, and a cold cache for an unseen GP/year can easily take
-        # ~2 minutes (download laps, telemetry parquet, weather...).  The
-        # httpx default of 5s caused chat tool calls to time out instantly
-        # before FastF1 had any chance to respond.
-        client = _httpx.AsyncClient(base_url="http://localhost:8000", timeout=300.0)
-        sub = FastMCP.from_openapi(
-            openapi_spec=filtered_spec,
-            client=client,
-            name="telemetry",
-        )
-
-        # Mount the sub-server's tools onto our main mcp instance
-        mcp.mount("telemetry", sub)
+        _register_openapi_tools({**spec, "paths": filtered_paths})
         logger.info("Mounted %d telemetry/comparison tools from OpenAPI", len(filtered_paths))
-
+        _openapi_mounted = True
     except Exception as exc:
-        logger.warning("Failed to mount OpenAPI tools: %s", exc)
+        logger.warning(
+            "Failed to mount OpenAPI tools: %s — will retry on the next request",
+            exc,
+        )
+        # Intentionally do NOT set _openapi_mounted: the next call will retry
+        # so a transient bootstrap race does not strand the Phase 2 tools.
 
-    _openapi_mounted = True
+
+def _fetch_openapi_spec() -> dict[str, Any] | None:
+    """Pull the running backend's OpenAPI document, returning ``None`` on failure."""
+    resp = _httpx.get("http://localhost:8000/openapi.json", timeout=30.0)
+    if resp.status_code != 200:
+        logger.warning("Could not fetch OpenAPI spec: HTTP %s", resp.status_code)
+        return None
+    return resp.json()
+
+
+def _filter_phase2_paths(spec: dict[str, Any]) -> dict[str, Any]:
+    """Keep only the telemetry / comparison / circuit paths the chat exposes."""
+    prefixes = ("/telemetry/", "/comparison/", "/circuit-domination/")
+    return {
+        path: methods
+        for path, methods in (spec.get("paths") or {}).items()
+        if any(prefix in path for prefix in prefixes)
+    }
+
+
+def _register_openapi_tools(filtered_spec: dict[str, Any]) -> None:
+    """Build and mount the Phase 2 sub-server from a filtered OpenAPI spec.
+
+    The httpx client's 300 s timeout matches what the legacy
+    ``StrategyHandler._execute_telemetry_tool`` used for the same
+    endpoints: a cold FastF1 cache can take ~2 min to populate, and the
+    httpx default of 5 s would silently break the first call to any
+    telemetry tool against an unseen GP/year.
+    """
+    client = _httpx.AsyncClient(base_url="http://localhost:8000", timeout=300.0)
+    sub = FastMCP.from_openapi(openapi_spec=filtered_spec, client=client, name="telemetry")
+    mcp.mount("telemetry", sub)
 
 
 _openapi_mounted = False
