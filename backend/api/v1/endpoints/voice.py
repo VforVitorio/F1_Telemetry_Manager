@@ -20,10 +20,10 @@ from backend.models.voice_models import (
 )
 from backend.services.voice.stt_service import get_stt_service
 from backend.services.voice.tts_service import get_tts_service
-from backend.services.chatbot.lmstudio_service import (
+from backend.services.chatbot.llm_service import (
     send_message as lm_send_message,
     build_messages,
-    LMStudioError
+    LLMServiceError
 )
 
 logger = logging.getLogger(__name__)
@@ -248,7 +248,7 @@ async def voice_chat(
     Full voice chat flow: STT \u2192 LLM \u2192 TTS.
 
     The STT (Nemotron) and TTS (Qwen3) run in-process within this backend.
-    The middle LLM step is dispatched through lmstudio_service, which reads
+    The middle LLM step is dispatched through llm_service, which reads
     the ``F1_LLM_PROVIDER`` env var to route to either LM Studio (default)
     or the OpenAI API. This lets voice chat reuse the same provider plumbing
     as the text chat and the strategy orchestrator without duplicating it.
@@ -305,7 +305,7 @@ async def voice_chat(
                 logger.warning("Empty LLM response, using fallback")
                 response_text = "Sorry, I couldn't put that together just now. Mind trying again?"
 
-        except LMStudioError as e:
+        except LLMServiceError as e:
             logger.error(f"LLM provider error: {e}")
             response_text = (
                 "I'm having trouble reaching the language model right now. "
