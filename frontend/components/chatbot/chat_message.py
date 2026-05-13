@@ -7,7 +7,33 @@ Supports both text and image messages.
 
 import streamlit as st
 import base64
+import html as _html
 from typing import Any
+
+try:
+    import markdown as _md  # python-markdown — converts **bold**, lists, code, etc.
+    _MARKDOWN_AVAILABLE = True
+except ImportError:  # graceful fallback if the dep isn't installed yet
+    _MARKDOWN_AVAILABLE = False
+
+
+def _content_to_html(content: str) -> str:
+    """Convert message content to safe HTML.
+
+    Assistant replies often arrive in Markdown (`**bold**`, lists, code).
+    Without conversion the raw asterisks leak into the bubble.  We render
+    Markdown when the python-markdown dep is available, and fall back to
+    HTML-escaped text + line breaks otherwise so the user still gets
+    something readable.
+    """
+    text = str(content)
+    if _MARKDOWN_AVAILABLE:
+        return _md.markdown(
+            text,
+            extensions=["fenced_code", "tables", "nl2br", "sane_lists"],
+        )
+    escaped = _html.escape(text)
+    return escaped.replace("\n", "<br>")
 
 
 def render_chat_message(role: str, msg_type: str, content: Any):
@@ -20,22 +46,22 @@ def render_chat_message(role: str, msg_type: str, content: Any):
         content: Message content (str for text, bytes/base64 for image)
     """
     if msg_type == "text":
+        body_html = _content_to_html(content)
         if role == "user":
-            st.markdown(
-                f'<div class="chat-message user-message">'
-                f'<div class="message-avatar" style="background:#a78bfa;">You</div>'
-                f'<div class="message-content">{content}</div>'
-                f'</div>',
-                unsafe_allow_html=True
-            )
+            bubble_class = "chat-message user-message"
+            avatar_style = "background:#a78bfa;"
+            avatar_label = "You"
         else:
-            st.markdown(
-                f'<div class="chat-message assistant-message">'
-                f'<div class="message-avatar" style="background:linear-gradient(135deg,#6366f1,#a78bfa);">F1</div>'
-                f'<div class="message-content">{content}</div>'
-                f'</div>',
-                unsafe_allow_html=True
-            )
+            bubble_class = "chat-message assistant-message"
+            avatar_style = "background:linear-gradient(135deg,#6366f1,#a78bfa);"
+            avatar_label = "F1"
+        st.markdown(
+            f'<div class="{bubble_class}">'
+            f'<div class="message-avatar" style="{avatar_style}">{avatar_label}</div>'
+            f'<div class="message-content">{body_html}</div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
     elif msg_type == "tool_result":
         # Structured tool result — render rich card/metrics inside assistant bubble
         from components.chatbot.tool_result_renderer import render_tool_result

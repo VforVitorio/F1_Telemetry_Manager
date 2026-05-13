@@ -10,3 +10,4 @@ python-dotenv>=1.0.0
 streamlit-lottie>=0.0.5
 kaleido==0.2.1
 hydralit_components
+markdown>=3.5
