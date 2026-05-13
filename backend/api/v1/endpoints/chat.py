@@ -5,34 +5,36 @@ Handles chat requests from frontend and communicates with LM Studio.
 Provides endpoints for health checks, sending messages, and streaming responses.
 """
 
-from fastapi import APIRouter, HTTPException
-from fastapi.responses import StreamingResponse
+import json
 import logging
+import uuid
 
-from backend.services.chatbot.lmstudio_service import (
+from fastapi import APIRouter, Header, HTTPException
+from fastapi.responses import StreamingResponse
+
+from backend.services.chatbot import chat_engine
+from backend.services.chatbot.llm_service import (
     check_health,
     get_available_models,
     send_message as lm_send_message,
     stream_message as lm_stream_message,
     build_messages,
-    LMStudioError
+    LLMServiceError
+)
+from backend.services.chatbot.stage_tracker import (
+    clear_stage,
+    get_stage,
 )
 from backend.models.chat_models import (
     ChatRequest,
     ChatResponse,
     HealthResponse,
-    QueryResponse
 )
 from backend.models.tool_schemas import ToolMessageRequest, ToolMessageResponse
-from backend.services.chatbot.router import QueryRouter
-from backend.services.chatbot.utils.validators import ValidationError
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/chat", tags=["chat"])
-
-# Initialize the query router (singleton)
-query_router = QueryRouter()
 
 
 @router.get("/health", response_model=HealthResponse)
@@ -62,7 +64,7 @@ async def get_models():
     try:
         models = get_available_models()
         return {"models": models}
-    except LMStudioError as e:
+    except LLMServiceError as e:
         logger.error(f"LM Studio error: {e}")
         raise HTTPException(status_code=503, detail=str(e))
     except Exception as e:
@@ -116,7 +118,7 @@ async def send_chat_message(request: ChatRequest):
                 detail="Invalid response from LM Studio"
             )
 
-    except LMStudioError as e:
+    except LLMServiceError as e:
         logger.error(f"LM Studio error: {e}")
 
         # Always retry without image if an image was attached
@@ -194,7 +196,7 @@ async def stream_chat_message(request: ChatRequest):
                     max_tokens=request.max_tokens
                 ):
                     yield chunk
-            except LMStudioError as e:
+            except LLMServiceError as e:
                 logger.error(f"LM Studio streaming error: {e}")
                 yield f"\n\nError: {str(e)}"
             except Exception as e:
@@ -211,26 +213,49 @@ async def stream_chat_message(request: ChatRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/query", response_model=QueryResponse)
-async def process_query(request: ChatRequest):
+# ---------------------------------------------------------------------------
+# /tool-message — Tool-aware chat (MCP-driven via chat_engine)
+# ---------------------------------------------------------------------------
+#
+# Routing is now performed by the LLM itself: the chat_engine pulls every
+# tool from the FastMCP server, exposes them via OpenAI's ``tools=`` API,
+# and dispatches the model's choice back through the MCP client.  No more
+# regex/keyword extractor, no more separate classifier — the model sees
+# the same schemas an external MCP client would and decides for itself.
+# The legacy ``tool_param_extractor`` and ``query_classifier`` modules are
+# kept for the moment so the historical /chat/query router endpoint and
+# any external callers do not break, but they are no longer used here.
+
+
+@router.get("/status")
+def chat_status(request_id: str):
+    """Return the latest backend stage for *request_id* (smart-spinner poll target).
+
+    The Streamlit chat polls this endpoint every ~1s while a message is in
+    flight so the spinner label can mirror the real backend stage instead
+    of rotating fake placeholders.
     """
-    Process a query with intelligent routing to appropriate handler.
+    return {"stage": get_stage(request_id)}
 
-    This endpoint automatically detects the type of query (basic, technical,
-    comparison, report, or download) and routes it to the specialized handler.
 
-    Args:
-        request: Chat request with message, history, and parameters
+@router.post("/tool-message", response_model=ToolMessageResponse)
+async def tool_message(
+    request: ToolMessageRequest,
+    x_request_id: str | None = Header(default=None, alias="X-Request-Id"),
+):
+    """Tool-aware chat — non-streaming JSON variant.
 
-    Returns:
-        QueryResponse with type, handler, response, and metadata
+    Drives ``chat_engine.get_response`` and packages the result into the
+    ``ToolMessageResponse`` shape the rest of the API expects.  The
+    optional ``X-Request-Id`` header is echoed into the stage tracker so
+    the frontend's smart-spinner poll target (``/chat/status``) keeps
+    working even for non-streaming consumers.
     """
+    request_id = x_request_id or str(uuid.uuid4())
     try:
-        logger.info(f"Received query request: {request.text[:100]}...")
-
-        # Process query through router
-        result = query_router.process_query(
+        result = await chat_engine.get_response(
             text=request.text,
+            request_id=request_id,
             image=request.image,
             chat_history=request.chat_history,
             context=request.context,
@@ -238,128 +263,75 @@ async def process_query(request: ChatRequest):
             temperature=request.temperature,
             max_tokens=request.max_tokens,
         )
-
-        logger.info(
-            f"Query processed successfully: type={result['type']}, "
-            f"handler={result['handler']}"
-        )
-
-        return QueryResponse(**result)
-
-    except ValidationError as e:
-        logger.error(f"Validation error: {e}")
-        raise HTTPException(status_code=400, detail=str(e))
-    except LMStudioError as e:
-        logger.error(f"LM Studio error: {e}")
-        raise HTTPException(status_code=503, detail=str(e))
-    except Exception as e:
-        logger.error(f"Error processing query: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-# ---------------------------------------------------------------------------
-# /tool-message — Tool-aware chat (strategy tools + LLM fallback)
-# ---------------------------------------------------------------------------
-
-
-@router.post("/tool-message", response_model=ToolMessageResponse)
-def tool_message(request: ToolMessageRequest):
-    """Chat endpoint with automatic strategy tool invocation.
-
-    Classifies the user message.  If it looks like a strategy query,
-    extracts parameters (GP, driver, lap) and calls the appropriate ML
-    agent in-process.  The raw result is summarised by LM Studio and
-    returned alongside a structured ``tool_result`` for rich frontend
-    rendering.  Non-strategy messages are forwarded to LM Studio directly.
-    """
-    from backend.services.chatbot.utils.query_classifier import QueryClassifier, QueryType
-    from backend.services.chatbot.handlers.strategy_handler import StrategyHandler
-    from backend.services.chatbot.utils.tool_param_extractor import ToolParameterExtractor
-
-    # 1. Always try to extract tool params first — the extractor is smarter
-    #    than the classifier at detecting driver+GP+lap patterns
-    extractor = _build_extractor()
-    tool_call = extractor.extract(request.text)
-
-    # 2. If extractor found a confident tool call, use it directly
-    if tool_call.confidence >= 0.5:
-        logger.info("Tool extractor matched: %s (confidence %.2f)", tool_call.tool, tool_call.confidence)
-    else:
-        # Fall back to classifier for ambiguous messages
-        classifier = QueryClassifier()
-        query_type = classifier.classify(request.text)
-
-        if query_type != QueryType.STRATEGY_QUERY:
-            return _forward_to_llm(request)
-
-        # Classifier said strategy but extractor low confidence → try anyway
-        if tool_call.confidence < 0.3:
-            return _forward_to_llm(request)
-
-    if not tool_call.is_rag_query and not tool_call.is_listing_tool and not tool_call.is_telemetry_tool and not tool_call.has_required_location:
         return ToolMessageResponse(
-            response=(
-                "I'd like to run that analysis for you, but I need a bit more info. "
-                "Could you tell me the **Grand Prix**, **driver** (e.g. VER, HAM), "
-                "and **lap number**?"
-            ),
-        )
-
-    # 5. Execute tool + summarise
-    handler = StrategyHandler()
-    result = handler.handle_with_tools(
-        message=request.text,
-        tool_call=tool_call,
-        image=request.image,
-        chat_history=request.chat_history,
-    )
-
-    return ToolMessageResponse(
-        response=result["response"],
-        llm_model=result.get("llm_model"),
-        tokens_used=result.get("tokens_used"),
-        tool_result=result.get("tool_result"),
-    )
-
-
-def _forward_to_llm(request: ToolMessageRequest) -> ToolMessageResponse:
-    """Forward a non-strategy message to LM Studio and return plain text."""
-    try:
-        messages = build_messages(
-            user_message=request.text,
-            image_base64=request.image,
-            chat_history=request.chat_history,
-            context=request.context,
-        )
-        response = lm_send_message(
-            messages=messages,
-            model=request.model,
-            temperature=request.temperature,
-            max_tokens=request.max_tokens,
-        )
-        content = ""
-        if "choices" in response and response["choices"]:
-            content = response["choices"][0]["message"]["content"]
-        return ToolMessageResponse(
-            response=content or "No response from LLM.",
-            llm_model=response.get("model"),
-            tokens_used=response.get("usage", {}).get("total_tokens"),
+            response=result.get("response") or "No response from LLM.",
+            llm_model=result.get("llm_model"),
+            tokens_used=result.get("tokens_used"),
+            tool_result=result.get("tool_result"),
         )
     except Exception as exc:
-        logger.error("LLM forward error: %s", exc, exc_info=True)
-        return ToolMessageResponse(
-            response=f"Error contacting the LLM: {exc}",
-        )
+        logger.exception("tool_message failed")
+        return ToolMessageResponse(response=f"Error contacting the LLM: {exc}")
+    finally:
+        clear_stage(request_id)
 
 
-def _build_extractor() -> "ToolParameterExtractor":
-    """Create a ToolParameterExtractor with the current GP list for fuzzy matching."""
-    from backend.services.chatbot.utils.tool_param_extractor import ToolParameterExtractor
-    from backend.utils.laps_cache import get_laps_df
+@router.post("/tool-message-stream")
+async def tool_message_stream(
+    request: ToolMessageRequest,
+    x_request_id: str | None = Header(default=None, alias="X-Request-Id"),
+):
+    """Tool-aware chat — Server-Sent Events streaming variant.
 
-    extractor = ToolParameterExtractor()
-    df = get_laps_df(2025)
-    if df is not None:
-        gps = sorted(df["GP_Name"].dropna().unique().tolist())
-        extractor.refresh_gps(gps)
-    return extractor
+    Yields the same event sequence the frontend has consumed since v1.3:
+    ``stage`` (whenever the backend phase advances), ``tool_result`` (rich
+    structured payload that maps to the chat's tool renderers), ``token``
+    (LLM text chunks for the live-typing UX), and ``done`` (final marker
+    with provider metadata).  All formatting concerns live in this module;
+    the ``chat_engine`` only produces (event, payload) tuples.
+    """
+    request_id = x_request_id or str(uuid.uuid4())
+
+    async def event_stream():
+        try:
+            async for event_name, payload in chat_engine.stream_response(
+                text=request.text,
+                request_id=request_id,
+                image=request.image,
+                chat_history=request.chat_history,
+                context=request.context,
+                model=request.model,
+                temperature=request.temperature,
+                max_tokens=request.max_tokens,
+            ):
+                yield _sse(event_name, payload)
+        except Exception as exc:
+            logger.exception("tool_message_stream failed")
+            yield _sse("token", {"token": f"\n\nError: {exc}"})
+            yield _sse("done", {"error": str(exc)})
+        finally:
+            clear_stage(request_id)
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            # Prevent intermediate proxies (nginx, Docker) and the browser
+            # from buffering the stream; the user must see tokens land
+            # incrementally rather than as a single delayed dump.
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+def _sse(event: str, payload: dict) -> str:
+    """Format a single Server-Sent Event frame.
+
+    SSE allows a ``data:`` field to span multiple lines, but ``json.dumps``
+    yields a single-line representation by default which keeps both the
+    parser and the network frame simple.  ``ensure_ascii=False`` preserves
+    accented characters — chat messages are bilingual.
+    """
+    return f"event: {event}\ndata: {json.dumps(payload, default=str, ensure_ascii=False)}\n\n"
