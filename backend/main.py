@@ -1,3 +1,5 @@
+from contextlib import asynccontextmanager
+
 from backend.api.v1.endpoints import circuit_domination, comparison, telemetry, chat, voice, strategy
 from backend.core.config import FRONTEND_URL
 from backend.mcp_tools import mcp as mcp_server, _mount_openapi_tools
@@ -7,7 +9,32 @@ from fastapi import FastAPI
 # Build the MCP ASGI sub-app (Streamable HTTP, FastMCP 3.x)
 mcp_app = mcp_server.http_app(path="/mcp")
 
-app = FastAPI(title="F1 Telemetry API", lifespan=mcp_app.lifespan)
+
+@asynccontextmanager
+async def lifespan(app):
+    """Wrap the FastMCP lifespan so we can mount Phase 2 tools at the right time.
+
+    Three constraints stack up here:
+    1. FastAPI ignores ``@app.on_event("startup")`` when a custom
+       ``lifespan`` is set — and we MUST set one to drive the MCP server.
+    2. ``_mount_openapi_tools`` cannot run at module import time because
+       the FastMCP sub-server's ``lifespan`` provider needs ``mcp_app``
+       to be already initialised; mounting earlier left the provider's
+       ``self.server`` field as the bare ``"telemetry"`` string and the
+       startup blew up with ``AttributeError: 'str' object has no
+       attribute '_lifespan'``.
+    3. The mount must complete BEFORE the server starts serving requests
+       so the very first chat call already sees the Phase 2 tools.
+
+    The fix: run the wrapped MCP lifespan first (initialising the server),
+    then mount the OpenAPI-derived tools, then yield control to uvicorn.
+    """
+    async with mcp_app.lifespan(app):
+        _mount_openapi_tools(app)
+        yield
+
+
+app = FastAPI(title="F1 Telemetry API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -43,16 +70,3 @@ app.mount("/mcp", mcp_app)
 @app.get("/")
 def root():
     return {"message": "F1 Telemetry API is running"}
-
-
-# Mount Phase 2 telemetry tools from the FastAPI OpenAPI spec.
-#
-# Done synchronously at module import time, AFTER every router has been
-# registered.  We deliberately do NOT use ``@app.on_event("startup")``
-# because we pass ``lifespan=mcp_app.lifespan`` above — FastAPI ignores
-# the legacy on_event handlers when a custom lifespan is in play, which
-# silently stranded the OpenAPI tools and forced the chat into Phase 1
-# only mode.  Calling ``_mount_openapi_tools(app)`` here uses
-# ``app.openapi()`` directly (no self-HTTP fetch, no race against the
-# server still booting).
-_mount_openapi_tools(app)
