@@ -5,8 +5,9 @@ Switch between providers via the LLM_PROVIDER env var:
   - LLM_PROVIDER=lmstudio  (default) → local LM Studio at localhost:1234
   - LLM_PROVIDER=openai               → OpenAI API with OPENAI_API_KEY
 
-When using OpenAI, the model defaults to gpt-4.1-mini for general chat
-and can be overridden per-call via the model parameter.
+When using OpenAI, the model defaults to gpt-5.4-mini for general chat
+and can be overridden per-call via the model parameter or the
+OPENAI_CHAT_MODEL env var.
 """
 
 import os
@@ -60,7 +61,7 @@ def _default_model(override: Optional[str] = None) -> Optional[str]:
     return override or None
 
 
-class LMStudioError(Exception):
+class LLMServiceError(Exception):
     """Custom exception for LLM service errors (LM Studio or OpenAI)."""
     pass
 
@@ -73,7 +74,7 @@ def check_health() -> Dict[str, Any]:
         Dict with status information
 
     Raises:
-        LMStudioError: If LM Studio is not accessible
+        LLMServiceError: If LM Studio is not accessible
     """
     try:
         provider = "OpenAI" if _is_openai else "LM Studio"
@@ -120,7 +121,7 @@ def get_available_models() -> List[str]:
         List of model names
 
     Raises:
-        LMStudioError: If unable to fetch models
+        LLMServiceError: If unable to fetch models
     """
     try:
         response = requests.get(MODELS_URL, headers=_headers(), timeout=5)
@@ -131,13 +132,13 @@ def get_available_models() -> List[str]:
                       for model in models_data.get("data", [])]
             return models
         else:
-            raise LMStudioError(
+            raise LLMServiceError(
                 f"Failed to fetch models: HTTP {response.status_code}")
 
     except requests.exceptions.ConnectionError:
-        raise LMStudioError("Cannot connect to LM Studio")
+        raise LLMServiceError("Cannot connect to LM Studio")
     except Exception as e:
-        raise LMStudioError(f"Error fetching models: {str(e)}")
+        raise LLMServiceError(f"Error fetching models: {str(e)}")
 
 
 def send_message(
@@ -145,23 +146,37 @@ def send_message(
     model: Optional[str] = None,
     temperature: float = 0.7,
     max_tokens: int = 1000,
-    stream: bool = False
+    stream: bool = False,
+    tools: Optional[List[Dict[str, Any]]] = None,
+    tool_choice: Optional[Any] = None,
 ) -> Dict[str, Any]:
     """
-    Send a message to LM Studio and get the complete response.
+    Send a message to the configured LLM provider and return the response.
+
+    The ``tools`` parameter mirrors OpenAI's function-calling protocol — a
+    list of tool schemas (``{"type": "function", "function": {...}}``) the
+    model can choose to call.  When provided, the response may include
+    ``choices[0].message.tool_calls`` instead of (or alongside) text.
+    LM Studio's OpenAI-compatible v1 API forwards the field unchanged,
+    so the same code path works for cloud and local providers — modern
+    instruct-tuned local models will honour it, older or non-instruct
+    ones will simply ignore it and return text.
 
     Args:
-        messages: List of message dicts with 'role' and 'content'
-        model: Model name (optional, LM Studio will use loaded model)
-        temperature: Temperature parameter for generation
-        max_tokens: Maximum tokens to generate
-        stream: Whether to stream the response
+        messages: List of message dicts with 'role' and 'content'.
+        model: Model name (optional, LM Studio uses the loaded model).
+        temperature: Sampling temperature.
+        max_tokens: Token cap for the response.
+        stream: Whether to stream the response (chunked).
+        tools: Optional OpenAI-formatted tool schemas the model can call.
+        tool_choice: Optional ``"auto" | "none" | {"type": "function", ...}``
+            override; defaults to ``"auto"`` whenever ``tools`` is set.
 
     Returns:
-        Response dict from LM Studio
+        Response dict from the provider.
 
     Raises:
-        LMStudioError: If the request fails
+        LLMServiceError: If the request fails.
     """
     try:
         resolved_model = _default_model(model)
@@ -175,6 +190,10 @@ def send_message(
             token_key: max_tokens,
             "stream": stream
         }
+
+        if tools:
+            payload["tools"] = tools
+            payload["tool_choice"] = tool_choice or "auto"
 
         if resolved_model:
             payload["model"] = resolved_model
@@ -210,24 +229,24 @@ def send_message(
         if response.status_code == 200:
             return response.json()
         elif response.status_code == 404:
-            raise LMStudioError(
+            raise LLMServiceError(
                 "LM Studio endpoint not found. "
                 "Ensure the server is started in LM Studio (Developer → Start Server)"
             )
         else:
-            raise LMStudioError(
+            raise LLMServiceError(
                 f"LM Studio returned HTTP {response.status_code}: {response.text}"
             )
 
     except requests.exceptions.ConnectionError:
-        raise LMStudioError(
+        raise LLMServiceError(
             "Cannot connect to LM Studio. "
             "Ensure LM Studio is running and the server is started on port 1234"
         )
     except requests.exceptions.Timeout:
-        raise LMStudioError("Request to LM Studio timed out")
+        raise LLMServiceError("Request to LM Studio timed out")
     except Exception as e:
-        raise LMStudioError(f"Error sending message to LM Studio: {str(e)}")
+        raise LLMServiceError(f"Error sending message to LM Studio: {str(e)}")
 
 
 def stream_message(
@@ -249,7 +268,7 @@ def stream_message(
         Chunks of the response text
 
     Raises:
-        LMStudioError: If the request fails
+        LLMServiceError: If the request fails
     """
     try:
         resolved_model = _default_model(model)
@@ -297,16 +316,16 @@ def stream_message(
                         except json.JSONDecodeError:
                             continue
         else:
-            raise LMStudioError(
+            raise LLMServiceError(
                 f"LM Studio returned HTTP {response.status_code}: {response.text}"
             )
 
     except requests.exceptions.ConnectionError:
-        raise LMStudioError("Cannot connect to LM Studio")
+        raise LLMServiceError("Cannot connect to LM Studio")
     except requests.exceptions.Timeout:
-        raise LMStudioError("Request to LM Studio timed out")
+        raise LLMServiceError("Request to LM Studio timed out")
     except Exception as e:
-        raise LMStudioError(f"Error streaming from LM Studio: {str(e)}")
+        raise LLMServiceError(f"Error streaming from LM Studio: {str(e)}")
 
 
 def _compress_chat_history(chat_history: List[Dict[str, Any]]) -> str:
@@ -400,35 +419,50 @@ def build_messages(
     # Add system prompt
     if not system_prompt:
         system_prompt = (
-            "You are the F1 Strategy Assistant. You do NOT call tools yourself. "
-            "The backend detects keywords in the user's message and runs the matching tool automatically. "
-            "Each message triggers AT MOST ONE tool.\n\n"
-            "KEYWORD → TOOL mapping (user must include driver code + GP + lap number):\n"
-            "- 'tyre' / 'tire' / 'degradation' / 'compound' → predict_tire\n"
-            "- 'pit' / 'stop' / 'undercut' / 'overcut' → predict_pit\n"
-            "- 'pace' / 'lap time' / 'fast' / 'slow' → predict_pace\n"
-            "- 'overtake' / 'pass' / 'drs' / 'safety car' → predict_situation\n"
-            "- 'radio' / 'team radio' / 'message' → analyze_radio\n"
-            "- 'regulation' / 'rule' / 'article' / 'fia' → query_regulations (no driver/GP/lap needed)\n"
-            "- 'strategy' / 'recommend' / 'full analysis' → recommend_strategy\n"
-            "- 'compare' / 'vs' / 'versus' → compare_drivers (needs 2 driver codes)\n"
-            "- 'telemetry' / 'speed trace' / 'throttle' → get_telemetry\n"
-            "- 'lap times' / 'laptimes' → get_lap_times\n"
-            "- 'race data' / 'race overview' → get_race_data\n\n"
-            "CRITICAL RULES:\n"
-            "1. NEVER fabricate or simulate tool results. If no tool was triggered, say so.\n"
-            "2. If the user asks to 'run all tools', tell them to send SEPARATE messages, one per tool. "
-            "Suggest the exact prompts, e.g.:\n"
-            "   - 'ALO Melbourne lap 13 tyre status'\n"
-            "   - 'ALO Melbourne lap 13 pace'\n"
-            "   - 'ALO Melbourne lap 13 pit strategy'\n"
-            "   - 'ALO Melbourne lap 13 overtake probability'\n"
-            "   - 'ALO Melbourne lap 13 radio'\n"
-            "   - 'ALO Melbourne lap 13 recommend strategy'\n"
-            "3. If a tool result appears in the conversation, summarize it. "
-            "If NOT, respond: 'That tool was not triggered. Try: <driver> <GP> lap <N> <keyword>'\n\n"
-            "For general F1 questions (no driver/GP/lap), answer from your knowledge. "
-            "Keep responses under 200 words unless asked for detail."
+            "You are the F1 Strategy Assistant — a bilingual (English / Spanish) "
+            "expert embedded in a real-time race telemetry and simulation system.\n\n"
+            "HOW THIS SYSTEM WORKS\n"
+            "- You do NOT call tools yourself. The backend extracts intent from the "
+            "user's message and runs the right tool BEFORE the message reaches you.\n"
+            "- If a tool ran, its result is attached to the conversation. Summarise it "
+            "in 2-4 sentences with the key strategic insight.\n"
+            "- If no tool ran, the message is one of: casual chat, a general F1 "
+            "question, or an analysis request that is missing required parameters.\n\n"
+            "HOW TO RESPOND WHEN NO TOOL RAN\n"
+            "1. Casual greetings, smalltalk, thanks → respond naturally and briefly. "
+            "Mirror the user's language (Spanish if they wrote in Spanish).\n"
+            "2. General F1 questions (rules, history, concepts, terminology, no "
+            "driver/GP/lap needed) → answer from your knowledge in 2-4 sentences.\n"
+            "3. The user clearly wants a per-driver analysis (mentions tyre, pit, pace, "
+            "undercut, telemetry, lap times, etc.) but did NOT provide enough info → "
+            "politely list what is missing and ask for it. Required pieces are:\n"
+            "   - Driver: a 3-letter code (VER, HAM, NOR, LEC...) or full surname.\n"
+            "   - Grand Prix: e.g. Monaco, Silverstone, Bahrain, Monza, Spa.\n"
+            "   - Lap number: an integer between 1 and the race length.\n"
+            "   Year is optional (defaults to 2025; valid range 2023-2025).\n"
+            "   Example: \"To analyse tyre degradation I need a driver, a Grand Prix "
+            "and a lap number — for example: 'tyre degradation for VER at Monza lap 30'.\"\n\n"
+            "HARD RULES\n"
+            "- ALWAYS respond in the same language the user wrote in. If the "
+            "user wrote in Spanish, respond in Spanish. If in English, respond "
+            "in English. This applies to every response, including when asking "
+            "for missing parameters or refusing to answer.\n"
+            "- Never fabricate tool results, telemetry numbers, lap times or "
+            "predictions. If you do not know, say so.\n"
+            "- Do not invent driver codes, Grand Prix names, or seasons.\n"
+            "- Keep responses under 200 words unless the user asks for detail.\n\n"
+            "MULTI-DRIVER REQUESTS\n"
+            "When the user asks to compare two drivers:\n"
+            "- Telemetry overlay (speed / throttle / brake / lap times) → say it works "
+            "natively: ask phrases like 'compare VER vs LEC at Monza' and it routes "
+            "to the compare_drivers tool. The Streamlit Comparison page is the "
+            "dedicated UI for this.\n"
+            "- Strategy decisions for two drivers in one call → not supported. The "
+            "strategy agents are designed first-person (one driver per analysis). "
+            "If the user wants the rival as context (gap, compound, tyre age) "
+            "around a single-driver decision, that mode exists in the CLI "
+            "(--rival CODE) and in the Arcade (--driver2 CODE); the Streamlit "
+            "Strategy page does not expose it yet."
         )
 
     # Add context to system prompt if provided
