@@ -16,6 +16,7 @@ import json  # noqa: E402
 
 import streamlit as st  # noqa: E402
 from components.common.chart_styles import apply_telemetry_chart_styles  # noqa: E402
+from components.common.driver_colors import get_driver_color  # noqa: E402
 from components.strategy.agent_tabs import render_agent_tabs  # noqa: E402
 from components.strategy.scenario_chart import render_scenario_chart  # noqa: E402
 from components.strategy.strategy_card import render_strategy_card  # noqa: E402
@@ -35,8 +36,8 @@ def _render_strategy_selectors() -> tuple:
     year = 2025
     st.warning(":material/info: Only 2025 season data is currently available.", icon=None)
 
-    # --- Row 1: GP / Driver ---
-    c1, c2 = st.columns(2)
+    # --- Row 1: GP / Driver / Rival (optional) ---
+    c1, c2, c3 = st.columns(3)
 
     with c1:
         ok_gp, gp_list, err_gp = StrategyService.get_available_gps(year)
@@ -48,9 +49,11 @@ def _render_strategy_selectors() -> tuple:
             key="strat_gp",
         )
 
+    drv_list: list = []
     with c2:
         if gp is not None:
-            ok_drv, drv_list, err_drv = StrategyService.get_available_drivers(gp, year)
+            ok_drv, drv_list_resp, err_drv = StrategyService.get_available_drivers(gp, year)
+            drv_list = drv_list_resp or []
             drv_options = ([None] + drv_list) if ok_drv and drv_list else [None]
         else:
             drv_options = [None]
@@ -62,16 +65,26 @@ def _render_strategy_selectors() -> tuple:
             key="strat_driver",
         )
 
-    # Return early if any selector is unset
+    with c3:
+        rival_options = [None] + [d for d in drv_list if d != driver] if (gp and driver) else [None]
+        rival = st.selectbox(
+            "Rival driver (optional)",
+            rival_options,
+            format_func=lambda x: "-- No rival --" if x is None else x,
+            disabled=(gp is None or driver is None),
+            key="strat_rival",
+        )
+
+    # Return early if any required selector is unset
     if gp is None or driver is None:
         st.caption("Select GP and driver above to configure the analysis.")
-        return None, None, None, None, None, None
+        return None, None, None, None, None, None, None
 
     # --- Row 2: Lap range + analysis lap + Risk ---
     ok_lr, lap_info, err_lr = StrategyService.get_lap_range(gp, driver, year)
     if not ok_lr or not lap_info:
         st.warning(f"Could not load lap range: {err_lr}")
-        return None, None, None, None, None, None
+        return None, None, None, None, None, None, None
 
     min_lap = lap_info.get("min_lap", 2)
     max_lap = lap_info.get("max_lap", 57)
@@ -101,7 +114,47 @@ def _render_strategy_selectors() -> tuple:
             use_container_width=True,
         )
 
-    return year, gp, driver, lap, risk, run
+    return year, gp, driver, rival, lap, risk, run
+
+
+def _render_rival_snapshot(lap_state: dict, rival_code: str, year: int) -> None:
+    """Render an optional rival-as-context card mirroring the CLI's --rival mode.
+
+    The orchestrator stays single-driver; the rival is purely visual context
+    so the user can reason about gap, tyre delta and undercut windows around
+    the recommendation.  Renders nothing if the rival is not in this lap's
+    snapshot (e.g. DNF, retired) so the page never crashes on a missing entry.
+    """
+    rival = next(
+        (r for r in lap_state.get("rivals", []) if r.get("driver") == rival_code),
+        None,
+    )
+    if rival is None:
+        return
+
+    color = get_driver_color(rival_code, year=year)
+    st.markdown(
+        f"### :material/groups: Rival snapshot — "
+        f"<span style='color:{color}'>{rival_code}</span>",
+        unsafe_allow_html=True,
+    )
+
+    pos = rival.get("position")
+    compound = rival.get("compound")
+    tyre_life = rival.get("tyre_life")
+    lap_time = rival.get("lap_time_s")
+
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
+        st.metric("Position", f"P{pos}" if isinstance(pos, int) else "—")
+    with c2:
+        st.metric("Compound", str(compound).upper() if compound else "—")
+    with c3:
+        tl_label = f"{tyre_life} laps" if isinstance(tyre_life, (int, float)) else "—"
+        st.metric("Tyre age", tl_label)
+    with c4:
+        lt_label = f"{lap_time:.3f}s" if isinstance(lap_time, (int, float)) else "—"
+        st.metric("Lap time", lt_label)
 
 
 def _render_lap_snapshot(lap_state: dict, data: dict) -> None:
@@ -147,7 +200,7 @@ def render_strategy_page() -> None:
     if result[1] is None:  # gp is None — selectors not fully configured
         return
 
-    year, gp, driver, lap, risk, run = result
+    year, gp, driver, rival, lap, risk, run = result
 
     if not run and "strategy_result" not in st.session_state:
         st.caption("Select a scenario above and press **Run strategy**.")
@@ -188,6 +241,10 @@ def render_strategy_page() -> None:
 
     # 1. Lap snapshot (CLI emulation)
     _render_lap_snapshot(lap_state, data)
+
+    # 1b. Optional rival snapshot (mirrors CLI --rival / Arcade --driver2)
+    if rival:
+        _render_rival_snapshot(lap_state, rival, year)
 
     st.divider()
 
