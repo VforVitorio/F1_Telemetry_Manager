@@ -40,18 +40,19 @@ app.include_router(strategy.router, prefix="/api/v1")
 app.mount("/mcp", mcp_app)
 
 
-@app.on_event("startup")
-def _startup_mount_openapi():
-    """Mount Phase 2 telemetry tools from the FastAPI OpenAPI spec.
-
-    Passing the live ``app`` lets _mount_openapi_tools read the spec
-    directly (``app.openapi()``) instead of self-fetching ``/openapi.json``
-    over HTTP — avoiding the 30 s startup race where the server's own
-    HTTP loop is still waking up and the request times out.
-    """
-    _mount_openapi_tools(app)
-
-
 @app.get("/")
 def root():
     return {"message": "F1 Telemetry API is running"}
+
+
+# Mount Phase 2 telemetry tools from the FastAPI OpenAPI spec.
+#
+# Done synchronously at module import time, AFTER every router has been
+# registered.  We deliberately do NOT use ``@app.on_event("startup")``
+# because we pass ``lifespan=mcp_app.lifespan`` above — FastAPI ignores
+# the legacy on_event handlers when a custom lifespan is in play, which
+# silently stranded the OpenAPI tools and forced the chat into Phase 1
+# only mode.  Calling ``_mount_openapi_tools(app)`` here uses
+# ``app.openapi()`` directly (no self-HTTP fetch, no race against the
+# server still booting).
+_mount_openapi_tools(app)
