@@ -234,7 +234,7 @@ async def _stream_plain_response(
     raw_response: dict[str, Any],
 ) -> AsyncGenerator[tuple[str, dict[str, Any]], None]:
     """Stream the LLM's plain text reply (no tool was called)."""
-    text = (assistant_msg.get("content") or "").strip()
+    text = _strip_leaked_tool_call((assistant_msg.get("content") or "").strip())
     if not text:
         text = (
             "_(No response from the language model. Try rephrasing the "
@@ -355,8 +355,34 @@ def _extract_message(response: dict[str, Any]) -> dict[str, Any]:
 
 
 def _extract_text(response: dict[str, Any]) -> str:
-    """Pull plain text out of an LLM response, or empty string."""
-    return (_extract_message(response).get("content") or "").strip()
+    """Pull plain text out of an LLM response, or empty string.
+
+    Some models (notably smaller / non-instruct variants) occasionally
+    emit a tool-call attempt as plain text using the deprecated
+    ``to=functions.<name>`` syntax instead of populating the proper
+    ``tool_calls`` field.  We strip that leakage so the user does not
+    see raw protocol scaffolding in the chat bubble.
+    """
+    raw = (_extract_message(response).get("content") or "").strip()
+    return _strip_leaked_tool_call(raw)
+
+
+def _strip_leaked_tool_call(text: str) -> str:
+    """Remove deprecated ``to=functions.X {...}`` blocks from a response.
+
+    Matches both single-line and JSON-on-next-line forms so the cleanup
+    works whether the model put the JSON inline or on the following
+    line.  Surrounding whitespace is collapsed so the user never sees
+    a blank gap where the leak was.
+    """
+    import re
+
+    pattern = re.compile(
+        r"to=functions\.[A-Za-z0-9_]+\s*[^\n{]*\n?\s*\{.*?\}\s*",
+        re.DOTALL,
+    )
+    cleaned = pattern.sub("", text)
+    return re.sub(r"\n{3,}", "\n\n", cleaned).strip()
 
 
 def _first_tool_call(message: dict[str, Any]) -> dict[str, Any] | None:
