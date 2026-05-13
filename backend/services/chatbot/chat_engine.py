@@ -66,6 +66,17 @@ _SYSTEM_PROMPT = (
     "concepts, terminology), and meta questions ('what tools do you "
     "have?', 'who are you?') — answer in plain text WITHOUT calling a "
     "tool.\n\n"
+    "PARAMETER DEFAULTS\n"
+    "- session: use 'R' (race) unless the user explicitly mentions "
+    "qualifying ('Q'), sprint ('S'), or practice ('FP1' / 'FP2' / 'FP3').\n"
+    "- year: defaults to 2025 when the user does not give one.  Valid "
+    "range 2023-2025.\n"
+    "- driver: pass the 3-letter code (VER, HAM, LEC, NOR, PIA, …).  "
+    "Surnames also work but codes are preferred.\n"
+    "- Grand Prix: pass the canonical name.  The backend accepts country "
+    "and city forms (Australia/Melbourne, Italy/Monza, Belgium/Spa).\n"
+    "- If the user's last message gives an explicit year, GP, driver, or "
+    "lap, prefer those values over any defaults.\n\n"
     "RESPONSE RULES\n"
     "- ALWAYS respond in the same language the user wrote in.\n"
     "- Never fabricate tool outputs, telemetry numbers, lap times or "
@@ -337,14 +348,57 @@ def _build_summary_messages(
     tool_data: Any,
     tool_error: str | None,
 ) -> list[dict[str, Any]]:
-    """Append the assistant tool_call + tool result so the next LLM call can summarise."""
-    payload_for_llm = {"error": tool_error} if tool_error else _trim_for_llm(tool_data)
+    """Append the assistant tool_call + tool result so the next LLM call can summarise.
+
+    OpenAI's chat completions API requires that every ``tool_call`` in
+    an assistant message be answered by a matching ``role=tool`` message
+    with the same ``tool_call_id``; otherwise the next call fails with
+    HTTP 400.  We only execute the first tool_call per turn (single-tool
+    design choice), so we trim the assistant message to expose only that
+    call before re-sending it.  This keeps the protocol contract intact.
+
+    On error we tag the payload as such and append a user nudge so the
+    LLM responds with a concrete recovery suggestion in the user's
+    language (e.g. "lap 1 has no data, try lap 2") instead of just
+    parroting the error string back.
+    """
+    pruned_assistant = _assistant_with_only(assistant_msg, tool_call)
+
+    if tool_error:
+        payload_for_llm = {"error": tool_error, "tool": tool_call["function"].get("name")}
+    else:
+        payload_for_llm = _trim_for_llm(tool_data)
+
     tool_message = {
         "role": "tool",
         "tool_call_id": tool_call.get("id") or "tool_call",
         "content": json.dumps(payload_for_llm, default=str, ensure_ascii=False)[:4000],
     }
-    return base_messages + [assistant_msg, tool_message]
+    messages = base_messages + [pruned_assistant, tool_message]
+    if tool_error:
+        messages.append({
+            "role": "user",
+            "content": (
+                "The tool returned an error.  In ONE short paragraph (≤60 words), "
+                "explain to me what went wrong and suggest one concrete fix — for "
+                "example a different lap, driver, or Grand Prix.  Reply in my "
+                "original language.  Do not repeat the raw error string."
+            ),
+        })
+    return messages
+
+
+def _assistant_with_only(assistant_msg: dict[str, Any], tool_call: dict[str, Any]) -> dict[str, Any]:
+    """Return a copy of *assistant_msg* with ``tool_calls`` reduced to just *tool_call*.
+
+    Necessary because we only dispatch one tool per turn but the model
+    sometimes proposes several; OpenAI then expects a tool answer for
+    every proposed call.  By stripping the unanswered ones we keep the
+    follow-up call valid while preserving the single-tool design.
+    """
+    pruned = dict(assistant_msg)
+    pruned["tool_calls"] = [tool_call]
+    return pruned
 
 
 def _trim_for_llm(data: Any) -> Any:
