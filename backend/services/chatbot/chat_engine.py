@@ -1,0 +1,431 @@
+"""
+Chat Engine — MCP-driven tool routing for the F1 Strategy chat.
+
+Replaces the legacy regex/keyword extractor + JSON-in-prompt classifier
+with a single LLM round-trip that uses OpenAI-style ``tools=`` function
+calling.  Tool schemas are pulled live from the FastMCP server so the
+chat and the public ``/mcp`` endpoint share one source of truth.
+
+Flow (streaming variant):
+    1. Pull tool list from FastMCP via the in-process MCP client.
+    2. Send the user message + history + system prompt to the LLM with
+       ``tools=`` populated.  The model decides whether to call a tool or
+       reply in plain text.
+    3. If the model returned a tool_call, dispatch it through MCP and
+       emit a ``tool_result`` SSE event (rich rendering on the frontend).
+    4. Make a second LLM call (no ``tools=``) feeding back the tool's
+       output as a ``role=tool`` message.  Emit the summary as a single
+       ``token`` SSE event.
+    5. If the first call already produced text (no tool_call), emit it
+       directly — covers casual chat, meta questions, RAG fallback.
+
+The whole module is async because the FastMCP client is async; the LLM
+provider calls remain blocking ``requests`` calls but run inside the
+event loop without harm at the chat's traffic levels.
+
+Note on streaming: we do NOT chunk the summary text artificially.  An
+earlier version sliced the finished text into 12-char fakes to mimic a
+typing animation, but that was visual only and confused readers about
+where real tokens come from.  When we move to native provider streaming
+(``stream=True``) we will emit live deltas; until then the response
+arrives in a single ``token`` event.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+from typing import Any, AsyncGenerator
+
+from backend.models.tool_schemas import DisplayType, TOOL_DISPLAY_MAP, ToolName
+from backend.services.chatbot.llm_service import build_messages, send_message
+from backend.services.chatbot.mcp_bridge import (
+    call_mcp_tool,
+    coerce_tool_arguments,
+    list_openai_tools,
+)
+from backend.services.chatbot.stage_tracker import set_stage
+
+logger = logging.getLogger(__name__)
+
+
+# Pirelli-style brevity for the chat: short, expert, bilingual.  The model
+# does not need extraction rules anymore — the tools= schema tells it
+# what is callable; this prompt only sets tone and meta-question handling.
+_SYSTEM_PROMPT = (
+    "You are the F1 Strategy Assistant — a bilingual (English / Spanish) "
+    "expert embedded in a real-time race telemetry and simulation system.\n\n"
+    "TOOL CALLING\n"
+    "- The tools= parameter lists every F1 strategy and telemetry tool "
+    "you can call.  Use them when the user asks for predictions, "
+    "telemetry data, race comparisons, regulations lookups, or strategy "
+    "recommendations.  Pass the right Grand Prix name, driver code, lap "
+    "number, etc. as each tool's schema requires.\n"
+    "- Only call ONE tool per turn.  Pick the best match.\n"
+    "- For casual greetings, general F1 questions (rules, history, "
+    "concepts, terminology), and meta questions ('what tools do you "
+    "have?', 'who are you?') — answer in plain text WITHOUT calling a "
+    "tool.\n\n"
+    "RESPONSE RULES\n"
+    "- ALWAYS respond in the same language the user wrote in.\n"
+    "- Never fabricate tool outputs, telemetry numbers, lap times or "
+    "predictions.  If you do not know, say so.\n"
+    "- When summarising a tool result, lead with the strategic insight "
+    "in 2-4 sentences, then any caveats.  Keep responses under 200 words "
+    "unless the user asks for detail."
+)
+
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
+
+async def stream_response(
+    text: str,
+    request_id: str,
+    image: str | None = None,
+    chat_history: list[dict[str, Any]] | None = None,
+    context: dict[str, Any] | None = None,
+    model: str | None = None,
+    temperature: float = 0.3,
+    max_tokens: int = 800,
+) -> AsyncGenerator[tuple[str, dict[str, Any]], None]:
+    """Stream the chat response as a sequence of (event_name, payload) tuples.
+
+    The caller (FastAPI endpoint) is responsible for SSE-formatting each
+    yielded tuple — keeping the engine framework-agnostic so it can also
+    feed a future WebSocket / CLI consumer without changes.
+
+    Yielded events:
+        ("stage", {"stage": <name>})           — backend phase advanced
+        ("tool_result", {"tool_result": ...})  — structured tool output
+        ("token", {"token": <chunk>})          — LLM text chunk
+        ("done", {...})                         — final marker + metadata
+    """
+    set_stage(request_id, "preparing_tools")
+    yield ("stage", {"stage": "preparing_tools"})
+    tools = await _safe_list_tools()
+
+    set_stage(request_id, "model_choosing_tool")
+    yield ("stage", {"stage": "model_choosing_tool"})
+    base_messages = build_messages(
+        user_message=text,
+        image_base64=image,
+        system_prompt=_SYSTEM_PROMPT,
+        chat_history=chat_history,
+        context=context,
+    )
+    first_response = _safe_send(
+        base_messages,
+        model=model,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        tools=tools,
+    )
+    assistant_msg = _extract_message(first_response)
+    tool_call = _first_tool_call(assistant_msg)
+
+    if tool_call is None:
+        async for event in _stream_plain_response(assistant_msg, request_id, first_response):
+            yield event
+        return
+
+    async for event in _stream_tool_response(
+        tool_call=tool_call,
+        assistant_msg=assistant_msg,
+        request_id=request_id,
+        base_messages=base_messages,
+        model=model,
+        temperature=temperature,
+        max_tokens=max_tokens,
+    ):
+        yield event
+
+
+async def get_response(
+    text: str,
+    request_id: str,
+    image: str | None = None,
+    chat_history: list[dict[str, Any]] | None = None,
+    context: dict[str, Any] | None = None,
+    model: str | None = None,
+    temperature: float = 0.3,
+    max_tokens: int = 800,
+) -> dict[str, Any]:
+    """Non-streaming variant — returns the same response dict in one shot.
+
+    Useful for the JSON ``/chat/tool-message`` endpoint and any caller
+    that does not want to handle SSE.  Internally we drive the streaming
+    generator and accumulate the events so behaviour stays consistent.
+    """
+    accumulated_text = ""
+    tool_result_payload: dict[str, Any] | None = None
+    metadata: dict[str, Any] = {}
+    async for event_name, payload in stream_response(
+        text=text,
+        request_id=request_id,
+        image=image,
+        chat_history=chat_history,
+        context=context,
+        model=model,
+        temperature=temperature,
+        max_tokens=max_tokens,
+    ):
+        if event_name == "token":
+            accumulated_text += payload.get("token", "")
+        elif event_name == "tool_result":
+            tool_result_payload = payload.get("tool_result")
+        elif event_name == "done":
+            metadata = {k: v for k, v in payload.items() if k != "stage"}
+
+    return {
+        "response": accumulated_text,
+        "tool_result": tool_result_payload,
+        "llm_model": metadata.get("llm_model"),
+        "tokens_used": metadata.get("tokens_used"),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Internal helpers — streaming branches
+# ---------------------------------------------------------------------------
+
+async def _stream_plain_response(
+    assistant_msg: dict[str, Any],
+    request_id: str,
+    raw_response: dict[str, Any],
+) -> AsyncGenerator[tuple[str, dict[str, Any]], None]:
+    """Stream the LLM's plain text reply (no tool was called)."""
+    text = (assistant_msg.get("content") or "").strip()
+    if not text:
+        text = (
+            "_(No response from the language model. Try rephrasing the "
+            "question or check the backend logs.)_"
+        )
+
+    set_stage(request_id, "composing_response")
+    yield ("stage", {"stage": "composing_response"})
+    yield ("token", {"token": text})
+
+    yield ("done", _done_metadata(raw_response))
+
+
+async def _stream_tool_response(
+    tool_call: dict[str, Any],
+    assistant_msg: dict[str, Any],
+    request_id: str,
+    base_messages: list[dict[str, Any]],
+    model: str | None,
+    temperature: float,
+    max_tokens: int,
+) -> AsyncGenerator[tuple[str, dict[str, Any]], None]:
+    """Dispatch the model's tool_call, stream the tool_result + summary."""
+    tool_name = tool_call["function"]["name"]
+    tool_args = coerce_tool_arguments(tool_call["function"].get("arguments"))
+
+    set_stage(request_id, f"calling_{tool_name}")
+    yield ("stage", {"stage": f"calling_{tool_name}"})
+    tool_data, tool_error = await _safe_call_tool(tool_name, tool_args)
+
+    tool_result_payload = _build_tool_result_payload(tool_name, tool_data, tool_error)
+    if tool_result_payload is not None:
+        yield ("tool_result", {"tool_result": tool_result_payload})
+
+    set_stage(request_id, "summarizing_with_llm")
+    yield ("stage", {"stage": "summarizing_with_llm"})
+    summary_messages = _build_summary_messages(
+        base_messages=base_messages,
+        assistant_msg=assistant_msg,
+        tool_call=tool_call,
+        tool_data=tool_data,
+        tool_error=tool_error,
+    )
+    summary_response = _safe_send(
+        summary_messages,
+        model=model,
+        temperature=temperature,
+        max_tokens=max_tokens,
+    )
+    summary_text = _extract_text(summary_response) or _fallback_summary(tool_name, tool_error)
+
+    yield ("token", {"token": summary_text})
+
+    yield ("done", _done_metadata(summary_response))
+
+
+# ---------------------------------------------------------------------------
+# Internal helpers — small, single-purpose, no hidden side effects
+# ---------------------------------------------------------------------------
+
+async def _safe_list_tools() -> list[dict[str, Any]]:
+    """Fetch the FastMCP tool catalog, falling back to an empty list on error.
+
+    A failure here means the LLM cannot pick a tool but can still reply
+    in plain text — the chat must keep working even if MCP is misconfigured.
+    """
+    try:
+        return await list_openai_tools()
+    except Exception:
+        logger.exception("Failed to list MCP tools; the chat will reply text-only.")
+        return []
+
+
+async def _safe_call_tool(name: str, args: dict[str, Any]) -> tuple[Any, str | None]:
+    """Dispatch a tool through MCP, returning (data, error_message)."""
+    try:
+        data = await call_mcp_tool(name, args)
+        return data, None
+    except Exception as exc:
+        logger.exception("MCP tool %s failed", name)
+        return None, str(exc)
+
+
+def _safe_send(
+    messages: list[dict[str, Any]],
+    *,
+    model: str | None,
+    temperature: float,
+    max_tokens: int,
+    tools: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Wrap ``send_message`` so any provider hiccup yields an empty response.
+
+    Caller treats an empty response as "no tool call, no text" and degrades
+    to a fallback message rather than crashing the SSE stream.
+    """
+    try:
+        return send_message(
+            messages=messages,
+            model=model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            stream=False,
+            tools=tools or None,
+        )
+    except Exception:
+        logger.exception("LLM provider call failed")
+        return {}
+
+
+def _extract_message(response: dict[str, Any]) -> dict[str, Any]:
+    """Return ``choices[0].message`` or an empty dict if the shape is wrong."""
+    choices = response.get("choices") or []
+    if not choices:
+        return {}
+    message = choices[0].get("message") if isinstance(choices[0], dict) else None
+    return message if isinstance(message, dict) else {}
+
+
+def _extract_text(response: dict[str, Any]) -> str:
+    """Pull plain text out of an LLM response, or empty string."""
+    return (_extract_message(response).get("content") or "").strip()
+
+
+def _first_tool_call(message: dict[str, Any]) -> dict[str, Any] | None:
+    """Return the first OpenAI-style tool_call from an assistant message."""
+    tool_calls = message.get("tool_calls") or []
+    if not tool_calls:
+        return None
+    first = tool_calls[0]
+    return first if isinstance(first, dict) else None
+
+
+def _build_summary_messages(
+    base_messages: list[dict[str, Any]],
+    assistant_msg: dict[str, Any],
+    tool_call: dict[str, Any],
+    tool_data: Any,
+    tool_error: str | None,
+) -> list[dict[str, Any]]:
+    """Append the assistant tool_call + tool result so the next LLM call can summarise."""
+    payload_for_llm = {"error": tool_error} if tool_error else _trim_for_llm(tool_data)
+    tool_message = {
+        "role": "tool",
+        "tool_call_id": tool_call.get("id") or "tool_call",
+        "content": json.dumps(payload_for_llm, default=str, ensure_ascii=False)[:4000],
+    }
+    return base_messages + [assistant_msg, tool_message]
+
+
+def _trim_for_llm(data: Any) -> Any:
+    """Cap long arrays so the summary prompt stays within the token budget.
+
+    Mirrors the previous behaviour of ``StrategyHandler._trim_for_llm`` but
+    without restricting the trim to specific keys — anything that ends up
+    above the threshold gets truncated with a marker so the LLM knows.
+    """
+    if isinstance(data, dict):
+        return {key: _trim_for_llm(value) for key, value in data.items()}
+    if isinstance(data, list) and len(data) > 20:
+        return data[:20] + [f"...({len(data) - 20} more items truncated)"]
+    return data
+
+
+def _build_tool_result_payload(
+    name: str,
+    tool_data: Any,
+    tool_error: str | None,
+) -> dict[str, Any] | None:
+    """Wrap the tool output in the ToolResultData shape the frontend expects.
+
+    Frontends consume ``{tool_name, display_type, data, summary}`` to decide
+    which renderer to use (chart / metrics / strategy_card / table / text).
+    Errors get rendered as text so the user still sees what went wrong.
+    """
+    if tool_data is None and tool_error is None:
+        return None
+
+    display_type = _resolve_display_type(name, tool_error is not None)
+    return {
+        "tool_name": name,
+        "display_type": display_type.value,
+        "data": tool_data if tool_data is not None else {"error": tool_error},
+        "summary": tool_error or "",
+    }
+
+
+def _resolve_display_type(tool_name: str, has_error: bool) -> DisplayType:
+    """Pick the rendering style for *tool_name*, defaulting to text."""
+    if has_error:
+        return DisplayType.TEXT
+
+    candidates = (tool_name, _strip_prefix(tool_name))
+    for candidate in candidates:
+        try:
+            return TOOL_DISPLAY_MAP.get(ToolName(candidate), DisplayType.TEXT)
+        except ValueError:
+            continue
+    return DisplayType.TEXT
+
+
+def _strip_prefix(name: str) -> str:
+    """Drop FastMCP sub-server prefixes (e.g. ``telemetry__get_lap_times``)."""
+    for separator in ("__", "_"):
+        prefix, _, suffix = name.partition(separator)
+        if prefix and suffix and prefix in {"telemetry", "comparison", "circuit"}:
+            return suffix
+    return name
+
+
+def _fallback_summary(tool_name: str, tool_error: str | None) -> str:
+    """Produce a short stand-in when the LLM summary call returns nothing."""
+    if tool_error:
+        return (
+            f"_The {tool_name} tool failed: {tool_error}.  Try again or "
+            f"adjust the parameters._"
+        )
+    return (
+        f"_The {tool_name} tool ran successfully but the model summary "
+        f"came back empty.  The structured result is rendered above; "
+        f"you can ask a follow-up for context._"
+    )
+
+
+def _done_metadata(response: dict[str, Any]) -> dict[str, Any]:
+    """Extract llm_model + tokens_used for the SSE ``done`` event."""
+    if not isinstance(response, dict):
+        return {}
+    return {
+        "llm_model": response.get("model"),
+        "tokens_used": (response.get("usage") or {}).get("total_tokens"),
+    }
