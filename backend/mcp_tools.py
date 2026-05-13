@@ -153,16 +153,110 @@ def _normalize_gp_name(gp: str) -> str:
     return gp
 
 
+# 3-letter driver codes for the 2023-2025 grids — matches the Driver
+# column in the featured parquet, which is the only form the agents
+# expect.
+_DRIVER_CODES: set[str] = {
+    "VER", "PER", "LEC", "SAI", "HAM", "RUS", "ANT", "NOR", "PIA",
+    "ALO", "STR", "GAS", "OCO", "DOO", "COL", "ALB", "SAR", "TSU",
+    "RIC", "LAW", "HAD", "BOT", "ZHO", "HUL", "BOR", "MAG", "BEA",
+}
+
+# Surname (lowercase, no diacritics) → 3-letter code.  Lets an LLM that
+# defaults to natural names ("Verstappen", "Max Verstappen", "leclerc")
+# still hit the agents without us forcing it to memorise codes.
+_DRIVER_SURNAMES: dict[str, str] = {
+    "verstappen": "VER", "perez": "PER", "leclerc": "LEC", "sainz": "SAI",
+    "hamilton": "HAM", "russell": "RUS", "antonelli": "ANT", "norris": "NOR",
+    "piastri": "PIA", "alonso": "ALO", "stroll": "STR", "gasly": "GAS",
+    "ocon": "OCO", "doohan": "DOO", "colapinto": "COL", "albon": "ALB",
+    "sargeant": "SAR", "tsunoda": "TSU", "ricciardo": "RIC", "lawson": "LAW",
+    "hadjar": "HAD", "bottas": "BOT", "zhou": "ZHO", "hulkenberg": "HUL",
+    "bortoleto": "BOR", "magnussen": "MAG", "bearman": "BEA",
+}
+
+
+def _normalize_driver_code(driver: str) -> str:
+    """Map a free-form driver name to its canonical 3-letter code.
+
+    Accepts 3-letter codes ("VER", "ver"), surnames ("Verstappen",
+    "leclerc") and full names ("Max Verstappen") — the LLM doesn't have
+    to remember the F1 abbreviation system.  Falls back to the input as
+    given so the data layer still surfaces an honest "driver not found"
+    when the user truly typed something unrecognisable.
+    """
+    if not driver:
+        return driver
+    raw = str(driver).strip()
+    upper = raw.upper()
+    if upper in _DRIVER_CODES:
+        return upper
+    lower = raw.lower()
+    if lower in _DRIVER_SURNAMES:
+        return _DRIVER_SURNAMES[lower]
+    for token in lower.split():
+        if token in _DRIVER_SURNAMES:
+            return _DRIVER_SURNAMES[token]
+    if len(upper) >= 3 and upper[:3] in _DRIVER_CODES:
+        return upper[:3]
+    return raw
+
+
+def _normalize_year(year: Any) -> int:
+    """Coerce year to int, defaulting to 2025 when the value is unparseable.
+
+    The LLM occasionally emits ``"2024"`` (string) instead of ``2024``
+    even though the schema says integer; coercing here keeps the agents
+    from blowing up on the type mismatch.
+    """
+    try:
+        return int(year)
+    except (TypeError, ValueError):
+        return 2025
+
+
+def _normalize_lap(lap: Any) -> int:
+    """Coerce lap to int, defaulting to 1 on garbage input.
+
+    Range validation lives in the agents (they know how many laps a
+    particular GP has); we only protect against ``"25"`` arriving as a
+    string instead of an int.
+    """
+    try:
+        return int(lap)
+    except (TypeError, ValueError):
+        return 1
+
+
+def _normalize_risk_tolerance(risk: Any) -> float:
+    """Coerce risk tolerance to a float in [0.0, 1.0].
+
+    The orchestrator's scenario weighting reads this directly so a value
+    outside the unit interval would silently bias the recommendation.
+    """
+    try:
+        value = float(risk)
+    except (TypeError, ValueError):
+        return 0.5
+    return max(0.0, min(1.0, value))
+
+
 def _build_lap_state(gp: str, driver: str, lap: int, year: int = 2025) -> dict[str, Any]:
     """Build a canonical lap_state dict from the featured parquet.
 
     Delegates to the same logic used by GET /api/v1/strategy/lap-state
-    so every tool sees an identical structure.  The GP name is normalised
-    first so the LLM can pass either ``"Australia"`` or ``"Melbourne"``
-    (or the Spanish form) without the underlying lookup failing.
+    so every tool sees an identical structure.  All four parameters are
+    normalised here so every Phase 1 tool (predict_pace / predict_tire /
+    predict_situation / predict_pit / analyze_radio / recommend_strategy)
+    benefits without having to remember the conversion at the call site.
     """
     from backend.api.v1.endpoints.strategy import get_lap_state
-    return get_lap_state(gp=_normalize_gp_name(gp), driver=driver, lap=lap, year=year)
+    return get_lap_state(
+        gp=_normalize_gp_name(gp),
+        driver=_normalize_driver_code(driver),
+        lap=_normalize_lap(lap),
+        year=_normalize_year(year),
+    )
 
 
 def _get_laps_df(year: int = 2025):
@@ -299,6 +393,7 @@ def recommend_strategy(
     from backend.utils.race_state_builder import build_race_state
     from src.agents.strategy_orchestrator import run_strategy_orchestrator_from_state
 
+    year = _normalize_year(year)
     lap_state = _build_lap_state(gp, driver, lap, year)
     laps_df = _get_laps_df(year)
 
@@ -307,7 +402,7 @@ def recommend_strategy(
         lap_state,
         gap_ahead_s=lap_state.get("driver", {}).get("gap_ahead_s", 2.0),
         pace_delta_s=0.0,
-        risk_tolerance=risk_tolerance,
+        risk_tolerance=_normalize_risk_tolerance(risk_tolerance),
         radio_msgs=None,
         rcm_events=None,
     )
@@ -328,21 +423,29 @@ def recommend_strategy(
 def list_available_gps(year: int = 2025) -> str:
     """List all Grand Prix events available in the data for a given season."""
     from backend.api.v1.endpoints.strategy import available_gps
-    return _format_result(available_gps(year))
+    return _format_result(available_gps(_normalize_year(year)))
 
 
 @mcp.tool
 def list_available_drivers(gp: str, year: int = 2025) -> str:
     """List all drivers that participated in a specific Grand Prix."""
     from backend.api.v1.endpoints.strategy import available_drivers
-    return _format_result(available_drivers(_normalize_gp_name(gp), year))
+    return _format_result(
+        available_drivers(_normalize_gp_name(gp), _normalize_year(year))
+    )
 
 
 @mcp.tool
 def get_lap_range(gp: str, driver: str, year: int = 2025) -> str:
     """Get the min and max lap numbers available for a driver in a GP."""
     from backend.api.v1.endpoints.strategy import lap_range
-    return _format_result(lap_range(_normalize_gp_name(gp), driver, year))
+    return _format_result(
+        lap_range(
+            _normalize_gp_name(gp),
+            _normalize_driver_code(driver),
+            _normalize_year(year),
+        )
+    )
 
 
 # ---------------------------------------------------------------------------
