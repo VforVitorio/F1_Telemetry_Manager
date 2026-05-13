@@ -222,9 +222,9 @@ async def stream_chat_message(request: ChatRequest):
 # and dispatches the model's choice back through the MCP client.  No more
 # regex/keyword extractor, no more separate classifier — the model sees
 # the same schemas an external MCP client would and decides for itself.
-# The legacy ``tool_param_extractor`` and ``query_classifier`` modules are
-# kept for the moment so the historical /chat/query router endpoint and
-# any external callers do not break, but they are no longer used here.
+# The legacy ``tool_param_extractor``, ``query_classifier``, ``QueryRouter``
+# and per-handler files were retired in the same refactor along with the
+# ``/chat/query`` endpoint.
 
 
 @router.get("/status")
