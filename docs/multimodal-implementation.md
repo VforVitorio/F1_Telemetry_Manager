@@ -23,7 +23,7 @@ The system supports sending F1 telemetry charts directly to vision models (Qwen3
 
 ### 1. Chat History Compression
 
-**File:** `backend/services/chatbot/lmstudio_service.py`
+**File:** `backend/services/chatbot/llm_service.py`
 
 **Configuration:**
 ```python
@@ -39,7 +39,7 @@ DEFAULT_TIMEOUT = None  # Infinite timeout for vision models
 
 ### 2. Vision Model Timeout Configuration
 
-**File:** `backend/services/chatbot/lmstudio_service.py`
+**File:** `backend/services/chatbot/llm_service.py`
 
 **Settings:**
 ```python
@@ -76,7 +76,7 @@ fig.write_image(
 
 ### 4. Multimodal Message Format
 
-**File:** `backend/services/chatbot/lmstudio_service.py`
+**File:** `backend/services/chatbot/llm_service.py`
 
 **Function:** `build_messages()`
 
@@ -256,7 +256,7 @@ curl -X POST "http://localhost:8000/api/v1/chat/message" \
 ## 📝 Modified Files Summary
 
 ### Backend
-- `backend/services/chatbot/lmstudio_service.py`
+- `backend/services/chatbot/llm_service.py`
   - Added: `_compress_chat_history()` function
   - Added: `MAX_INTERACTIONS`, `DEFAULT_TIMEOUT` constants
   - Modified: `build_messages()` with compression logic

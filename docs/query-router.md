@@ -452,7 +452,7 @@ backend/services/chatbot/
 │   ├── __init__.py
 │   ├── query_classifier.py       # Clasificador LLM + fallback
 │   └── validators.py             # Validadores de requests
-└── lmstudio_service.py           # Servicio LM Studio existente
+└── llm_service.py           # Servicio LM Studio existente
 ```
 
 ### 2. Tipos de Consultas Soportados
@@ -574,7 +574,7 @@ Cada handler hereda de `BaseHandler` e implementa:
 ### ✅ Manejo de Errores
 
 - `ValidationError`: Errores de validación (400)
-- `LMStudioError`: Errores de conexión/LLM (503)
+- `LLMServiceError`: Errores de conexión/LLM (503)
 - `Exception`: Errores generales (500)
 - Responses informativos con detalles del error
 
@@ -687,9 +687,9 @@ if st.session_state.show_query_metadata:
 
 ### Próximos Pasos para Qwen3 VL 4B
 
-#### 1. Actualizar lmstudio_service.py
+#### 1. Actualizar llm_service.py
 
-**Archivo:** [backend/services/chatbot/lmstudio_service.py](../backend/services/chatbot/lmstudio_service.py:1)
+**Archivo:** [backend/services/chatbot/llm_service.py](../backend/services/chatbot/llm_service.py:1)
 
 Modificar función `build_messages()`:
 
