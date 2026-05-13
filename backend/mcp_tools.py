@@ -53,14 +53,116 @@ mcp = FastMCP(
 # Private helpers
 # ---------------------------------------------------------------------------
 
+# Country / alias → canonical GP name mapping (matches the GP_Name column
+# in the featured parquet, which uses circuit / city names).  An LLM with
+# only the schema "Grand Prix name" defaults to the country form
+# ("Australia", "Italy", "Bahrain"), so we normalise here before hitting
+# the data layer.  Keeping it as one map means every MCP tool — and any
+# external MCP client (Claude Desktop, Cursor) — gets the same handling.
+_GP_ALIASES: dict[str, str] = {
+    # Bahrain
+    "bahrain": "Sakhir", "sakhir": "Sakhir",
+    "bahrein": "Sakhir", "baréin": "Sakhir", "barein": "Sakhir",
+    # Saudi Arabia
+    "jeddah": "Jeddah", "saudi": "Jeddah",
+    "saudi arabia": "Jeddah", "arabia saudita": "Jeddah",
+    "arabia": "Jeddah", "yeda": "Jeddah",
+    # Australia
+    "australia": "Melbourne", "melbourne": "Melbourne",
+    # Japan
+    "japan": "Suzuka", "japón": "Suzuka", "japon": "Suzuka",
+    "suzuka": "Suzuka",
+    # China
+    "china": "Shanghai", "shanghai": "Shanghai",
+    # Miami
+    "miami": "Miami",
+    # Imola
+    "imola": "Imola", "emilia": "Imola", "emilia romagna": "Imola",
+    # Monaco
+    "monaco": "Monaco", "mónaco": "Monaco",
+    # Canada
+    "canada": "Montréal", "canadá": "Montréal",
+    "montreal": "Montréal", "montréal": "Montréal",
+    # Spain
+    "spain": "Barcelona", "españa": "Barcelona", "espana": "Barcelona",
+    "barcelona": "Barcelona", "cataluña": "Barcelona", "catalunya": "Barcelona",
+    # Austria
+    "austria": "Spielberg", "spielberg": "Spielberg",
+    "red bull ring": "Spielberg",
+    # Britain
+    "britain": "Silverstone", "great britain": "Silverstone",
+    "gran bretaña": "Silverstone", "gran bretana": "Silverstone",
+    "uk": "Silverstone", "reino unido": "Silverstone",
+    "silverstone": "Silverstone",
+    # Hungary
+    "hungary": "Budapest", "hungría": "Budapest", "hungria": "Budapest",
+    "budapest": "Budapest",
+    # Belgium
+    "belgium": "Spa-Francorchamps", "bélgica": "Spa-Francorchamps",
+    "belgica": "Spa-Francorchamps", "spa": "Spa-Francorchamps",
+    "spa-francorchamps": "Spa-Francorchamps", "francorchamps": "Spa-Francorchamps",
+    # Netherlands
+    "netherlands": "Zandvoort", "países bajos": "Zandvoort",
+    "paises bajos": "Zandvoort", "holanda": "Zandvoort",
+    "zandvoort": "Zandvoort",
+    # Italy
+    "italy": "Monza", "italia": "Monza", "monza": "Monza",
+    # Azerbaijan
+    "azerbaijan": "Baku", "azerbaiyán": "Baku", "azerbaiyan": "Baku",
+    "baku": "Baku", "bakú": "Baku",
+    # Singapore
+    "singapore": "Marina Bay", "singapur": "Marina Bay",
+    "marina bay": "Marina Bay",
+    # United States
+    "united states": "Austin", "austin": "Austin",
+    "cota": "Austin", "estados unidos": "Austin", "usa": "Austin",
+    "us gp": "Austin",
+    # Mexico
+    "mexico": "Mexico City", "méxico": "Mexico City",
+    "mexico city": "Mexico City", "ciudad de méxico": "Mexico City",
+    # Brazil
+    "brazil": "São Paulo", "brasil": "São Paulo",
+    "interlagos": "São Paulo",
+    "sao paulo": "São Paulo", "são paulo": "São Paulo",
+    # Las Vegas
+    "las vegas": "Las Vegas", "vegas": "Las Vegas",
+    # Qatar
+    "qatar": "Lusail", "lusail": "Lusail", "catar": "Lusail",
+    # Abu Dhabi
+    "abu dhabi": "Yas Island", "yas marina": "Yas Island",
+    "yas island": "Yas Island", "uae": "Yas Island",
+}
+
+
+def _normalize_gp_name(gp: str) -> str:
+    """Map a free-form GP name (country / alias) to its canonical city form.
+
+    Returns the input unchanged when no alias matches — the parquet still
+    uses the canonical names directly, so a perfect match passes through.
+    Longer aliases (``red bull ring``, ``marina bay``) are checked first
+    so they win over single-word fragments.
+    """
+    if not gp:
+        return gp
+    lower = gp.strip().lower()
+    if lower in _GP_ALIASES:
+        return _GP_ALIASES[lower]
+    for alias in sorted(_GP_ALIASES, key=len, reverse=True):
+        if alias in lower:
+            return _GP_ALIASES[alias]
+    return gp
+
+
 def _build_lap_state(gp: str, driver: str, lap: int, year: int = 2025) -> dict[str, Any]:
     """Build a canonical lap_state dict from the featured parquet.
 
     Delegates to the same logic used by GET /api/v1/strategy/lap-state
-    so every tool sees an identical structure.
+    so every tool sees an identical structure.  The GP name is normalised
+    first so the LLM can pass either ``"Australia"`` or ``"Melbourne"``
+    (or the Spanish form) without the underlying lookup failing.
     """
     from backend.api.v1.endpoints.strategy import get_lap_state
-    return get_lap_state(gp=gp, driver=driver, lap=lap, year=year)
+    return get_lap_state(gp=_normalize_gp_name(gp), driver=driver, lap=lap, year=year)
 
 
 def _get_laps_df(year: int = 2025):
@@ -233,14 +335,14 @@ def list_available_gps(year: int = 2025) -> str:
 def list_available_drivers(gp: str, year: int = 2025) -> str:
     """List all drivers that participated in a specific Grand Prix."""
     from backend.api.v1.endpoints.strategy import available_drivers
-    return _format_result(available_drivers(gp, year))
+    return _format_result(available_drivers(_normalize_gp_name(gp), year))
 
 
 @mcp.tool
 def get_lap_range(gp: str, driver: str, year: int = 2025) -> str:
     """Get the min and max lap numbers available for a driver in a GP."""
     from backend.api.v1.endpoints.strategy import lap_range
-    return _format_result(lap_range(gp, driver, year))
+    return _format_result(lap_range(_normalize_gp_name(gp), driver, year))
 
 
 # ---------------------------------------------------------------------------
