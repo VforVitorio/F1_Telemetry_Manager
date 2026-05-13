@@ -26,6 +26,7 @@ router = APIRouter(prefix="/comparison", tags=["comparison"])
 
 @router.get(
     "/compare",
+    operation_id="compare_drivers",
     summary="Compare two drivers' fastest-lap telemetry head-to-head",
     description=(
         "Use this tool whenever the user asks to compare two drivers, "

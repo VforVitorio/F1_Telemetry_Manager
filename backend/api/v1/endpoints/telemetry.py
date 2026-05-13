@@ -64,6 +64,7 @@ async def get_drivers(
 
 @router.get(
     "/lap-times",
+    operation_id="get_lap_times",
     summary="Lap-time series for one or more drivers (pace comparison chart)",
     description=(
         "Use this tool when the user wants a CHART of lap times across a "
@@ -95,6 +96,7 @@ async def get_laps(
 
 @router.get(
     "/lap-telemetry",
+    operation_id="get_telemetry",
     summary="Speed / throttle / brake trace for ONE driver on ONE lap",
     description=(
         "Use this tool when the user wants the telemetry of a SPECIFIC "
@@ -223,6 +225,7 @@ _RACE_DATA_COLS = [
 
 @router.get(
     "/race-data",
+    operation_id="get_race_data",
     summary="Full race overview — positions and lap times for a Grand Prix",
     description=(
         "Use this tool when the user wants a HIGH-LEVEL view of a race "
