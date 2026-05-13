@@ -62,12 +62,28 @@ async def get_drivers(
     return {"drivers": driver_list}
 
 
-@router.get("/lap-times")
+@router.get(
+    "/lap-times",
+    summary="Lap-time series for one or more drivers (pace comparison chart)",
+    description=(
+        "Use this tool when the user wants a CHART of lap times across a "
+        "stint or race — pace evolution, who was faster lap-by-lap, "
+        "tyre-life effects on lap time.  Accepts one driver (single "
+        "trace) or several comma-separated codes (overlay).  Returns the "
+        "full lap-time list per driver; the frontend renders a Plotly "
+        "line chart inline.  Prefer this over predict_pace for "
+        "historical pace comparison; use predict_pace only when the user "
+        "asks to FORECAST a future race lap."
+    ),
+)
 async def get_laps(
-    year: int = Query(..., description="Year of the season"),
-    gp: str = Query(..., description="Grand Prix name"),
-    session: str = Query(..., description="Session type (FP1, FP2, FP3, SQ, Q, S, R)"),
-    drivers: str = Query(..., description="Comma-separated driver codes")
+    year: int = Query(..., description="Season year (2023, 2024 or 2025)."),
+    gp: str = Query(..., description="Grand Prix name (city/circuit form preferred, country names also accepted)."),
+    session: str = Query(
+        ...,
+        description="Session code: R (race), Q (qualifying), S (sprint), SQ (sprint qualifying), FP1 / FP2 / FP3.  Default to R unless the user explicitly mentions another session.",
+    ),
+    drivers: str = Query(..., description="Comma-separated 3-letter driver codes, e.g. 'VER,HAM,LEC'.  Pass a single code for a single-driver trace."),
 ):
     """
     Get lap times for specified drivers in a session.
@@ -77,13 +93,28 @@ async def get_laps(
     return {"lap_times": lap_times}
 
 
-@router.get("/lap-telemetry")
+@router.get(
+    "/lap-telemetry",
+    summary="Speed / throttle / brake trace for ONE driver on ONE lap",
+    description=(
+        "Use this tool when the user wants the telemetry of a SPECIFIC "
+        "lap for a single driver — speed graph, throttle / brake / RPM "
+        "trace, gear shifts, DRS activations.  Requires a concrete lap "
+        "number (1-80).  Lap 1 typically has no data (formation lap) — "
+        "do not default to 1; either pick a sensible mid-race lap or "
+        "ask the user.  For comparing telemetry of two drivers use "
+        "compare_drivers instead."
+    ),
+)
 async def get_lap_telemetry_endpoint(
-    year: int = Query(..., description="Year of the season"),
-    gp: str = Query(..., description="Grand Prix name"),
-    session: str = Query(..., description="Session type (FP1, FP2, FP3, SQ, Q, S, R)"),
-    driver: str = Query(..., description="Driver code"),
-    lap_number: int = Query(..., description="Lap number")
+    year: int = Query(..., description="Season year (2023, 2024 or 2025)."),
+    gp: str = Query(..., description="Grand Prix name (city/circuit form preferred)."),
+    session: str = Query(
+        ...,
+        description="Session code: R, Q, S, SQ, FP1, FP2, FP3.  Default R for race telemetry.",
+    ),
+    driver: str = Query(..., description="Driver — 3-letter code (VER, HAM, LEC, NOR, PIA, …)."),
+    lap_number: int = Query(..., description="Lap number, integer between 2 and the race length.  Avoid lap 1 — usually no telemetry."),
 ):
     """
     Get telemetry data for a specific lap.
@@ -190,11 +221,23 @@ _RACE_DATA_COLS = [
 ]
 
 
-@router.get("/race-data")
+@router.get(
+    "/race-data",
+    summary="Full race overview — positions and lap times for a Grand Prix",
+    description=(
+        "Use this tool when the user wants a HIGH-LEVEL view of a race "
+        "(position evolution lap-by-lap, multi-driver pace overview, "
+        "stint-by-stint chart) rather than a single driver's telemetry "
+        "or a head-to-head comparison.  Reads the pre-built featured "
+        "parquet so it's fast and covers the whole field by default; "
+        "pass driver codes to restrict.  Frontend renders position + "
+        "lap-time subplots."
+    ),
+)
 def get_race_data(
-    year: int = Query(2025, description="Season year"),
-    gp: str = Query(..., description="GP name as it appears in the parquet"),
-    driver: Optional[str] = Query(None, description="Comma-separated driver codes (optional)"),
+    year: int = Query(2025, description="Season year (2023, 2024 or 2025)."),
+    gp: str = Query(..., description="Grand Prix name (city/circuit form preferred, country names also accepted)."),
+    driver: Optional[str] = Query(None, description="Optional comma-separated 3-letter driver codes (e.g. 'VER,LEC').  Omit to get the whole field."),
 ):
     """Return the full featured DataFrame for a GP, ready for chart rendering."""
     df = get_laps_df(year)

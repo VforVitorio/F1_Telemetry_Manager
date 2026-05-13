@@ -24,16 +24,31 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/comparison", tags=["comparison"])
 
 
-@router.get("/compare")
+@router.get(
+    "/compare",
+    summary="Compare two drivers' fastest-lap telemetry head-to-head",
+    description=(
+        "Use this tool whenever the user asks to compare two drivers, "
+        "their fastest laps, qualifying laps, race pace head-to-head, "
+        "speed traces, throttle, brake or microsector dominance.  Returns "
+        "synchronised telemetry overlay plus a delta-time series the "
+        "frontend renders as an inline chart.  Picks the fastest lap of "
+        "each driver in the requested session automatically — the caller "
+        "does NOT need to know specific lap numbers.  Prefer this over "
+        "predict_pace whenever the user asks for telemetry comparison "
+        "(predict_pace is for race lap-time forecasting, not historical "
+        "qualifying telemetry)."
+    ),
+)
 async def compare_drivers(
-    year: int = Query(..., description="Season year"),
-    gp: str = Query(..., description="Grand Prix name"),
-    session: str = Query(...,
-                         description="Session type (FP1, FP2, FP3, SQ, Q, S, R)"),
-    driver1: str = Query(...,
-                         description="First driver abbreviation (e.g., VER)"),
-    driver2: str = Query(...,
-                         description="Second driver abbreviation (e.g., HAM)")
+    year: int = Query(..., description="Season year (2023, 2024 or 2025)."),
+    gp: str = Query(..., description="Grand Prix name (city/circuit form, e.g. 'Monaco', 'Monza', 'Spa-Francorchamps').  Country names like 'Italy' or 'Belgium' also accepted."),
+    session: str = Query(
+        ...,
+        description="Session code: FP1 / FP2 / FP3 (free practice), SQ (sprint qualifying), Q (qualifying), S (sprint race), R (race).  Use 'Q' for qualifying-lap comparisons, 'R' for race fastest-lap comparisons.",
+    ),
+    driver1: str = Query(..., description="First driver — 3-letter code (VER, HAM, LEC, NOR, PIA, ALO, …)."),
+    driver2: str = Query(..., description="Second driver — 3-letter code (VER, HAM, LEC, NOR, PIA, ALO, …)."),
 ) -> Dict:
     """
     Compare telemetry between two drivers using their fastest laps.
