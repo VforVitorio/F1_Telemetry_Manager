@@ -4,13 +4,13 @@ Chatbot Services Package
 Contains services for chatbot functionality including LM Studio integration.
 """
 
-from .lmstudio_service import (
+from .llm_service import (
     check_health,
     get_available_models,
     send_message,
     stream_message,
     build_messages,
-    LMStudioError
+    LLMServiceError
 )
 
 __all__ = [
@@ -19,5 +19,5 @@ __all__ = [
     "send_message",
     "stream_message",
     "build_messages",
-    "LMStudioError"
+    "LLMServiceError"
 ]
