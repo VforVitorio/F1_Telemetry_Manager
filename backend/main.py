@@ -42,8 +42,14 @@ app.mount("/mcp", mcp_app)
 
 @app.on_event("startup")
 def _startup_mount_openapi():
-    """Mount Phase 2 telemetry tools from OpenAPI spec after server starts."""
-    _mount_openapi_tools()
+    """Mount Phase 2 telemetry tools from the FastAPI OpenAPI spec.
+
+    Passing the live ``app`` lets _mount_openapi_tools read the spec
+    directly (``app.openapi()``) instead of self-fetching ``/openapi.json``
+    over HTTP — avoiding the 30 s startup race where the server's own
+    HTTP loop is still waking up and the request times out.
+    """
+    _mount_openapi_tools(app)
 
 
 @app.get("/")

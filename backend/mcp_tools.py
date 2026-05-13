@@ -468,30 +468,36 @@ def get_lap_range(gp: str, driver: str, year: int = 2025) -> str:
 
 import httpx as _httpx
 
-def _mount_openapi_tools() -> None:
+def _mount_openapi_tools(app: Any | None = None) -> None:
     """Mount auto-generated MCP tools from the FastAPI OpenAPI spec.
 
-    Called lazily on first request to avoid circular imports at module
-    load.  Fetches ``/openapi.json`` from the running backend and converts
-    the telemetry / comparison endpoints into MCP tools so the chat can
-    dispatch them through the same protocol as the Phase 1 strategy
-    tools.
+    Called from main.py at startup with the live ``FastAPI`` instance, and
+    again lazily from the MCP bridge on every request as a safety net.
+    The first call wins; subsequent calls are no-ops thanks to
+    ``_openapi_mounted``.
+
+    Spec source preference:
+    1. ``app.openapi()`` when a FastAPI app reference is passed in — the
+       direct in-process call is instant and never hits the network.
+    2. ``GET /openapi.json`` over HTTP otherwise.  Useful only when this
+       function is invoked from a context that does not have the app
+       reference (e.g. the lazy mcp_bridge fallback during the first
+       chat request before the startup hook has run).
 
     Resilience:
-    - Generous timeout (30 s) so the bootstrap survives a slow uvicorn
-      reload — the previous 5 s default raced the server's own readiness
-      and silently dropped every Phase 2 tool.
+    - On HTTP fallback, a 30 s timeout protects against a slow self-fetch
+      while the server is still warming up.  The previous 5 s default
+      raced the FastAPI startup and silently dropped every Phase 2 tool.
     - The ``_openapi_mounted`` latch is set ONLY on a successful mount.
-      If the fetch errors or the conversion blows up, the next request
-      retries the mount instead of locking the chat into a degraded
-      Phase-1-only mode for the rest of the process's lifetime.
+      If anything errors, the next call retries instead of locking the
+      chat into a degraded Phase-1-only mode for the process lifetime.
     """
     global _openapi_mounted
     if _openapi_mounted:
         return
 
     try:
-        spec = _fetch_openapi_spec()
+        spec = _read_openapi_spec(app)
         if spec is None:
             return
 
@@ -512,8 +518,18 @@ def _mount_openapi_tools() -> None:
         # so a transient bootstrap race does not strand the Phase 2 tools.
 
 
-def _fetch_openapi_spec() -> dict[str, Any] | None:
-    """Pull the running backend's OpenAPI document, returning ``None`` on failure."""
+def _read_openapi_spec(app: Any | None) -> dict[str, Any] | None:
+    """Return the OpenAPI dict either from the FastAPI app or via HTTP."""
+    if app is not None:
+        try:
+            return app.openapi()
+        except Exception as exc:
+            logger.warning("app.openapi() failed (%s); falling back to HTTP", exc)
+    return _fetch_openapi_spec_http()
+
+
+def _fetch_openapi_spec_http() -> dict[str, Any] | None:
+    """Pull the OpenAPI document over HTTP — fallback path only."""
     resp = _httpx.get("http://localhost:8000/openapi.json", timeout=30.0)
     if resp.status_code != 200:
         logger.warning("Could not fetch OpenAPI spec: HTTP %s", resp.status_code)
