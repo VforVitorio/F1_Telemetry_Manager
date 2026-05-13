@@ -194,6 +194,10 @@ def _render_table(data: Dict[str, Any], tool_name: str) -> None:
 
 def _render_text(data: Dict[str, Any], tool_name: str) -> None:
     """Render plain text / JSON fallback."""
+    if _looks_like_error(data):
+        _render_error_card(data, tool_name)
+        return
+
     answer = data.get("answer", "")
     if answer:
         st.markdown(answer)
@@ -213,7 +217,58 @@ def _render_text(data: Dict[str, Any], tool_name: str) -> None:
         st.markdown("**Drivers:** " + ", ".join(drivers))
         return
 
+    if "min_lap" in data and "max_lap" in data:
+        _render_lap_range(data)
+        return
+
     st.json(data)
+
+
+def _render_lap_range(data: Dict[str, Any]) -> None:
+    """Friendly renderer for ``get_lap_range`` outputs.
+
+    Without this, the user sees the raw ``{"min_lap": 2, "max_lap": 78}``
+    dict via ``st.json``, which felt like a regression versus the legacy
+    chat that produced full sentences.  Now we surface the lap window in
+    a one-liner the user can read at a glance.
+    """
+    lo = data.get("min_lap")
+    hi = data.get("max_lap")
+    total = data.get("total_laps")
+    parts = [f"**Lap window:** {lo} → {hi}"]
+    if total:
+        parts.append(f"**Total laps:** {total}")
+    st.markdown("  ·  ".join(parts))
+
+
+def _looks_like_error(data: Dict[str, Any]) -> bool:
+    """Return True when *data* is the error envelope built by the chat engine.
+
+    Keeps error display out of the generic JSON dump so the user gets a
+    proper "tool failed because X" card instead of staring at a raw dict.
+    """
+    return isinstance(data, dict) and "error" in data and len(data) <= 2
+
+
+def _render_error_card(data: Dict[str, Any], tool_name: str) -> None:
+    """Show a styled error card for failed tool calls.
+
+    The chat engine catches MCP exceptions (timeouts, 404s, validation
+    failures) and packs them as ``{"error": "..."}``.  We surface the
+    message clearly so the LLM summary that follows can suggest a fix
+    in plain language without the user having to parse JSON.
+    """
+    message = str(data.get("error", "Tool failed without details."))
+    pretty_tool = tool_name.replace("_", " ").title() if tool_name else "Tool"
+    st.markdown(
+        f'<div style="border-left:3px solid #ef4444; '
+        f'background:#1f1320; padding:10px 14px; border-radius:4px; '
+        f'margin:6px 0; color:#fecaca; font-size:0.85rem;">'
+        f'<strong>{pretty_tool} failed.</strong><br>'
+        f'<span style="color:#fca5a5;">{message}</span>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
 
 
 # ---------------------------------------------------------------------------
