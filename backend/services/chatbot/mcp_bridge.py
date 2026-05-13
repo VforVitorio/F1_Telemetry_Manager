@@ -102,9 +102,11 @@ async def call_mcp_tool(name: str, arguments: dict[str, Any]) -> Any:
     """Dispatch a tool call by name through the MCP client and return the data.
 
     The MCP client returns a structured ``CallToolResult`` whose ``data``
-    attribute holds the tool's return value (a dict for our tools, since
-    they all serialise to JSON).  Errors from the tool are re-raised so
-    the caller can decide whether to surface them to the user or retry.
+    attribute holds the tool's return value.  Our Phase 1 tools serialise
+    their output via ``json.dumps`` so ``data`` arrives as a JSON string
+    rather than a Python dict — we parse it here so downstream renderers
+    (chat tool_result component) can do the dict access they expect.
+    Errors from the tool propagate up untouched.
     """
     from fastmcp import Client
     from backend.mcp_tools import mcp, _mount_openapi_tools  # noqa: F401
@@ -117,10 +119,32 @@ async def call_mcp_tool(name: str, arguments: dict[str, Any]) -> Any:
     async with Client(mcp) as client:
         result = await client.call_tool(name, arguments or {})
 
-    # ``CallToolResult.data`` is the parsed return value when the tool's
-    # return type is JSON-able; ``CallToolResult.content`` is the raw
-    # MCP content blocks.  Most chat consumers want ``data``.
-    return getattr(result, "data", None) or getattr(result, "content", None)
+    raw = getattr(result, "data", None)
+    if raw is None:
+        raw = getattr(result, "content", None)
+    return _coerce_tool_payload(raw)
+
+
+def _coerce_tool_payload(raw: Any) -> Any:
+    """Parse a JSON-encoded string into its dict/list, leave everything else alone.
+
+    Phase 1 tools (``predict_pace``, ``predict_tire``, ...) wrap their
+    output in ``json.dumps`` because MCP defines them as returning ``str``.
+    The chat's tool_result renderer expects a dict, so the JSON has to
+    be re-parsed before reaching the frontend.  Phase 2 telemetry tools
+    return dicts directly (auto-mounted from OpenAPI) and pass through
+    unchanged.  A genuine plain-string return (rare) also passes through.
+    """
+    if not isinstance(raw, str):
+        return raw
+    stripped = raw.strip()
+    if not stripped or stripped[0] not in "{[":
+        return raw
+    try:
+        return json.loads(stripped)
+    except json.JSONDecodeError:
+        logger.warning("MCP tool returned a string that looked like JSON but failed to parse")
+        return raw
 
 
 async def _fetch_tools() -> list[Any]:
