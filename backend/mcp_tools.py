@@ -537,18 +537,52 @@ def _fetch_openapi_spec_http() -> dict[str, Any] | None:
     return resp.json()
 
 
+# operationId → MCP tool name.  Each chat-facing endpoint sets an
+# explicit ``operation_id`` so the OpenAPI spec carries a clean,
+# predictable identifier; we list them here so the LLM sees exactly the
+# tool names referenced in the system prompt cheat sheet.  Endpoints
+# without an entry here are dropped at the spec-filter step below.
+_PHASE2_TOOL_NAMES: dict[str, str] = {
+    "compare_drivers": "compare_drivers",
+    "get_lap_times": "get_lap_times",
+    "get_telemetry": "get_telemetry",
+    "get_race_data": "get_race_data",
+}
+
+
 def _filter_phase2_paths(spec: dict[str, Any]) -> dict[str, Any]:
-    """Keep only the telemetry / comparison / circuit paths the chat exposes."""
-    prefixes = ("/telemetry/", "/comparison/", "/circuit-domination/")
-    return {
-        path: methods
-        for path, methods in (spec.get("paths") or {}).items()
-        if any(prefix in path for prefix in prefixes)
-    }
+    """Keep only the four chat-facing Phase 2 endpoints.
+
+    Filtering by ``operationId`` instead of URL prefix lets us drop the
+    listing endpoints (``/telemetry/gps``, ``/telemetry/drivers``, …)
+    that already have cleaner Phase 1 equivalents (``list_available_gps``,
+    ``list_available_drivers``).  Anything not present in
+    ``_PHASE2_TOOL_NAMES`` is excluded.
+    """
+    kept: dict[str, Any] = {}
+    for path, methods in (spec.get("paths") or {}).items():
+        for method, operation in (methods or {}).items():
+            if not isinstance(operation, dict):
+                continue
+            if operation.get("operationId") in _PHASE2_TOOL_NAMES:
+                kept.setdefault(path, {})[method] = operation
+    return kept
 
 
 def _register_openapi_tools(filtered_spec: dict[str, Any]) -> None:
-    """Build and mount the Phase 2 sub-server from a filtered OpenAPI spec.
+    """Build and mount the Phase 2 sub-server with clean tool names.
+
+    Three FastMCP gotchas handled here:
+    - ``mount(server, namespace=...)`` is the correct call order; the
+      previous (positional-string-first) form silently failed because
+      FastMCP treated the prefix string as the server argument.
+    - ``namespace=None`` keeps the tool names as-is so they match the
+      strings used in the system prompt cheat sheet (no ``telemetry_``
+      prefix the LLM has to learn about).
+    - ``mcp_names`` maps the auto-generated FastAPI operationIds to the
+      short names we exposed; even though we already set explicit
+      ``operation_id`` on each endpoint, passing the map is belt-and-
+      braces in case FastAPI ever changes its derivation rule.
 
     The httpx client's 300 s timeout matches what the legacy
     ``StrategyHandler._execute_telemetry_tool`` used for the same
@@ -557,8 +591,13 @@ def _register_openapi_tools(filtered_spec: dict[str, Any]) -> None:
     telemetry tool against an unseen GP/year.
     """
     client = _httpx.AsyncClient(base_url="http://localhost:8000", timeout=300.0)
-    sub = FastMCP.from_openapi(openapi_spec=filtered_spec, client=client, name="telemetry")
-    mcp.mount("telemetry", sub)
+    sub = FastMCP.from_openapi(
+        openapi_spec=filtered_spec,
+        client=client,
+        name="telemetry",
+        mcp_names=_PHASE2_TOOL_NAMES,
+    )
+    mcp.mount(sub, namespace=None)
 
 
 _openapi_mounted = False
