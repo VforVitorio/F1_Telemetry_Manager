@@ -500,7 +500,13 @@ def _mount_openapi_tools() -> None:
 
         filtered_spec = {**spec, "paths": filtered_paths}
 
-        client = _httpx.AsyncClient(base_url="http://localhost:8000")
+        # 300s matches the timeout the legacy strategy_handler used for the
+        # same endpoints — the telemetry / comparison endpoints fan out to
+        # FastF1, and a cold cache for an unseen GP/year can easily take
+        # ~2 minutes (download laps, telemetry parquet, weather...).  The
+        # httpx default of 5s caused chat tool calls to time out instantly
+        # before FastF1 had any chance to respond.
+        client = _httpx.AsyncClient(base_url="http://localhost:8000", timeout=300.0)
         sub = FastMCP.from_openapi(
             openapi_spec=filtered_spec,
             client=client,
