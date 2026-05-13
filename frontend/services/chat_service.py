@@ -5,8 +5,10 @@ Handles communication with the backend chat API and LM Studio.
 Provides functions for streaming messages, checking health, and managing models.
 """
 
+import json as _json
+from typing import Optional, Dict, List, Any, AsyncIterator, Iterator, Tuple
+
 import httpx
-from typing import Optional, Dict, List, Any, AsyncIterator
 import streamlit as st
 import base64
 import imghdr
@@ -250,6 +252,130 @@ def send_tool_message(
         return {"response": f"Backend error: {response.status_code}", "tool_result": None}
     except Exception as e:
         return {"response": f"Error: {e}", "tool_result": None}
+
+
+def get_chat_status(request_id: str) -> str:
+    """Poll the backend for the current backend stage of a streaming request.
+
+    Used by the chat-page spinner thread so the loader label can mirror
+    real backend progress (extracting → calling tool → summarising) instead
+    of rotating through fake placeholders.  Returns an empty string when
+    the backend has no record of the id (no update yet, request finished).
+    """
+    try:
+        response = httpx.get(
+            f"{CHAT_API_BASE}/status",
+            params={"request_id": request_id},
+            timeout=2.0,
+        )
+        if response.status_code == 200:
+            return response.json().get("stage", "") or ""
+    except Exception:
+        return ""
+    return ""
+
+
+def _build_tool_payload(
+    text: str,
+    image: Optional[Any],
+    chat_history: Optional[List[Dict[str, Any]]],
+    context: Optional[Dict[str, Any]],
+    model: str,
+    temperature: float,
+) -> Dict[str, Any]:
+    """Shared body builder for the tool-message endpoints (sync + streaming).
+
+    Encapsulates the image-normalisation branching so callers don't repeat
+    the data-uri logic, and so we can keep send_tool_message and the new
+    streaming variant in lock-step on the request shape.
+    """
+    image_data_uri = None
+    if image:
+        if isinstance(image, bytes):
+            image_data_uri = format_image_for_vision_model(image)
+        elif isinstance(image, str) and not image.startswith("data:image"):
+            image_data_uri = f"data:image/jpeg;base64,{image}"
+        else:
+            image_data_uri = image
+    return {
+        "text": text,
+        "image": image_data_uri,
+        "chat_history": chat_history or [],
+        "context": context or {},
+        "model": model,
+        "temperature": temperature,
+        "max_tokens": 1000,
+    }
+
+
+def stream_tool_message(
+    text: str,
+    request_id: str,
+    image: Optional[Any] = None,
+    chat_history: Optional[List[Dict[str, Any]]] = None,
+    context: Optional[Dict[str, Any]] = None,
+    model: str = "llama3.2-vision",
+    temperature: float = 0.1,
+) -> Iterator[Tuple[str, Dict[str, Any]]]:
+    """Stream the tool-aware chat response as (event_type, payload) tuples.
+
+    Yields events in this order: ``stage`` (one or more), optionally
+    ``tool_result`` (when a tool ran), ``token`` (one chunk per slice of
+    the LLM summary so the bubble fills in live), and finally ``done``
+    with any post-summary metadata.  The frontend appends ``token``
+    payloads into the assistant bubble for a Claude/ChatGPT typing feel
+    while ``stage`` events let the spinner narrate the slower phases.
+    """
+    payload = _build_tool_payload(text, image, chat_history, context, model, temperature)
+    headers = {"X-Request-Id": request_id, "Accept": "text/event-stream"}
+    try:
+        with httpx.stream(
+            "POST",
+            f"{CHAT_API_BASE}/tool-message-stream",
+            json=payload,
+            headers=headers,
+            timeout=300,
+        ) as response:
+            if response.status_code != 200:
+                yield ("token", {"token": f"Backend error: {response.status_code}"})
+                yield ("done", {})
+                return
+            yield from _iter_sse_events(response)
+    except Exception as exc:  # pragma: no cover — surface network errors to chat
+        yield ("token", {"token": f"Error: {exc}"})
+        yield ("done", {})
+
+
+def _iter_sse_events(response: httpx.Response) -> Iterator[Tuple[str, Dict[str, Any]]]:
+    """Parse a Server-Sent Events response into (event, payload) tuples.
+
+    SSE frames are separated by blank lines and use ``event: <name>`` plus
+    ``data: <json>`` lines.  We only need event + json data here so we
+    keep the parser intentionally small instead of pulling in an SSE lib.
+    """
+    event_name = "message"
+    data_lines: List[str] = []
+    for raw_line in response.iter_lines():
+        line = raw_line.rstrip("\r")
+        if not line:
+            if data_lines:
+                payload = _safe_json("\n".join(data_lines))
+                yield (event_name, payload)
+            event_name = "message"
+            data_lines = []
+            continue
+        if line.startswith("event:"):
+            event_name = line[len("event:"):].strip()
+        elif line.startswith("data:"):
+            data_lines.append(line[len("data:"):].strip())
+
+
+def _safe_json(text: str) -> Dict[str, Any]:
+    """Parse JSON without raising — empty dict on failure keeps the loop alive."""
+    try:
+        return _json.loads(text) if text else {}
+    except _json.JSONDecodeError:
+        return {}
 
 
 def generate_report(
