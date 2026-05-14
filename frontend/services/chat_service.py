@@ -381,45 +381,46 @@ def _safe_json(text: str) -> Dict[str, Any]:
 def generate_report(
     chat_history: List[Dict[str, Any]],
     context: Optional[Dict[str, Any]] = None,
-    model: str = "llama3.2-vision",
+    model: Optional[str] = None,
 ) -> Optional[str]:
     """
-    Generate a report from chat history using the Query Router.
+    Generate a Markdown report summarising the chat history.
+
+    Hits the same MCP-driven ``/chat/tool-message`` endpoint the rest of
+    the chat uses.  The LLM sees the conversation as ``chat_history`` and
+    the explicit "summary report" instruction in ``text``; it will
+    typically respond in plain text without dispatching a tool.
 
     Args:
-        chat_history: Chat messages to summarize
-        context: F1 session context
-        model: Model name to use
+        chat_history: Chat messages to summarize.
+        context: Optional F1 session context (year / GP / driver).
+        model: Optional model override; ``None`` uses the configured default.
 
     Returns:
-        Report content in Markdown format, or None if error
+        Report content in Markdown format, or ``None`` if the request fails.
     """
-    if not chat_history or len(chat_history) == 0:
+    if not chat_history:
         st.warning("No chat history to generate report from.")
         return None
 
     try:
         response = httpx.post(
-            f"{CHAT_API_BASE}/query",  # Using the query router endpoint
+            f"{CHAT_API_BASE}/tool-message",
             json={
-                "text": "Generate a comprehensive summary report of our conversation",
+                "text": "Generate a comprehensive Markdown summary report of our conversation, with sections for the questions asked, the data analysed, and the strategic conclusions reached.",
                 "chat_history": chat_history,
                 "context": context or {},
                 "model": model,
-                "temperature": 0.5,  # Lower temperature for consistent reports
-                "max_tokens": 4000  # Balanced for speed and completeness
+                "temperature": 0.4,
+                "max_tokens": 4000,
             },
-            timeout=None
+            timeout=300,
         )
 
         if response.status_code == 200:
-            data = response.json()
-            return data.get("response", "")
-        else:
-            error_msg = f"Backend returned status {response.status_code}"
-            st.error(error_msg)
-            return None
-
+            return response.json().get("response", "")
+        st.error(f"Backend returned status {response.status_code}")
+        return None
     except Exception as e:
         st.error(f"Error generating report: {e}")
         return None
