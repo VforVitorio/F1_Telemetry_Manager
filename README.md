@@ -1,382 +1,108 @@
-# 🏎️ F1 Telemetry Manager
-
 <div align="center">
 
-**AI-powered Formula 1 telemetry analysis platform with multimodal interaction**
+# F1 Telemetry Manager
 
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
-[![Python](https://img.shields.io/badge/Python-3.10+-green.svg)](https://www.python.org/)
-[![Streamlit](https://img.shields.io/badge/Streamlit-1.31+-red.svg)](https://streamlit.io/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.109+-teal.svg)](https://fastapi.tiangolo.com/)
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/VforVitorio/F1_Telemetry_Manager)
+### *FastAPI backend and Streamlit post-race UI for F1 StratLab.*
 
-[Features](#-features) •
-[Architecture](#%EF%B8%8F-architecture) •
-[Documentation](#-documentation) •
-[Getting Started](#-getting-started) •
-[Roadmap](#%EF%B8%8F-roadmap)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE) [![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/) [![FastAPI](https://img.shields.io/badge/FastAPI-0.109-teal)](https://fastapi.tiangolo.com/) [![Streamlit](https://img.shields.io/badge/Streamlit-1.37%2B-red)](https://streamlit.io/) [![FastMCP](https://img.shields.io/badge/FastMCP-3.x-purple)](https://github.com/jlowin/fastmcp) [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/VforVitorio/F1_Telemetry_Manager)
+
+[Parent project: F1 StratLab](https://github.com/VforVitorio/F1-StratLab) · [Architecture](docs/telemetry-architecture.md) · [Backend API reference](../../docs/backend-api.md) · [Changelog](docs/CHANGELOG.md)
 
 </div>
 
 ---
 
-## 📋 Overview
+## What it is
 
-F1 Telemetry Manager analyzes Formula 1 telemetry data through an interface combining Streamlit for visualization and FastAPI for data processing. The platform provides real-time charts, AI-powered analysis via LM Studio, and data export capabilities for motorsport analysis.
+F1 Telemetry Manager is the post-race surface of [F1 StratLab](https://github.com/VforVitorio/F1-StratLab): a FastAPI backend that wraps the strategy agents (N25–N31) and the telemetry / comparison / circuit-domination services, and a Streamlit frontend that consumes them. It is vendored into F1 StratLab as a git submodule at [`src/telemetry/`](.) and shares the parent's data root, ML weights, and `.env`.
 
-### Core Capabilities
+The repo can also be cloned standalone if you only want the analytics dashboard, but the chat and strategy endpoints assume the F1 StratLab models live alongside.
 
-- **Telemetry Visualization**: Speed, throttle, brake, RPM, gear, DRS, and G-force charts with lap-by-lap analysis
-- **AI Assistant**: Chat interface powered by LM Studio for contextual F1 telemetry questions
-- **Intelligent Query Routing**: Automatic classification of queries into 5 specialized handlers (basic, technical, comparison, report, download)
-- **Voice Interaction**: Speech-to-text (Whisper) and text-to-speech (pyttsx3) for hands-free queries
-- **Performance Comparison**: Side-by-side driver analysis with delta time calculations
-- **Circuit Analysis**: Microsector-level performance visualization showing dominant driver per track segment
-- **Data Export**: CSV/JSON download with filtering and preview
-- **Report Generation**: Markdown format conversation summaries with context metadata
+## Two surfaces
 
----
+| Surface | Entry point | What it does |
+| --- | --- | --- |
+| **FastAPI backend** | `uvicorn backend.main:app --port 8000` | REST endpoints for telemetry, comparison, circuit domination, strategy, chat and voice. Mounts a FastMCP server at `/mcp` exposing the strategy agents as tools. |
+| **Streamlit frontend** | `streamlit run frontend/app/main.py` | Post-race dashboard: telemetry charts, driver comparison, microsector analysis, chat with tool-calling, voice mode, downloads and reports. |
 
-## ✨ Features
+The chat pipeline runs in-process against the strategy agents through a tool-calling loop (OpenAI tool contract); the same tools are exposed externally over MCP, so Claude Desktop, Cursor or any MCP client can drive the agents directly.
 
-### Telemetry Analysis
+## How to run
 
-- **8 Visualization Types**: Speed, lap times, throttle, brake pressure, RPM, gear shifts, DRS usage, and delta time
-- **DRS Visualization**: Dedicated graphs showing DRS activation zones with speed overlay
-- **Circuit Domination**: Color-coded track segments indicating which driver led each microsector
-- **Interactive Charts**: Plotly-based visualizations with zoom, pan, and data point inspection
-- **Session Support**: Practice (FP1/FP2/FP3), Qualifying, Sprint, and Race sessions from 2018-present
-- **Lap Selection Interface**: Improved UI for selecting specific laps or fastest laps
-- **Tyre Compound Legends**: Visual indicators showing tire types used in each stint
-
-### AI Assistant (Caronte)
-
-- **Smart History Compression**: Automatic conversation summarization after 5 interactions (LLM-powered)
-- **Multimodal Vision**: Send telemetry charts directly to vision models (Qwen3-VL-4B-Instruct)
-- **Auto-send from Dashboard**: Click 🤖 on any chart to analyze it in chat automatically
-- **Infinite Timeout**: Vision models process without time limits for complex image analysis
-- **Automatic Retry**: Falls back to text-only if vision model fails
-- **Context Awareness**: Automatically includes session metadata (year, GP, drivers) in prompts
-- **Query Routing**: Specialized handlers for basic questions, technical analysis, comparisons, reports, and downloads
-- **Streaming Responses**: Real-time response generation for better UX
-- **Chat Management**: Multiple conversation threads with persistent storage
-- **Optimized Image Format**: Charts converted to 768×480 JPEG at 85% quality for best performance
-
-### Voice Chat
-
-- **Whisper Medium Model**: Enhanced speech recognition (upgraded from small model)
-- **Speech-to-Text**: OpenAI Whisper for accurate audio transcription
-- **Text-to-Speech**: pyttsx3 for offline audio synthesis
-- **Full Voice Flow**: Single-endpoint STT → LLM → TTS pipeline
-- **Voice Orb Visualization**: Audio-reactive orb with Iridescence shader for real-time feedback
-- **Voice Chat Reports**: Export voice conversation transcripts with timestamps
-- **Voice Models**: Configurable system voices (Windows SAPI, macOS NSSpeechSynthesizer, Linux eSpeak)
-- **Audio Formats**: Supports WAV, MP3, WebM, OGG, M4A input
-
-### Driver Comparison
-
-- **2-Driver Analysis**: Fastest lap comparison with synchronized telemetry data
-- **Delta Visualization**: Time gap between drivers at each track point
-- **Microsector Analysis**: Sector-by-sector performance breakdown
-- **Synchronized Data**: Interpolated telemetry aligned to common distance points
-- **Time Format Improvements**: Better readability for lap times and delta calculations
-
-### Data Export & Reports
-
-- **CSV Format**: Raw telemetry data with column headers
-- **JSON Format**: Structured data for API integration
-- **Report Storage**: Session-based report management with timestamps
-- **Exported Reports Section**: View and manage previously saved conversation reports
-- **Context Metadata**: Exports include GP, year, session, and driver information
-
----
-
-## 🏗️ Architecture
-
-The system uses a layered architecture with feature-based organization:
-
-```
-┌─────────────────────────────────────────┐
-│         USER BROWSER                    │
-└──────────────┬──────────────────────────┘
-               │
-               ↓
-┌─────────────────────────────────────────┐
-│   STREAMLIT FRONTEND                    │
-│   (Presentation Layer)                  │
-└──────────────┬──────────────────────────┘
-               │ HTTP Requests
-               ↓
-┌─────────────────────────────────────────┐
-│   FASTAPI BACKEND                       │
-│   (API + Service + Repository Layers)  │
-└──────────────────┬──────────────────────┘
-                   │
-                   ↓
-            ┌────────────────────┐
-            │  EXTERNAL APIs     │
-            │  • FastF1          │
-            │  • LM Studio       │
-            └────────────────────┘
-```
-
-### Tech Stack
-
-**Frontend:**
-- Streamlit 1.31+ (UI framework)
-- Plotly 5.18+ (interactive charts)
-- Pandas, NumPy (data processing)
-- httpx (HTTP client)
-- audio-recorder-streamlit (voice input)
-
-**Backend:**
-- FastAPI 0.109+ (REST API)
-- Pydantic 2.5+ (data validation)
-- FastF1 3.4.0 (F1 telemetry source)
-
-**AI/ML:**
-- LM Studio (local LLM via OpenAI-compatible API)
-- OpenAI Whisper 20231117 (speech-to-text, medium model)
-- pyttsx3 (text-to-speech, offline)
-
----
-
-## 📚 Documentation
-
-### Core Documents
-
-| Document            | Description                                       | Link                                             |
-| ------------------- | ------------------------------------------------- | ------------------------------------------------ |
-| **Architecture**    | System design, patterns, and technical decisions  | [📐 ARCHITECTURE.md](docs/ARCHITECTURE.md)       |
-| **Roadmap**         | Product roadmap, timeline, and feature plan       | [🗺️ ROADMAP.md](docs/ROADMAP.md)                 |
-| **Changelog**       | Version history and notable changes               | [📝 CHANGELOG.md](docs/CHANGELOG.md)             |
-| **Issue Templates** | Bug reports, feature requests, and task templates | [🐛 ISSUE_TEMPLATES.md](docs/ISSUE_TEMPLATES.md) |
-| **Query Router**    | Intelligent query routing system guide            | [🎯 QUERY_ROUTER_GUIDE.md](docs/QUERY_ROUTER_GUIDE.md) |
-| **Voice Chat**      | Voice interaction implementation details          | [🎤 VOICE_CHAT_IMPLEMENTATION_PLAN.md](docs/archived/VOICE_CHAT_IMPLEMENTATION_PLAN.md) |
-
-### Implementation Plans
-
-- **Circuit Analysis**: [CIRCUIT_ANALYSIS_IMPLEMENTATION_PLAN.md](docs/archived/CIRCUIT_ANALYSIS_IMPLEMENTATION_PLAN.md)
-- **Circuit Comparison**: [CIRCUIT_COMPARISON_IMPLEMENTATION_PLAN.md](docs/archived/CIRCUIT_COMPARISON_IMPLEMENTATION_PLAN.md)
-- **Chat System**: [CHAT_IMPLEMENTATION_PLAN.md](docs/archived/CHAT_IMPLEMENTATION_PLAN.md)
-- **Multimodal Support**: [MULTIMODAL_IMPLEMENTATION.md](docs/MULTIMODAL_IMPLEMENTATION.md)
-- **Query Routing**: [QUERY_ROUTING_IMPLEMENTATION.md](docs/QUERY_ROUTING_IMPLEMENTATION.md)
-
-### Diagrams
-
-<div align="center">
-
-**System Flow Diagram**
-
-<img src="docs/img/app_diagram.png" alt="F1 Telemetry Manager Flow Diagram" width="800"/>
-
-_Complete user flow showing authentication, dashboard navigation, telemetry analysis, AI interaction, and admin capabilities_
-
-</div>
-
----
-
-## 🚀 Getting Started
-
-### Prerequisites
-
-- Docker & Docker Compose
-- LM Studio (running on `http://localhost:1234` with a loaded model)
-- Python 3.10+ (for manual installation)
-
-### Quick Start with Docker
+From the F1 StratLab repo root (recommended):
 
 ```bash
-# Clone the repository
-git clone https://github.com/VforVitorio/F1_Telemetry_Manager.git
-cd F1_Telemetry_Manager
-
-# Set up environment variables
-cp .env.example .env
-# Edit .env with your configuration:
-# BACKEND_URL
-
-# Start all services
-docker-compose up -d
-
-# View logs
-docker-compose logs -f
-
-# Stop services
-docker-compose down
+docker compose up
+# or
+f1-streamlit
 ```
 
-**Access points:**
+`f1-streamlit` is the convenience entry point installed by F1 StratLab; both routes bring the backend up on `:8000` and the frontend on `:8501`.
 
-- Frontend: http://localhost:8501
-- Backend API: http://localhost:8000
-- API Documentation: http://localhost:8000/docs
-
-### Manual Installation
+Standalone (from this directory):
 
 ```bash
-# Install frontend dependencies
-cd frontend
-pip install -r requirements.txt
-
-# Install backend dependencies
-cd ../backend
-pip install -r requirements.txt
-
-# Set up environment variables
-cp .env.example .env
-# Edit .env with your credentials
+docker compose up
 ```
 
-**Running manually:**
+The compose file mounts `../../src` and `../../data` from the parent repo (read-only), and reads `../../.env` for the LLM provider. To run without F1 StratLab, point those volumes at your own data and set `OPENAI_API_KEY` (or `F1_LLM_PROVIDER=lmstudio` with LM Studio on `host.docker.internal:1234`).
 
-Terminal 1 - Backend:
-```bash
-uvicorn backend.main:app --reload --port 8000
-```
-
-Terminal 2 - Frontend:
-```bash
-streamlit run frontend/app/main.py
-```
-
-Terminal 3 - LM Studio:
-```bash
-# Start LM Studio on http://localhost:1234
-# Load a model (e.g., llama3.2-vision or qwen2-vl)
-# Enable local server in LM Studio settings
-```
-
----
-
-### Configuration
-
-#### Environment Variables
-
-Required variables in `.env`:
+Manual install for development:
 
 ```bash
-# Backend API
-BACKEND_URL=http://localhost:8000
+uv sync
+uvicorn backend.main:app --reload --port 8000          # terminal 1
+streamlit run frontend/app/main.py --server.port 8501  # terminal 2
 ```
 
-#### Voice Configuration
+Requires Python 3.11+. The voice pipeline pulls Whisper (`openai-whisper`) and `edge-tts`; first run downloads the Whisper medium weights.
 
-Edit `backend/core/voice_config.py` to configure voice services:
+## What the backend exposes
 
-```python
-WHISPER_MODEL = "medium"  # Options: tiny, base, small, medium, large
-WHISPER_LANGUAGE = "en"   # or None for auto-detect
-TTS_RATE = 175            # Speech rate (words per minute)
-TTS_VOLUME = 0.9          # Volume (0.0 to 1.0)
-```
+All endpoints sit under `/api/v1`. The full reference lives at [`docs/backend-api.md`](../../docs/backend-api.md) in the parent repo; the short version:
 
----
+- **`/telemetry`** — GPs, sessions, drivers, lap times, per-lap telemetry, aggregated data (FastF1).
+- **`/comparison/compare`** — two-driver fastest-lap comparison with synchronised delta.
+- **`/circuit-domination`** — microsector-level dominant-driver map.
+- **`/strategy`** — pace, tire degradation, situation, pit timing, radio NLP, FIA RAG and the orchestrated `recommend` endpoint that ties them together. Also drives the simulator (`/strategy/simulate`).
+- **`/chat`** — message, stream, tool-message and tool-message-stream. The tool-message endpoints implement the OpenAI tool-calling loop against the strategy MCP tools; `/stream` is the plain chat passthrough.
+- **`/voice`** — STT (Whisper), TTS (edge-tts) and the full STT → LLM → TTS pipeline.
+- **`/mcp`** — FastMCP Streamable-HTTP transport. External MCP clients connect here to call the strategy tools directly.
 
-## 🧠 Intelligent Query Routing
+## Project layout
 
-The system automatically classifies user queries and routes them to specialized handlers:
+- [`backend/`](backend/) — FastAPI app
+  - [`api/v1/endpoints/`](backend/api/v1/endpoints/) — `telemetry`, `comparison`, `circuit_domination`, `strategy`, `chat`, `voice`
+  - [`services/`](backend/services/) — chatbot (chat engine, MCP bridge, stage tracker, LLM service), telemetry, simulation, voice
+  - [`mcp_tools.py`](backend/mcp_tools.py) — FastMCP server wrapping the N25–N31 agents
+- [`frontend/`](frontend/) — Streamlit app
+  - [`app/main.py`](frontend/app/main.py) — landing + dashboard
+  - [`pages/`](frontend/pages/) — Advanced, Compare, Downloads, Reports, Admin
+  - [`components/`](frontend/components/) — chatbot, telemetry and shared widgets
+- [`docs/`](docs/) — architecture, changelog, multimodal and MCP notes, import guide
+- [`tests/`](tests/) — pytest coverage for chat engine, MCP bridge, comparison and telemetry services
 
-### Query Types
+## Tech stack
 
-1. **BASIC_QUERY**: Simple F1 concepts (e.g., "What is DRS?")
-2. **TECHNICAL_QUERY**: Advanced telemetry analysis (e.g., "Show throttle data for lap 15")
-3. **COMPARISON_QUERY**: Multi-driver comparisons (e.g., "Compare Hamilton vs Verstappen")
-4. **REPORT_REQUEST**: Conversation summarization (e.g., "Generate a report")
-5. **DOWNLOAD_REQUEST**: Data export (e.g., "Download as CSV")
+Backend: FastAPI 0.109, Pydantic 2.5, FastF1 3.4, FastMCP 3.x.
+Frontend: Streamlit 1.37+, Plotly 5.18, streamlit-shadcn-ui, hydralit-components, kaleido.
+AI / voice: OpenAI-compatible LLM (LM Studio local server or OpenAI API), openai-whisper (medium), edge-tts, pydub, soundfile.
 
-### How It Works
+## Related
 
-- **LLM-Based Classification**: Uses LM Studio with low temperature (0.1) for consistent routing
-- **Rule-Based Fallback**: Keyword matching when LM Studio is unavailable
-- **Context Injection**: Automatically includes session metadata in technical/comparison queries
-- **Handler Specialization**: Each handler has a tailored system prompt for optimal responses
+This repo is one piece of F1 StratLab:
 
-See [QUERY_ROUTER_GUIDE.md](docs/QUERY_ROUTER_GUIDE.md) for detailed examples.
+- [F1 StratLab](https://github.com/VforVitorio/F1-StratLab) — strategy engine, agents, CLI and Arcade live UI
+- F1 Telemetry Manager *(this repo)* — backend and post-race Streamlit, vendored as a submodule
+- [F1 AI Team Detection](https://github.com/VforVitorio/F1_AI_team_detection) — YOLOv12 team identification from race footage
+- [F1 Strategy Dataset](https://huggingface.co/datasets/VforVitorio/f1-strategy-dataset) — trained weights and processed race data
 
----
+## About
 
-## 📊 API Endpoints
+Originally built as a coursework project (Santiago Souto Ortega and Víctor Vega Sobral, fourth year, *Grado en Ingeniería de Sistemas Inteligentes*) and later refactored into the post-race surface of F1 StratLab. Pull requests and issues are welcome at [VforVitorio/F1_Telemetry_Manager](https://github.com/VforVitorio/F1_Telemetry_Manager).
 
-### Telemetry (`/api/v1/telemetry`)
-- `GET /gps` - Available GPs for year
-- `GET /sessions` - Sessions for GP
-- `GET /drivers` - Drivers in session
-- `GET /lap-times` - Lap times for drivers
-- `GET /lap-telemetry` - Telemetry for lap
-- `GET /data` - Aggregated telemetry
-
-### Circuit (`/api/v1/circuit-domination`)
-- `GET /` - Microsector performance data
-
-### Comparison (`/api/v1/comparison`)
-- `GET /compare` - Compare two drivers' fastest laps
-
-### Chat (`/api/v1/chat`)
-- `POST /message` - Send message (non-streaming)
-- `POST /stream` - Stream message response
-- `POST /query` - Process query with intelligent routing
-- `GET /health` - Check LM Studio health
-- `GET /models` - Get available models
-
-### Voice (`/api/v1/voice`)
-- `POST /transcribe` - Speech-to-text
-- `POST /synthesize` - Text-to-speech
-- `POST /voice-chat` - Full voice interaction (STT → LLM → TTS)
-- `GET /health` - Voice services health
-- `GET /voices` - Available TTS voices
+Licensed under the Apache License 2.0 — see [`LICENSE`](LICENSE).
 
 ---
 
-## 🤝 Contributing
-
-Contributions are welcome. Please read our contribution guidelines and submit pull requests for improvements.
-
-### Reporting Issues
-
-Use our [Issue Templates](docs/ISSUE_TEMPLATES.md) for:
-- 🐛 Bug reports
-- ✨ Feature requests
-- 📊 Data issues
-- 🚀 Tasks/TODOs
-
----
-
-## 📄 License
-
-This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
-
-```
-Copyright 2025 F1 Telemetry Manager Contributors
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-```
-
----
-
-## 🙏 Acknowledgments
-
-- [FastF1](https://github.com/theOehrly/Fast-F1) for F1 telemetry data access
-- [Streamlit](https://streamlit.io/) for the frontend framework
-- [FastAPI](https://fastapi.tiangolo.com/) for the backend API framework
-- [LM Studio](https://lmstudio.ai/) for local LLM inference
-
----
-
-<div align="center">
-
-[Report Bug](https://github.com/VforVitorio/F1_Telemetry_Manager/issues) •
-[Request Feature](https://github.com/VforVitorio/F1_Telemetry_Manager/issues) •
-[Documentation](docs/)
-
-</div>
+> **Disclaimer — no copyright infringement intended.** Formula 1, F1 and related marks are trademarks of Formula One Licensing B.V. and are used here for reference only. Race data is sourced from public APIs (FastF1) and used strictly for educational and non-commercial purposes. This project is not affiliated with, endorsed by, or in any way officially connected to Formula 1, the FIA, or any F1 team.
