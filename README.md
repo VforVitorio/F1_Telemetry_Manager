@@ -88,6 +88,10 @@ Backend: FastAPI 0.109, Pydantic 2.5, FastF1 3.4, FastMCP 3.x.
 Frontend: Streamlit 1.37+, Plotly 5.18, streamlit-shadcn-ui, hydralit-components, kaleido.
 AI / voice: OpenAI-compatible LLM (LM Studio local server or OpenAI API), openai-whisper (medium), edge-tts, pydub, soundfile.
 
+## Future direction — frontend migration (planned, priority #1)
+
+The **backend stays FastAPI**, no question. The **Streamlit frontend is slated to be replaced by a modern web stack** — candidates: **React · Vite · Three.js · GSAP** (one or several together). The goal is to keep the current structure, menus and flows almost identical, but escape Streamlit's design constraints and gain speed/fluidity. This is marked as the **first future change** of this repository. Framework choice and migration plan are deferred — see the tracking issue.
+
 ## Related
 
 This repo is one piece of F1 StratLab:
