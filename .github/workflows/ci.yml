@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:
+    branches: ["main", "feat/**", "fix/**", "docs/**", "chore/**", "ci/**"]
+  pull_request:
+    branches: ["main"]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: lint (python)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Ruff
+        run: pip install ruff
+      # Critical checks only (syntax errors + undefined names). Keeps CI green on the
+      # existing codebase while catching real breakage; broadened once the SPA lands (see #25).
+      - name: Ruff critical checks
+        run: ruff check --output-format=github --select=E9,F63,F7,F82 .
