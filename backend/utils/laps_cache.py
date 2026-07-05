@@ -1,19 +1,13 @@
 """Cached loader for the featured laps parquet (multi-year)."""
 
 import logging
-from pathlib import Path
 from typing import Dict, Optional
 
 import pandas as pd
 
-logger = logging.getLogger(__name__)
+from backend.core.paths import get_data_root
 
-_REPO_ROOT = Path(__file__).resolve().parent
-while not (_REPO_ROOT / ".git").exists() and _REPO_ROOT != _REPO_ROOT.parent:
-    _REPO_ROOT = _REPO_ROOT.parent
-# Docker fallback: no .git found → assume /app is the mount point
-if not (_REPO_ROOT / ".git").exists():
-    _REPO_ROOT = Path("/app")
+logger = logging.getLogger(__name__)
 
 _cache: Dict[int, pd.DataFrame] = {}
 
@@ -22,7 +16,7 @@ def get_laps_df(year: int = 2025) -> Optional[pd.DataFrame]:
     """Load the featured parquet for *year* and cache it in memory."""
     if year in _cache:
         return _cache[year]
-    path = _REPO_ROOT / "data" / "processed" / f"laps_featured_{year}.parquet"
+    path = get_data_root() / "processed" / f"laps_featured_{year}.parquet"
     if not path.exists():
         logger.warning("Featured parquet not found: %s", path)
         return None

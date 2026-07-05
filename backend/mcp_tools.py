@@ -25,12 +25,9 @@ from fastmcp import FastMCP
 # ---------------------------------------------------------------------------
 # Repo-root injection (same pattern as strategy.py)
 # ---------------------------------------------------------------------------
-_HERE = Path(__file__).resolve()
-_REPO = _HERE.parent
-while not (_REPO / ".git").exists() and _REPO != _REPO.parent:
-    _REPO = _REPO.parent
-if not (_REPO / ".git").exists():
-    _REPO = Path("/app")
+from backend.core.paths import get_repo_root
+
+_REPO = get_repo_root()
 if str(_REPO) not in sys.path:
     sys.path.insert(0, str(_REPO))
 
