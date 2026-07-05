@@ -24,12 +24,9 @@ from pydantic import BaseModel, Field
 # ---------------------------------------------------------------------------
 # Repo-root injection — `src/agents/` must be importable from here
 # ---------------------------------------------------------------------------
-_HERE = Path(__file__).resolve()
-_REPO_ROOT = _HERE.parent
-while not (_REPO_ROOT / ".git").exists() and _REPO_ROOT != _REPO_ROOT.parent:
-    _REPO_ROOT = _REPO_ROOT.parent
-if not (_REPO_ROOT / ".git").exists():
-    _REPO_ROOT = Path("/app")
+from backend.core.paths import get_data_root, get_repo_root
+
+_REPO_ROOT = get_repo_root()
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
@@ -728,12 +725,12 @@ except ImportError:
 
 def _radio_corpus_root() -> Path:
     """Base path for the processed radio corpus."""
-    return _REPO_ROOT / "data" / "processed" / "race_radios"
+    return get_data_root() / "processed" / "race_radios"
 
 
 def _transcript_cache_root() -> Path:
     """Base path for cached Whisper transcripts."""
-    return _REPO_ROOT / "data" / "processed" / "radio_nlp"
+    return get_data_root() / "processed" / "radio_nlp"
 
 
 def _driver_number_to_code(year: int = 2025) -> dict:

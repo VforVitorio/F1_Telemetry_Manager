@@ -35,12 +35,9 @@ from pydantic import BaseModel, ConfigDict, Field
 # module is loaded standalone (smoke tests, MCP tools) without the FastAPI
 # startup path having injected ``_REPO_ROOT`` first.
 # ---------------------------------------------------------------------------
-_HERE = Path(__file__).resolve()
-_REPO_ROOT = _HERE.parent
-while not (_REPO_ROOT / ".git").exists() and _REPO_ROOT != _REPO_ROOT.parent:
-    _REPO_ROOT = _REPO_ROOT.parent
-if not (_REPO_ROOT / ".git").exists():
-    _REPO_ROOT = Path("/app")
+from backend.core.paths import get_data_root, get_repo_root
+
+_REPO_ROOT = get_repo_root()
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
@@ -197,17 +194,11 @@ def _set_provider_env(provider: str) -> None:
 def _data_root() -> Path:
     """Return the data root used by the CLI and every backend component.
 
-    Prefers :func:`f1_strat_manager.data_cache.get_data_root` (robust to the
-    ``src/telemetry`` git submodule that trips up generic ``.git`` walkers)
-    and falls back to the repo-relative layout for bare-bones environments
-    where the helper is not importable.
+    Routes through the shared resolver (``backend.core.paths.get_data_root``),
+    which honours ``$F1_STRAT_DATA_ROOT`` and walks for a ``.git`` *directory*
+    so the ``src/telemetry`` submodule gitlink no longer misresolves it (#27).
     """
-    try:
-        from src.f1_strat_manager.data_cache import get_data_root
-
-        return get_data_root()
-    except ImportError:
-        return _REPO_ROOT / "data"
+    return get_data_root()
 
 
 _laps_df_cache: dict[int, pd.DataFrame] = {}
@@ -216,9 +207,8 @@ _laps_df_cache: dict[int, pd.DataFrame] = {}
 def _load_laps_df(year: int) -> pd.DataFrame:
     """Load (and memoise) the featured laps parquet for ``year``.
 
-    Kept local to this module instead of reusing ``backend.utils.laps_cache``
-    because the shared helper's repo-root walker stops at the submodule
-    ``.git`` file inside ``src/telemetry`` and resolves to the wrong tree.
+    Kept as a small module-local cache (with raise-on-missing semantics the
+    simulator relies on) rather than importing ``backend.utils.laps_cache``.
     """
     if year in _laps_df_cache:
         return _laps_df_cache[year]
