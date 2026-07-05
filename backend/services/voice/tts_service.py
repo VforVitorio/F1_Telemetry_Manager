@@ -26,17 +26,28 @@ if str(backend_dir) not in sys.path:
 logger = logging.getLogger(__name__)
 
 
+# Neutral pace, in words per minute. TTSRequest.rate is expressed in wpm and
+# defaults to this value; keep the two in sync (this is the "+0%" point).
+_BASELINE_WPM = 175
+
+
 def _format_rate(rate: Optional[int]) -> str:
-    """Convert the legacy integer ``rate`` argument into the SSML-style string
-    Edge-TTS expects. Callers used to pass values like ``-10`` or ``+20`` to
-    mean "10 percent slower" or "20 percent faster"; Edge-TTS speaks that
-    shape directly once we prepend the sign. ``None`` maps to ``+0%`` so the
-    voice speaks at its natural pace.
+    """Convert the request's words-per-minute ``rate`` into the +/-N% string
+    Edge-TTS expects.
+
+    Edge-TTS has no absolute wpm control — it takes a percentage relative to the
+    voice's natural pace. ``TTSRequest.rate`` is in wpm, so we map it around a
+    neutral baseline of 175 wpm: 175 → +0% (natural), 350 → +100% (twice as
+    fast), 88 → -50%. ``None`` also maps to +0%.
+
+    Before this fix the wpm value was emitted verbatim as a percentage, so the
+    default 175 synthesized at +175% speed (#52).
     """
     if rate is None:
         return "+0%"
-    sign = "+" if rate >= 0 else ""
-    return f"{sign}{rate}%"
+    pct = round((rate - _BASELINE_WPM) / _BASELINE_WPM * 100)
+    sign = "+" if pct >= 0 else ""
+    return f"{sign}{pct}%"
 
 
 def _format_volume(volume: Optional[float]) -> str:
