@@ -1,0 +1,21 @@
+event: stage
+data: {"stage": "preparing_tools"}
+
+event: stage
+data: {"stage": "model_choosing_tool"}
+
+event: stage
+data: {"stage": "calling_predict_pace"}
+
+event: tool_result
+data: {"tool_result": {"tool_name": "predict_pace", "display_type": "metrics", "data": {"driver": "VER", "lap_time_pred": 91.2, "delta_vs_median": -0.31}, "summary": ""}}
+
+event: stage
+data: {"stage": "summarizing_with_llm"}
+
+event: token
+data: {"token": "VER is projected around 91.2s next lap, ~0.31s under the median."}
+
+event: done
+data: {"llm_model": "fake-model", "tokens_used": 11}
+

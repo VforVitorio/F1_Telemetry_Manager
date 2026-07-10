@@ -37,7 +37,12 @@ OPENAI_DEFAULT_MODEL = os.getenv("OPENAI_CHAT_MODEL", "gpt-5.4-mini")
 _is_openai = LLM_PROVIDER.lower() == "openai"
 COMPLETIONS_URL = OPENAI_URL if _is_openai else LM_STUDIO_URL
 MODELS_URL = OPENAI_MODELS_URL if _is_openai else LM_STUDIO_MODELS_URL
-DEFAULT_TIMEOUT = 60 if _is_openai else None  # OpenAI has reasonable latency; LM Studio can be slow
+# Every provider call gets a FINITE timeout so a hung backend (a stuck local
+# model, a dead socket) errors instead of freezing the server forever
+# (Security S-5 / LLM-cost L-1). LM Studio gets a more generous default because
+# a large local model on modest hardware is legitimately slow; both are
+# overridable via F1_LLM_TIMEOUT (seconds).
+DEFAULT_TIMEOUT = float(os.getenv("F1_LLM_TIMEOUT", "60" if _is_openai else "120"))
 
 
 def _headers() -> dict:

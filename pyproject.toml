@@ -25,8 +25,7 @@ dependencies = [
     "numpy==1.26.4",
     "pandas==2.2.0",
 
-    # Voice Chat
-    "openai-whisper==20231117",
+    # Voice Chat (STT uses transformers, not openai-whisper — see #28)
     "edge-tts==7.2.3",
     "nest-asyncio==1.6.0",
     "pydub==0.25.1",
@@ -38,6 +37,9 @@ dependencies = [
     "requests==2.31.0",
     "plotly==5.18.0",
     "httpx==0.26.0",
+
+    # MCP (Model Context Protocol) server — kept in sync with requirements.txt (#29)
+    "fastmcp==3.2.0",
     "streamlit>=1.37.0",
     "streamlit-shadcn-ui>=0.1.0",
     "streamlit-lottie>=0.0.5",
