@@ -1,0 +1,15 @@
+event: stage
+data: {"stage": "preparing_tools"}
+
+event: stage
+data: {"stage": "model_choosing_tool"}
+
+event: stage
+data: {"stage": "composing_response"}
+
+event: token
+data: {"token": "Hola, soy tu asistente de estrategia. ¿Qué piloto quieres analizar?"}
+
+event: done
+data: {"llm_model": "fake-model", "tokens_used": 11}
+

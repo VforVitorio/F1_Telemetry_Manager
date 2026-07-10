@@ -34,12 +34,20 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      # deps-lite: the 45 hermetic tests import only backend.models and
-      # backend.services.chatbot, whose module-level imports are stdlib +
-      # requests + pydantic (fastmcp is imported lazily, inside functions).
-      # Installing from pyproject.toml / requirements.txt would pull the heavy
-      # ML stack and the broken openai-whisper pin (#28) — deliberately avoided.
+      # deps-lite: the hermetic tests import only backend.models,
+      # backend.services.chatbot and the per-router endpoint modules, whose
+      # module-level imports are stdlib + requests + pydantic + fastapi
+      # (fastmcp is imported lazily, inside functions). fastapi + httpx back the
+      # FastAPI TestClient the contract/integration suite uses; httpx is
+      # starlette's test transport. Installing from pyproject.toml /
+      # requirements.txt would pull the heavy ML stack and the broken
+      # openai-whisper pin (#28) — deliberately avoided.
+      #
+      # The FakeOpenAI stub binds 127.0.0.1:1234; on the runner that port is
+      # free so the integration tests run. Locally, a dev's live LM Studio on
+      # :1234 makes them skip (never fail) — the documented MVP (Testing T-3,
+      # AUDIT_TESTING_QA §11); an env-configurable port is a separate enabler.
       - name: Install test deps
-        run: pip install pytest pytest-asyncio requests pydantic
+        run: pip install pytest pytest-asyncio requests pydantic fastapi httpx
       - name: Run unit tests
         run: pytest tests/ -v
