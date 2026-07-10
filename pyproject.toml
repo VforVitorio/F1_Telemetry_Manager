@@ -22,7 +22,7 @@ dependencies = [
     "realtime==2.0.5",
     "python-dotenv==1.0.0",
     "fastf1==3.4.0",
-    "numpy==1.26.4",
+    "numpy==2.4.6",
     "pandas==2.2.0",
 
     # Voice Chat (STT uses transformers, not openai-whisper — see #28)
