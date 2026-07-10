@@ -33,7 +33,7 @@ setfit>=1.0.0
 matplotlib>=3.7.0
 seaborn>=0.12.0
 rich>=14.3.3
-tqdm>=4.65.0
+tqdm>=4.68.3
 
 # Voice Chat Dependencies — whisper excluded from Docker (triton<3 conflicts
 # with torch>=2.5 triton>=3.1).  Voice features run locally, not in Docker.
