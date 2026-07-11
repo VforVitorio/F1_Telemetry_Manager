@@ -39,7 +39,7 @@ import logging
 from typing import Any, AsyncGenerator
 
 from backend.models.tool_schemas import DisplayType, TOOL_DISPLAY_MAP, ToolName
-from backend.services.chatbot.llm_service import PREFLIGHT, build_messages, send_message
+from backend.services.chatbot.llm_service import build_messages, send_message
 from backend.services.chatbot.mcp_bridge import (
     call_mcp_tool,
     coerce_tool_arguments,
@@ -114,14 +114,6 @@ _SYSTEM_PROMPT = (
     "unless the user asks for detail."
 )
 
-# Shown when the provider preflight reports the LLM unreachable, so the user
-# gets an instant, actionable notice instead of waiting out the full timeout.
-_PROVIDER_DOWN_MSG = (
-    "The LLM provider is unreachable right now. Start LM Studio (or check "
-    "OPENAI_API_KEY) and try again. / El proveedor LLM no responde ahora mismo. "
-    "Arranca LM Studio (o revisa OPENAI_API_KEY) e intentalo de nuevo."
-)
-
 
 # ---------------------------------------------------------------------------
 # Public API
@@ -152,16 +144,6 @@ async def stream_response(
     set_stage(request_id, "preparing_tools")
     yield ("stage", {"stage": "preparing_tools"})
     tools = await _safe_list_tools()
-
-    # Fail fast when the provider is unreachable: skip the (blocking) message
-    # build + LLM call and return a short bilingual notice instead of paying the
-    # full provider timeout (LLM-cost L-3, graceful degradation).
-    if not await asyncio.to_thread(PREFLIGHT.is_available):
-        set_stage(request_id, "provider_unavailable")
-        yield ("stage", {"stage": "provider_unavailable"})
-        yield ("token", {"token": _PROVIDER_DOWN_MSG})
-        yield ("done", _done_metadata({}))
-        return
 
     set_stage(request_id, "model_choosing_tool")
     yield ("stage", {"stage": "model_choosing_tool"})
@@ -366,7 +348,6 @@ async def _safe_send(
         )
     except Exception:
         logger.exception("LLM provider call failed")
-        PREFLIGHT.mark_failed()
         return {}
 
 

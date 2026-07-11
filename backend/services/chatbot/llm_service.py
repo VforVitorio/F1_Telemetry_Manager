@@ -11,7 +11,6 @@ OPENAI_CHAT_MODEL env var.
 """
 
 import os
-import time
 import requests
 from typing import Dict, List, Any, Optional, Generator
 import logging
@@ -117,43 +116,6 @@ def check_health() -> Dict[str, Any]:
             "lm_studio_reachable": False,
             "message": str(e)
         }
-
-
-class ProviderPreflight:
-    """TTL-cached provider availability so an expensive turn can fail fast (LLM-cost L-3).
-
-    Reuses ``check_health`` (a cheap /models GET with a 5s timeout). The result is
-    cached for ``ttl_s`` so we do not ping the provider on every turn; a failed
-    provider call can invalidate the cache via ``mark_failed`` so the next turn
-    re-checks. This is a fail-fast accelerator, not a hard gate - when in doubt it
-    reports available and lets the finite provider timeout bound the damage.
-    """
-
-    def __init__(self, ttl_s: float = 30.0) -> None:
-        self._ttl_s = ttl_s
-        self._ok = True
-        self._checked_at = -1e9
-
-    def is_available(self) -> bool:
-        """Return cached availability, refreshing via check_health when the TTL lapses."""
-        now = time.monotonic()
-        if now - self._checked_at < self._ttl_s:
-            return self._ok
-        try:
-            self._ok = check_health().get("status") == "healthy"
-        except Exception:
-            self._ok = False
-        self._checked_at = now
-        return self._ok
-
-    def mark_failed(self) -> None:
-        """Invalidate the cache after a provider call fails, so the next turn re-checks."""
-        self._ok = False
-        self._checked_at = time.monotonic()
-
-
-# Process-level singleton reused across chat/voice turns.
-PREFLIGHT = ProviderPreflight()
 
 
 def get_available_models() -> List[str]:
