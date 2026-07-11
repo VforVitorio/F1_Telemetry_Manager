@@ -33,6 +33,7 @@ arrives in a single ``token`` event.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from typing import Any, AsyncGenerator
@@ -146,14 +147,15 @@ async def stream_response(
 
     set_stage(request_id, "model_choosing_tool")
     yield ("stage", {"stage": "model_choosing_tool"})
-    base_messages = build_messages(
+    base_messages = await asyncio.to_thread(
+        build_messages,
         user_message=text,
         image_base64=image,
         system_prompt=_SYSTEM_PROMPT,
         chat_history=chat_history,
         context=context,
     )
-    first_response = _safe_send(
+    first_response = await _safe_send(
         base_messages,
         model=model,
         temperature=temperature,
@@ -278,7 +280,7 @@ async def _stream_tool_response(
         tool_data=tool_data,
         tool_error=tool_error,
     )
-    summary_response = _safe_send(
+    summary_response = await _safe_send(
         summary_messages,
         model=model,
         temperature=temperature,
@@ -318,7 +320,7 @@ async def _safe_call_tool(name: str, args: dict[str, Any]) -> tuple[Any, str | N
         return None, str(exc)
 
 
-def _safe_send(
+async def _safe_send(
     messages: list[dict[str, Any]],
     *,
     model: str | None,
@@ -328,11 +330,15 @@ def _safe_send(
 ) -> dict[str, Any]:
     """Wrap ``send_message`` so any provider hiccup yields an empty response.
 
-    Caller treats an empty response as "no tool call, no text" and degrades
-    to a fallback message rather than crashing the SSE stream.
+    The blocking ``requests`` call runs in a worker thread (``asyncio.to_thread``)
+    so a slow LLM turn does not stall the event loop - and with it the concurrent
+    SSE sim + voice streams (LLM-cost L-3). Caller treats an empty response as
+    "no tool call, no text" and degrades to a fallback message rather than
+    crashing the SSE stream; a failure also invalidates the provider preflight.
     """
     try:
-        return send_message(
+        return await asyncio.to_thread(
+            send_message,
             messages=messages,
             model=model,
             temperature=temperature,

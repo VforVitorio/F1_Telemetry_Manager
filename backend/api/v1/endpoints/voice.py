@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException, s
 
 from backend.core.rate_limit import rate_limit
 from fastapi.responses import Response
+import asyncio
 import base64
 import time
 import logging
@@ -285,7 +286,9 @@ async def voice_chat(
         logger.info(f"Voice chat: processing {len(audio_bytes)} bytes")
 
         stt = _get_stt_service()
-        transcription = stt.transcribe_audio(audio_bytes)
+        # Offload the blocking GPU STT off the event loop (LLM-cost L-3) so a
+        # voice turn does not stall concurrent SSE sim / chat streams.
+        transcription = await asyncio.to_thread(stt.transcribe_audio, audio_bytes)
         user_text = transcription["text"]
 
         logger.info(f"Transcribed: '{user_text}'")
@@ -302,13 +305,15 @@ async def voice_chat(
                 context={}  # Could add F1 context in future
             )
 
-            # Send to the configured LLM provider (LM Studio or OpenAI)
-            lm_response = lm_send_message(
+            # Send to the configured LLM provider (LM Studio or OpenAI), off the
+            # event loop so the blocking request does not stall other streams.
+            lm_response = await asyncio.to_thread(
+                lm_send_message,
                 messages=messages,
                 model=None,  # Use provider default
                 temperature=0.6,  # Slightly lower so the spoken output stays on-topic
                 max_tokens=220,  # ~3 short sentences; keeps TTS latency in check
-                stream=False
+                stream=False,
             )
 
             # Extract response content
