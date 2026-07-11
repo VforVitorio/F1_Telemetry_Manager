@@ -25,6 +25,7 @@ from pydantic import BaseModel, Field
 # Repo-root injection — `src/agents/` must be importable from here
 # ---------------------------------------------------------------------------
 from backend.core.paths import get_data_root, get_repo_root
+from backend.core.rate_limit import rate_limit
 
 _REPO_ROOT = get_repo_root()
 if str(_REPO_ROOT) not in sys.path:
@@ -394,7 +395,7 @@ def get_lap_state(
 # ---------------------------------------------------------------------------
 
 
-@router.post("/pace", response_model=StrategyResponse)
+@router.post("/pace", response_model=StrategyResponse, dependencies=[Depends(rate_limit("pace", capacity=20, per_minute=60))])
 def predict_pace(request: PaceRequest):
     """Run the Pace Agent (N25) for a single lap."""
     try:
@@ -415,7 +416,7 @@ def predict_pace(request: PaceRequest):
 # ---------------------------------------------------------------------------
 
 
-@router.post("/pace-range")
+@router.post("/pace-range", dependencies=[Depends(rate_limit("pace-range", capacity=5, per_minute=10))])
 def predict_pace_range(request: PaceRangeRequest):
     """Run Pace Agent across a lap range and return actual vs predicted."""
     import numpy as np
@@ -534,7 +535,7 @@ def _build_lap_state_from_row(row, gp_df, gp: str, year: int, total_laps: int) -
 # ---------------------------------------------------------------------------
 
 
-@router.post("/tire", response_model=StrategyResponse)
+@router.post("/tire", response_model=StrategyResponse, dependencies=[Depends(rate_limit("tire", capacity=20, per_minute=60))])
 def predict_tire(
     request: TireRequest,
     laps_df: pd.DataFrame = Depends(_require_laps_df),
@@ -560,7 +561,7 @@ def predict_tire(
 # ---------------------------------------------------------------------------
 
 
-@router.post("/situation", response_model=StrategyResponse)
+@router.post("/situation", response_model=StrategyResponse, dependencies=[Depends(rate_limit("situation", capacity=20, per_minute=60))])
 def predict_situation(
     request: SituationRequest,
     laps_df: pd.DataFrame = Depends(_require_laps_df),
@@ -586,7 +587,7 @@ def predict_situation(
 # ---------------------------------------------------------------------------
 
 
-@router.post("/pit", response_model=StrategyResponse)
+@router.post("/pit", response_model=StrategyResponse, dependencies=[Depends(rate_limit("pit", capacity=20, per_minute=60))])
 def predict_pit(
     request: PitRequest,
     laps_df: pd.DataFrame = Depends(_require_laps_df),
@@ -612,7 +613,7 @@ def predict_pit(
 # ---------------------------------------------------------------------------
 
 
-@router.post("/radio", response_model=StrategyResponse)
+@router.post("/radio", response_model=StrategyResponse, dependencies=[Depends(rate_limit("radio", capacity=20, per_minute=60))])
 def analyze_radio(
     request: RadioRequest,
     laps_df: pd.DataFrame = Depends(_require_laps_df),
@@ -652,7 +653,7 @@ def analyze_radio(
 # ---------------------------------------------------------------------------
 
 
-@router.post("/rag", response_model=StrategyResponse)
+@router.post("/rag", response_model=StrategyResponse, dependencies=[Depends(rate_limit("rag", capacity=5, per_minute=10))])
 def query_rag(request: RagRequest):
     """Run the RAG Agent (N30) to answer a regulation question."""
     try:
@@ -673,7 +674,7 @@ def query_rag(request: RagRequest):
 # ---------------------------------------------------------------------------
 
 
-@router.post("/recommend", response_model=StrategyResponse)
+@router.post("/recommend", response_model=StrategyResponse, dependencies=[Depends(rate_limit("recommend", capacity=5, per_minute=10))])
 def recommend_strategy(
     request: RecommendRequest,
     laps_df: pd.DataFrame = Depends(_require_laps_df),
@@ -895,7 +896,7 @@ class SimulateRequest(BaseModel):
     interval_s: float = Field(0.0, ge=0.0, le=10.0)
 
 
-@router.post("/simulate")
+@router.post("/simulate", dependencies=[Depends(rate_limit("simulate", capacity=3, per_minute=3))])
 def simulate(req: SimulateRequest):
     """Stream per-lap strategy decisions as Server-Sent Events.
 

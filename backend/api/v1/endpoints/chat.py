@@ -9,7 +9,9 @@ import json
 import logging
 import uuid
 
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
+
+from backend.core.rate_limit import rate_limit
 from fastapi.responses import StreamingResponse
 
 from backend.services.chatbot import chat_engine
@@ -72,7 +74,7 @@ async def get_models():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/message", response_model=ChatResponse)
+@router.post("/message", response_model=ChatResponse, dependencies=[Depends(rate_limit("chat-message", capacity=10, per_minute=20))])
 async def send_chat_message(request: ChatRequest):
     """
     Send a message to LM Studio and get the complete response (non-streaming).
@@ -166,7 +168,7 @@ async def send_chat_message(request: ChatRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/stream")
+@router.post("/stream", dependencies=[Depends(rate_limit("chat-stream", capacity=10, per_minute=20))])
 async def stream_chat_message(request: ChatRequest):
     """
     Send a message to LM Studio and stream the response.
@@ -238,7 +240,7 @@ def chat_status(request_id: str):
     return {"stage": get_stage(request_id)}
 
 
-@router.post("/tool-message", response_model=ToolMessageResponse)
+@router.post("/tool-message", response_model=ToolMessageResponse, dependencies=[Depends(rate_limit("chat-tool-message", capacity=10, per_minute=20))])
 async def tool_message(
     request: ToolMessageRequest,
     x_request_id: str | None = Header(default=None, alias="X-Request-Id"),
@@ -276,7 +278,7 @@ async def tool_message(
         clear_stage(request_id)
 
 
-@router.post("/tool-message-stream")
+@router.post("/tool-message-stream", dependencies=[Depends(rate_limit("chat-tool-stream", capacity=10, per_minute=20))])
 async def tool_message_stream(
     request: ToolMessageRequest,
     x_request_id: str | None = Header(default=None, alias="X-Request-Id"),

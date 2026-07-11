@@ -37,11 +37,15 @@ async def lifespan(app):
 app = FastAPI(title="F1 Telemetry API", lifespan=lifespan)
 
 app.add_middleware(
+    # Security C3 / S-8: the origin is already specific (FRONTEND_URL). Credentials
+    # are dropped because no client authenticates by cookie (the Streamlit frontend
+    # calls the backend server-side, not from the browser), and the method/header
+    # allowlists are enumerated to the verbs/headers actually used instead of "*".
     CORSMiddleware,
     allow_origins=[FRONTEND_URL],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"]
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Content-Type", "Accept", "X-Request-Id"],
 )
 
 # Add telemetry router
