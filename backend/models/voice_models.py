@@ -29,7 +29,7 @@ class TranscriptionResponse(BaseModel):
 class TTSRequest(BaseModel):
     """Request model for text-to-speech synthesis."""
 
-    text: str = Field(..., description="Text to synthesize", min_length=1)
+    text: str = Field(..., description="Text to synthesize", min_length=1, max_length=2_000)
     rate: Optional[int] = Field(
         175,
         description="Speech rate in words per minute",

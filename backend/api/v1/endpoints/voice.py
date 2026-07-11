@@ -4,7 +4,9 @@ Voice Chat API Endpoints
 Provides endpoints for speech-to-text, text-to-speech, and full voice chat flow.
 """
 
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException, status
+from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException, status
+
+from backend.core.rate_limit import rate_limit
 from fastapi.responses import Response
 import base64
 import time
@@ -136,17 +138,26 @@ def _read_audio_file(audio: UploadFile) -> bytes:
         HTTPException: If reading fails
     """
     try:
-        return audio.file.read()
+        data = audio.file.read()
     except Exception as e:
         logger.error(f"Failed to read audio file: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to read audio file"
         )
+    # Security C2: cap the upload so a huge body cannot exhaust memory / pin the STT worker.
+    max_bytes = 10 * 1024 * 1024
+    if len(data) > max_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"Audio file too large ({len(data)} bytes); max {max_bytes}.",
+        )
+    return data
 
 
 @router.post(
     "/transcribe",
+    dependencies=[Depends(rate_limit("voice-transcribe", capacity=6, per_minute=12))],
     response_model=TranscriptionResponse,
     summary="Transcribe audio to text",
     description="Convert audio file to text using Whisper STT"
@@ -189,6 +200,7 @@ async def transcribe_audio(audio: UploadFile = File(...)):
 
 @router.post(
     "/synthesize",
+    dependencies=[Depends(rate_limit("voice-synthesize", capacity=6, per_minute=12))],
     summary="Convert text to speech",
     description="Generate audio from text using pyttsx3 TTS",
     response_class=Response
@@ -236,6 +248,7 @@ async def synthesize_speech(request: TTSRequest):
 
 @router.post(
     "/voice-chat",
+    dependencies=[Depends(rate_limit("voice-chat", capacity=6, per_minute=12))],
     response_model=VoiceChatResponse,
     summary="Full voice chat flow",
     description="Complete flow: STT (Nemotron, local) \u2192 LLM (provider via F1_LLM_PROVIDER) \u2192 TTS (Qwen3, local)"
