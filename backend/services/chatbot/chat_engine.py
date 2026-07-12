@@ -38,6 +38,7 @@ import json
 import logging
 from typing import Any, AsyncGenerator
 
+from backend.core.config import clamp_max_tokens
 from backend.models.tool_schemas import DisplayType, TOOL_DISPLAY_MAP, ToolName, is_tool_allowed
 from backend.services.chatbot.llm_service import build_messages, send_message
 from backend.services.chatbot.mcp_bridge import (
@@ -48,6 +49,13 @@ from backend.services.chatbot.mcp_bridge import (
 from backend.services.chatbot.stage_tracker import set_stage
 
 logger = logging.getLogger(__name__)
+
+
+# Cost cap A3 (#224): exactly one tool is dispatched per turn. This bounds the
+# per-message tool reach so injected text cannot chain N expensive tools from a
+# single message. ``_first_tool_call`` enforces it by construction — do not widen
+# it to return a list without re-checking this invariant.
+_MAX_TOOLS_PER_TURN = 1
 
 
 # Pirelli-style brevity for the chat: short, expert, bilingual.  The model
@@ -141,6 +149,11 @@ async def stream_response(
         ("token", {"token": <chunk>})          — LLM text chunk
         ("done", {...})                         — final marker + metadata
     """
+    # Cost cap A3 (#224): clamp the client-controlled budget down to the server
+    # cap before any provider call. Covers both /tool-message and
+    # /tool-message-stream (get_response funnels through here), and both LLM
+    # round-trips below reuse this clamped value.
+    max_tokens = clamp_max_tokens(max_tokens)
     set_stage(request_id, "preparing_tools")
     yield ("stage", {"stage": "preparing_tools"})
     tools = await _safe_list_tools()
@@ -418,7 +431,12 @@ def _strip_leaked_tool_call(text: str) -> str:
 
 
 def _first_tool_call(message: dict[str, Any]) -> dict[str, Any] | None:
-    """Return the first OpenAI-style tool_call from an assistant message."""
+    """Return the first OpenAI-style tool_call from an assistant message.
+
+    Cost cap A3 (#224): this is where the ``_MAX_TOOLS_PER_TURN == 1`` invariant
+    lives — only the first proposed tool is ever dispatched, so one message can
+    reach at most one tool. Widening this to return several would defeat the cap.
+    """
     tool_calls = message.get("tool_calls") or []
     if not tool_calls:
         return None

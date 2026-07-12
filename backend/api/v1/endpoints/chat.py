@@ -11,6 +11,7 @@ import uuid
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 
+from backend.core.config import clamp_max_tokens
 from backend.core.rate_limit import rate_limit
 from fastapi.responses import StreamingResponse
 
@@ -94,12 +95,12 @@ async def send_chat_message(request: ChatRequest):
             context=request.context
         )
 
-        # Send to LM Studio
+        # Send to LM Studio (cost cap A3 #224: clamp the client budget server-side)
         response = lm_send_message(
             messages=messages,
             model=request.model,
             temperature=request.temperature,
-            max_tokens=request.max_tokens,
+            max_tokens=clamp_max_tokens(request.max_tokens),
             stream=False
         )
 
@@ -142,7 +143,7 @@ async def send_chat_message(request: ChatRequest):
                     messages=messages_text_only,
                     model=request.model,
                     temperature=request.temperature,
-                    max_tokens=request.max_tokens,
+                    max_tokens=clamp_max_tokens(request.max_tokens),
                     stream=False
                 )
 
@@ -195,7 +196,7 @@ async def stream_chat_message(request: ChatRequest):
                     messages=messages,
                     model=request.model,
                     temperature=request.temperature,
-                    max_tokens=request.max_tokens
+                    max_tokens=clamp_max_tokens(request.max_tokens)
                 ):
                     yield chunk
             except LLMServiceError as e:
