@@ -47,7 +47,10 @@ jobs:
       # free so the integration tests run. Locally, a dev's live LM Studio on
       # :1234 makes them skip (never fail) — the documented MVP (Testing T-3,
       # AUDIT_TESTING_QA §11); an env-configurable port is a separate enabler.
+      # python-dotenv is featherweight (pure-python) and is a module-level import
+      # of backend.core.config, which the security tests import; it does not pull
+      # the heavy ML stack, so it stays in the deps-lite set.
       - name: Install test deps
-        run: pip install pytest pytest-asyncio requests pydantic fastapi httpx
+        run: pip install pytest pytest-asyncio requests pydantic fastapi httpx python-dotenv
       - name: Run unit tests
         run: pytest tests/ -v
