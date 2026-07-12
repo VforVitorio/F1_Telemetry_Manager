@@ -38,7 +38,7 @@ import json
 import logging
 from typing import Any, AsyncGenerator
 
-from backend.models.tool_schemas import DisplayType, TOOL_DISPLAY_MAP, ToolName
+from backend.models.tool_schemas import DisplayType, TOOL_DISPLAY_MAP, ToolName, is_tool_allowed
 from backend.services.chatbot.llm_service import build_messages, send_message
 from backend.services.chatbot.mcp_bridge import (
     call_mcp_tool,
@@ -250,6 +250,23 @@ async def _stream_plain_response(
     yield ("done", _done_metadata(raw_response))
 
 
+async def _stream_refused_tool(
+    tool_name: str,
+    request_id: str,
+) -> AsyncGenerator[tuple[str, dict[str, Any]], None]:
+    """Emit a refusal for a non-allowlisted tool — no dispatch, no LLM call.
+
+    Security A2 (#224): keeps the SSE contract (stage → token → done) intact so
+    the frontend renders the refusal like any plain reply, while guaranteeing the
+    MCP client is never touched for a disallowed name.
+    """
+    message = f"_The `{tool_name}` tool is not available in this chat._"
+    set_stage(request_id, "composing_response")
+    yield ("stage", {"stage": "composing_response"})
+    yield ("token", {"token": message})
+    yield ("done", {})
+
+
 async def _stream_tool_response(
     tool_call: dict[str, Any],
     assistant_msg: dict[str, Any],
@@ -262,6 +279,15 @@ async def _stream_tool_response(
     """Dispatch the model's tool_call, stream the tool_result + summary."""
     tool_name = tool_call["function"]["name"]
     tool_args = coerce_tool_arguments(tool_call["function"].get("arguments"))
+
+    # Security A2 (#224): default-deny. The mcp_bridge filter already hides
+    # non-allowed tools from the model, but a hallucinated or leaked name must
+    # never reach dispatch — refuse here without calling the MCP client.
+    if not is_tool_allowed(tool_name):
+        logger.warning("Refused disallowed tool call from the model: %s", tool_name)
+        async for event in _stream_refused_tool(tool_name, request_id):
+            yield event
+        return
 
     set_stage(request_id, f"calling_{tool_name}")
     yield ("stage", {"stage": f"calling_{tool_name}"})
