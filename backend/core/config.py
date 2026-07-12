@@ -55,3 +55,27 @@ def mcp_enabled() -> bool:
     Read fresh (not cached) so a test can toggle it per case.
     """
     return _env_flag("F1_MCP_ENABLED", default=False)
+
+
+_DEFAULT_CHAT_MAX_TOKENS = 2048
+
+
+def chat_max_tokens() -> int:
+    """Server-side cap on completion tokens per chat turn (cost cap A3, #224).
+
+    A client's requested ``max_tokens`` is clamped down to this at every chat
+    boundary, so injected text cannot steer a huge completion. Defaults to 2048 —
+    above the internal 800/1000 defaults, so normal use is unaffected and only an
+    over-large request is capped. Read fresh so an operator can retune without a
+    restart; garbage falls back to the default.
+    """
+    try:
+        value = int(os.getenv("F1_CHAT_MAX_TOKENS", str(_DEFAULT_CHAT_MAX_TOKENS)))
+    except ValueError:
+        return _DEFAULT_CHAT_MAX_TOKENS
+    return max(1, value)
+
+
+def clamp_max_tokens(requested: int) -> int:
+    """Clamp a client-requested ``max_tokens`` down to :func:`chat_max_tokens`."""
+    return min(int(requested), chat_max_tokens())
