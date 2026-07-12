@@ -21,6 +21,30 @@ def _env_flag(name: str, *, default: bool) -> bool:
     return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def api_key() -> str | None:
+    """The shared API secret, or None when unset (auth then passes — see auth.py).
+
+    Read fresh so a test can set/clear it per case and so key rotation takes
+    effect without a process restart.
+    """
+    return os.getenv("F1_API_KEY") or None
+
+
+def bind_host() -> str:
+    """The host uvicorn binds to; the startup guard fails closed on non-loopback.
+
+    The Dockerfile passes ``--host $F1_HOST``, so this value mirrors the real
+    bind in the container. Defaults to loopback so a bare ``uvicorn`` run without
+    F1_HOST is treated as safe.
+
+    ponytail: this trusts F1_HOST to match the actual --host. A manual
+    ``uvicorn --host 0.0.0.0`` with F1_HOST unset would evade the guard — an
+    accepted ceiling for a single-user deploy; wire the real bound socket in if
+    a multi-host deploy ever needs it.
+    """
+    return os.getenv("F1_HOST", "127.0.0.1")
+
+
 def mcp_enabled() -> bool:
     """Whether the external ``/mcp`` Streamable-HTTP endpoint is mounted.
 
