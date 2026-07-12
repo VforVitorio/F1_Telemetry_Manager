@@ -26,6 +26,8 @@ import json
 import logging
 from typing import Any
 
+from backend.models.tool_schemas import is_tool_allowed
+
 logger = logging.getLogger(__name__)
 
 
@@ -93,9 +95,18 @@ async def list_openai_tools() -> list[dict[str, Any]]:
     Includes both the manually decorated ``@mcp.tool`` Phase 1 strategy
     tools and the Phase 2 telemetry tools auto-generated from the
     FastAPI OpenAPI spec via ``FastMCP.from_openapi``.
+
+    Security A2 (#224): tools not on ``CHAT_ALLOWED_TOOLS`` are filtered out here
+    so the model never sees — and therefore cannot pick — a non-allowed tool.
+    This is the first of two chokepoints; the dispatch guard in ``chat_engine``
+    is the second (a hallucinated name never reaches the MCP client).
     """
     tools = await _fetch_tools()
-    return [to_openai_tool(t.name, t.description, t.inputSchema) for t in tools]
+    return [
+        to_openai_tool(t.name, t.description, t.inputSchema)
+        for t in tools
+        if is_tool_allowed(t.name)
+    ]
 
 
 async def call_mcp_tool(name: str, arguments: dict[str, Any]) -> Any:

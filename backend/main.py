@@ -1,10 +1,14 @@
+import logging
 from contextlib import asynccontextmanager
 
 from backend.api.v1.endpoints import circuit_domination, comparison, telemetry, chat, voice, strategy
-from backend.core.config import FRONTEND_URL
+from backend.core.config import FRONTEND_URL, mcp_enabled
+from backend.core.auth import ApiKeyMiddleware, enforce_startup_security
 from backend.mcp_tools import mcp as mcp_server, _mount_openapi_tools
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import FastAPI
+
+logger = logging.getLogger(__name__)
 
 # Build the MCP ASGI sub-app (Streamable HTTP, FastMCP 3.x)
 mcp_app = mcp_server.http_app(path="/mcp")
@@ -29,6 +33,9 @@ async def lifespan(app):
     The fix: run the wrapped MCP lifespan first (initialising the server),
     then mount the OpenAPI-derived tools, then yield control to uvicorn.
     """
+    # Security A1 (#224): fail closed on a non-loopback bind with no key before
+    # any heavy init runs.
+    enforce_startup_security()
     async with mcp_app.lifespan(app):
         _mount_openapi_tools(app)
         yield
@@ -47,6 +54,13 @@ app.add_middleware(
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["Content-Type", "Accept", "X-Request-Id"],
 )
+
+# Security A1 (#224): the shared-secret gate. Added AFTER CORS so it wraps
+# OUTERMOST — an unauthenticated request is rejected before any other work, and
+# OPTIONS is passed through so CORS preflight still runs. One insertion point
+# covers both the routers and the /mcp mount (middleware runs before mount
+# dispatch; a router-level Depends could not reach the mounted sub-app).
+app.add_middleware(ApiKeyMiddleware)
 
 # Add telemetry router
 app.include_router(telemetry.router, prefix="/api/v1")
@@ -67,10 +81,22 @@ app.include_router(voice.router, prefix="/api/v1/voice", tags=["voice"])
 app.include_router(strategy.router, prefix="/api/v1")
 
 
-# Mount FastMCP server — MCP clients connect via Streamable HTTP at /mcp
-app.mount("/mcp", mcp_app)
+# Mount FastMCP server — MCP clients connect via Streamable HTTP at /mcp.
+# Security A1 (#224): OFF by default. This is an open tool surface, so it is
+# only exposed when an operator sets F1_MCP_ENABLED=true. The chat pipeline
+# still reaches the same tools in-process, so a disabled /mcp costs no feature.
+if mcp_enabled():
+    app.mount("/mcp", mcp_app)
+else:
+    logger.info("F1_MCP_ENABLED is off — external /mcp endpoint not mounted (chat tools still work in-process).")
 
 
 @app.get("/")
 def root():
     return {"message": "F1 Telemetry API is running"}
+
+
+@app.get("/health")
+def health():
+    """Unauthenticated liveness probe (open path — see core/auth.py OPEN_PATHS)."""
+    return {"status": "ok"}

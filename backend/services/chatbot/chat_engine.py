@@ -38,7 +38,8 @@ import json
 import logging
 from typing import Any, AsyncGenerator
 
-from backend.models.tool_schemas import DisplayType, TOOL_DISPLAY_MAP, ToolName
+from backend.core.config import clamp_max_tokens
+from backend.models.tool_schemas import DisplayType, TOOL_DISPLAY_MAP, ToolName, is_tool_allowed
 from backend.services.chatbot.llm_service import build_messages, send_message
 from backend.services.chatbot.mcp_bridge import (
     call_mcp_tool,
@@ -48,6 +49,13 @@ from backend.services.chatbot.mcp_bridge import (
 from backend.services.chatbot.stage_tracker import set_stage
 
 logger = logging.getLogger(__name__)
+
+
+# Cost cap A3 (#224): exactly one tool is dispatched per turn. This bounds the
+# per-message tool reach so injected text cannot chain N expensive tools from a
+# single message. ``_first_tool_call`` enforces it by construction — do not widen
+# it to return a list without re-checking this invariant.
+_MAX_TOOLS_PER_TURN = 1
 
 
 # Pirelli-style brevity for the chat: short, expert, bilingual.  The model
@@ -141,6 +149,11 @@ async def stream_response(
         ("token", {"token": <chunk>})          — LLM text chunk
         ("done", {...})                         — final marker + metadata
     """
+    # Cost cap A3 (#224): clamp the client-controlled budget down to the server
+    # cap before any provider call. Covers both /tool-message and
+    # /tool-message-stream (get_response funnels through here), and both LLM
+    # round-trips below reuse this clamped value.
+    max_tokens = clamp_max_tokens(max_tokens)
     set_stage(request_id, "preparing_tools")
     yield ("stage", {"stage": "preparing_tools"})
     tools = await _safe_list_tools()
@@ -250,6 +263,23 @@ async def _stream_plain_response(
     yield ("done", _done_metadata(raw_response))
 
 
+async def _stream_refused_tool(
+    tool_name: str,
+    request_id: str,
+) -> AsyncGenerator[tuple[str, dict[str, Any]], None]:
+    """Emit a refusal for a non-allowlisted tool — no dispatch, no LLM call.
+
+    Security A2 (#224): keeps the SSE contract (stage → token → done) intact so
+    the frontend renders the refusal like any plain reply, while guaranteeing the
+    MCP client is never touched for a disallowed name.
+    """
+    message = f"_The `{tool_name}` tool is not available in this chat._"
+    set_stage(request_id, "composing_response")
+    yield ("stage", {"stage": "composing_response"})
+    yield ("token", {"token": message})
+    yield ("done", {})
+
+
 async def _stream_tool_response(
     tool_call: dict[str, Any],
     assistant_msg: dict[str, Any],
@@ -262,6 +292,15 @@ async def _stream_tool_response(
     """Dispatch the model's tool_call, stream the tool_result + summary."""
     tool_name = tool_call["function"]["name"]
     tool_args = coerce_tool_arguments(tool_call["function"].get("arguments"))
+
+    # Security A2 (#224): default-deny. The mcp_bridge filter already hides
+    # non-allowed tools from the model, but a hallucinated or leaked name must
+    # never reach dispatch — refuse here without calling the MCP client.
+    if not is_tool_allowed(tool_name):
+        logger.warning("Refused disallowed tool call from the model: %s", tool_name)
+        async for event in _stream_refused_tool(tool_name, request_id):
+            yield event
+        return
 
     set_stage(request_id, f"calling_{tool_name}")
     yield ("stage", {"stage": f"calling_{tool_name}"})
@@ -392,7 +431,12 @@ def _strip_leaked_tool_call(text: str) -> str:
 
 
 def _first_tool_call(message: dict[str, Any]) -> dict[str, Any] | None:
-    """Return the first OpenAI-style tool_call from an assistant message."""
+    """Return the first OpenAI-style tool_call from an assistant message.
+
+    Cost cap A3 (#224): this is where the ``_MAX_TOOLS_PER_TURN == 1`` invariant
+    lives — only the first proposed tool is ever dispatched, so one message can
+    reach at most one tool. Widening this to return several would defeat the cap.
+    """
     tool_calls = message.get("tool_calls") or []
     if not tool_calls:
         return None
