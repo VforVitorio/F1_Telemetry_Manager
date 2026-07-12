@@ -26,4 +26,8 @@ COPY backend/ ./backend/
 
 EXPOSE 8000
 
-CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+# Security A1 (#224): bind to loopback by default. Expose the container
+# explicitly with F1_HOST=0.0.0.0 — which also makes F1_API_KEY mandatory
+# (the startup guard in core/auth.py refuses to boot on a non-localhost bind
+# without a key). Shell form so ${F1_HOST}/${F1_PORT} expand at runtime.
+CMD uvicorn backend.main:app --host "${F1_HOST:-127.0.0.1}" --port "${F1_PORT:-8000}" --reload

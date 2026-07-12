@@ -1,10 +1,13 @@
+import logging
 from contextlib import asynccontextmanager
 
 from backend.api.v1.endpoints import circuit_domination, comparison, telemetry, chat, voice, strategy
-from backend.core.config import FRONTEND_URL
+from backend.core.config import FRONTEND_URL, mcp_enabled
 from backend.mcp_tools import mcp as mcp_server, _mount_openapi_tools
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import FastAPI
+
+logger = logging.getLogger(__name__)
 
 # Build the MCP ASGI sub-app (Streamable HTTP, FastMCP 3.x)
 mcp_app = mcp_server.http_app(path="/mcp")
@@ -67,8 +70,14 @@ app.include_router(voice.router, prefix="/api/v1/voice", tags=["voice"])
 app.include_router(strategy.router, prefix="/api/v1")
 
 
-# Mount FastMCP server — MCP clients connect via Streamable HTTP at /mcp
-app.mount("/mcp", mcp_app)
+# Mount FastMCP server — MCP clients connect via Streamable HTTP at /mcp.
+# Security A1 (#224): OFF by default. This is an open tool surface, so it is
+# only exposed when an operator sets F1_MCP_ENABLED=true. The chat pipeline
+# still reaches the same tools in-process, so a disabled /mcp costs no feature.
+if mcp_enabled():
+    app.mount("/mcp", mcp_app)
+else:
+    logger.info("F1_MCP_ENABLED is off — external /mcp endpoint not mounted (chat tools still work in-process).")
 
 
 @app.get("/")
