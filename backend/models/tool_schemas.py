@@ -71,6 +71,68 @@ TOOL_DISPLAY_MAP: dict[ToolName, DisplayType] = {
 
 
 # ---------------------------------------------------------------------------
+# Tool risk tiers + chat allowlist (Security A2, issue #224)
+# ---------------------------------------------------------------------------
+
+class ToolRisk(str, Enum):
+    """Risk tier for an MCP tool, driving the chat allowlist."""
+
+    READ_SAFE = "read_safe"            # cheap, read-only, no outbound cost
+    READ_EXPENSIVE = "read_expensive"  # read-only but heavy (MC sim, RAG, outbound FastF1)
+    MUTATING = "mutating"              # writes / exports / side effects — none exist today
+
+
+# Keyed by the REAL dispatched MCP tool names, NOT the ToolName enum values,
+# which drift: ``ToolName.LIST_GPS == "list_gps"`` but the tool is
+# ``list_available_gps``; the Phase 2 tools are OpenAPI-derived and never had a
+# ToolName entry at all. These strings match what
+# ``mcp_bridge.list_openai_tools()`` returns and the chat_engine system-prompt
+# cheat sheet.
+TOOL_RISK_MAP: dict[str, ToolRisk] = {
+    # Phase 1 — cheap, read-only
+    "predict_pace": ToolRisk.READ_SAFE,
+    "predict_tire": ToolRisk.READ_SAFE,
+    "predict_situation": ToolRisk.READ_SAFE,
+    "predict_pit": ToolRisk.READ_SAFE,
+    "analyze_radio": ToolRisk.READ_SAFE,
+    "list_available_gps": ToolRisk.READ_SAFE,
+    "list_available_drivers": ToolRisk.READ_SAFE,
+    "get_lap_range": ToolRisk.READ_SAFE,
+    # Read-only but heavy: 500-sample Monte Carlo, RAG, outbound FastF1
+    "query_regulations": ToolRisk.READ_EXPENSIVE,
+    "recommend_strategy": ToolRisk.READ_EXPENSIVE,
+    "compare_drivers": ToolRisk.READ_EXPENSIVE,
+    "get_lap_times": ToolRisk.READ_EXPENSIVE,
+    "get_telemetry": ToolRisk.READ_EXPENSIVE,
+    "get_race_data": ToolRisk.READ_EXPENSIVE,
+}
+
+
+# Default-deny allowlist: only READ tools the chat may see and dispatch. A tool
+# classified MUTATING, or any name absent from TOOL_RISK_MAP (a hallucinated or
+# newly added tool), is refused until it is deliberately classified here.
+#
+# HARD RULE (Security A2): no write / export / file / mutating tool may be added
+# to the MCP server until it is classified in TOOL_RISK_MAP — and a MUTATING tool
+# never joins this set. Containment must exist BEFORE the first such tool, not
+# after.
+CHAT_ALLOWED_TOOLS: frozenset[str] = frozenset(
+    name for name, risk in TOOL_RISK_MAP.items()
+    if risk in (ToolRisk.READ_SAFE, ToolRisk.READ_EXPENSIVE)
+)
+
+
+def is_tool_allowed(name: str) -> bool:
+    """True when *name* may be exposed to and dispatched by the chat.
+
+    Single source of truth for both A2 chokepoints (the ``mcp_bridge`` filter and
+    the ``chat_engine`` dispatch guard). Default-deny: unknown names (drift,
+    hallucination) and MUTATING tools return False.
+    """
+    return name in CHAT_ALLOWED_TOOLS
+
+
+# ---------------------------------------------------------------------------
 # Tool call extraction (backend internal)
 # ---------------------------------------------------------------------------
 
