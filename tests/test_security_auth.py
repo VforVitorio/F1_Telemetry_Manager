@@ -113,3 +113,51 @@ def test_options_is_never_blocked(monkeypatch):
     # No CORS on this bare app, so OPTIONS falls through to a 405 — the point is
     # the middleware did NOT turn it into a 401 (preflight must reach CORS).
     assert client.options(PROTECTED).status_code != 401
+
+
+# ---------------------------------------------------------------------------
+# WebSocket scope — gated at the ASGI layer (no live route today, but the
+# roadmap has one). Driven directly, since Starlette's TestClient WS transport
+# is unavailable in the deps-lite tier.
+# ---------------------------------------------------------------------------
+
+def _ws_scope(headers=None) -> dict:
+    return {"type": "websocket", "path": "/ws", "headers": headers or []}
+
+
+async def _run_ws(scope) -> tuple[list, list]:
+    """Drive ``ApiKeyMiddleware`` over *scope*; return (delegated_types, sent)."""
+    delegated: list = []
+    sent: list = []
+
+    async def inner(inner_scope, receive, send):
+        delegated.append(inner_scope["type"])
+
+    async def send(message):
+        sent.append(message)
+
+    async def receive():
+        return {"type": "websocket.connect"}
+
+    await ApiKeyMiddleware(inner)(scope, receive, send)
+    return delegated, sent
+
+
+async def test_websocket_rejected_without_key(monkeypatch):
+    monkeypatch.setenv("F1_API_KEY", "secret")
+    delegated, sent = await _run_ws(_ws_scope(headers=[]))
+    assert delegated == []  # never reached the app
+    assert sent == [{"type": "websocket.close", "code": 1008}]
+
+
+async def test_websocket_allowed_with_key(monkeypatch):
+    monkeypatch.setenv("F1_API_KEY", "secret")
+    delegated, sent = await _run_ws(_ws_scope(headers=[(b"x-api-key", b"secret")]))
+    assert delegated == ["websocket"]  # delegated to the app
+    assert sent == []
+
+
+async def test_websocket_passes_when_no_key_configured(monkeypatch):
+    monkeypatch.delenv("F1_API_KEY", raising=False)
+    delegated, _ = await _run_ws(_ws_scope(headers=[]))
+    assert delegated == ["websocket"]

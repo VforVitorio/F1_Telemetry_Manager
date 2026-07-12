@@ -87,10 +87,14 @@ class ApiKeyMiddleware:
         self.app = app
 
     async def __call__(self, scope, receive, send) -> None:
-        if scope["type"] != "http" or self._is_authorized(scope):
+        # Gate HTTP and WebSocket alike. There is no WS route today, but the
+        # architecture anticipates a live WS feed, and a passthrough here would
+        # hand a future WS endpoint an unauthenticated door. `lifespan` and other
+        # non-connection scopes are never gated.
+        if scope["type"] not in ("http", "websocket") or self._is_authorized(scope):
             await self.app(scope, receive, send)
             return
-        await self._reject(send)
+        await self._reject(scope, send)
 
     def _is_authorized(self, scope) -> bool:
         """True when the request may proceed without or with a valid key."""
@@ -117,8 +121,15 @@ class ApiKeyMiddleware:
         return None
 
     @staticmethod
-    async def _reject(send) -> None:
-        """Emit a bare 401 JSON body without touching the downstream app."""
+    async def _reject(scope, send) -> None:
+        """Refuse an unauthenticated request without touching the downstream app.
+
+        HTTP → a bare 401 JSON body; WebSocket → a policy-violation close (1008)
+        before the handshake is accepted.
+        """
+        if scope["type"] == "websocket":
+            await send({"type": "websocket.close", "code": 1008})
+            return
         body = b'{"detail":"Missing or invalid API key."}'
         await send({
             "type": "http.response.start",
