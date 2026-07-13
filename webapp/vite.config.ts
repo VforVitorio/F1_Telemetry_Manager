@@ -1,13 +1,14 @@
 /// <reference types="vitest/config" />
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import tailwindcss from '@tailwindcss/vite'
 import { fileURLToPath, URL } from 'node:url'
 
 // Dev-mode mirror of the nginx reverse proxy (see webapp/nginx.conf):
 // /api/* -> FastAPI backend on :8000. The client is always same-origin,
 // so there is zero CORS in dev and in prod alike.
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), tailwindcss()],
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
