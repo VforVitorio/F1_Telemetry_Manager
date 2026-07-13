@@ -12,8 +12,13 @@ React 19 · Vite · TypeScript (strict) · Vitest · oxlint · Prettier · Bun (
 
 ```bash
 bun install
-bun run dev        # http://localhost:5173, proxies /api -> http://localhost:8000
+npm run dev        # http://localhost:5173, proxies /api -> http://localhost:8000
 ```
+
+> Bun is the package manager (`bun install` / `bun add`). Run the npm scripts with
+> `npm run <script>` (or `bunx <tool>`): on Windows `bun run <script>` does not add
+> `node_modules/.bin` to PATH, so `tsc`/`vite`/`prettier` come up "command not found".
+> CI (Linux) uses `bun run` fine.
 
 The dev server needs the FastAPI backend on `:8000` (repo-root `docker-compose.yml`,
 service `backend`). The `/api` proxy in `vite.config.ts` mirrors the nginx proxy
