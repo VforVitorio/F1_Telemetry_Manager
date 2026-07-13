@@ -9,3 +9,7 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv
 }
+
+// Self-hosted fonts (@fontsource-variable/*) are CSS side-effect imports with no
+// type declarations; this lets tsc accept `import '@fontsource-variable/inter'`.
+declare module '@fontsource-variable/*'

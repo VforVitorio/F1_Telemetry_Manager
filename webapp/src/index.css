@@ -1,43 +1,84 @@
-/*
- * Base styles only. The real design system (tokens.css mapped 1:1 to Tailwind
- * v4, self-hosted fonts, ECharts theme) lands in issue #32; do not grow this
- * file into an ad-hoc token system.
- */
-:root {
-  color-scheme: dark;
-  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
-  --bg: #08080c;
-  --fg: #f5f5f5;
-  --muted: #94a3b8;
+@import 'tailwindcss';
+@import './styles/tokens.css';
+
+/* Map brand tokens into Tailwind so utilities exist (bg-bg-2, text-fg-2,
+   border-hairline, font-display, bg-tire-soft, text-purple-300, ...).
+   @theme inline keeps utilities referencing the CSS vars, so a future light
+   theme (E1) is a var swap, not a rebuild. Spacing + radii use Tailwind
+   defaults (the token 4px scale already matches). */
+@theme inline {
+  --color-bg-0: var(--bg-0);
+  --color-bg-1: var(--bg-1);
+  --color-bg-2: var(--bg-2);
+  --color-bg-3: var(--bg-3);
+  --color-bg-4: var(--bg-4);
+  --color-bg-5: var(--bg-5);
+
+  --color-fg-1: var(--fg-1);
+  --color-fg-2: var(--fg-2);
+  --color-fg-3: var(--fg-3);
+  --color-fg-4: var(--fg-4);
+  --color-fg-inv: var(--fg-inv);
+
+  --color-purple-50: var(--purple-50);
+  --color-purple-100: var(--purple-100);
+  --color-purple-200: var(--purple-200);
+  --color-purple-300: var(--purple-300);
+  --color-purple-400: var(--purple-400);
+  --color-purple-500: var(--purple-500);
+  --color-purple-600: var(--purple-600);
+  --color-purple-700: var(--purple-700);
+  --color-purple-800: var(--purple-800);
+  --color-purple-900: var(--purple-900);
+
+  --color-accent: var(--accent-primary);
+  --color-accent-2: var(--accent-secondary);
+  --color-accent-hover: var(--accent-hover);
+
+  --color-blue-300: var(--blue-300);
+  --color-blue-400: var(--blue-400);
+  --color-blue-500: var(--blue-500);
+  --color-blue-600: var(--blue-600);
+
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-info: var(--info);
+
+  --color-tire-soft: var(--tire-soft);
+  --color-tire-medium: var(--tire-medium);
+  --color-tire-hard: var(--tire-hard);
+  --color-tire-inter: var(--tire-inter);
+  --color-tire-wet: var(--tire-wet);
+
+  --color-divider: var(--divider);
+  --color-hairline: var(--hairline);
+
+  --font-display: var(--font-display);
+  --font-body: var(--font-body);
+  --font-mono: var(--font-mono);
 }
 
-*,
-*::before,
-*::after {
-  box-sizing: border-box;
-}
-
-body {
-  margin: 0;
-  background: var(--bg);
-  color: var(--fg);
-}
-
-.app-shell {
-  min-height: 100dvh;
-  display: grid;
-  place-content: center;
-  gap: 0.5rem;
-  padding: 2rem;
-  text-align: center;
-}
-
-.app-shell h1 {
-  margin: 0;
-  font-size: clamp(2rem, 6vw, 3.5rem);
-}
-
-.muted {
-  color: var(--muted);
-  max-width: 48ch;
+@layer base {
+  html {
+    color-scheme: dark;
+  }
+  body {
+    background: var(--bg-0);
+    color: var(--fg-1);
+    font-family: var(--font-body);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    font-feature-settings: 'ss01', 'cv11';
+  }
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-display);
+    text-wrap: balance;
+  }
+  ::selection {
+    background: var(--purple-600);
+    color: #fff;
+  }
 }
