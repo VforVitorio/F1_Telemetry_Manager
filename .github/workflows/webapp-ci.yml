@@ -1,0 +1,71 @@
+name: webapp-ci
+
+# Foundations CI for the React SPA (migration epic #25). Path-filter gated so it
+# only runs work when webapp/ changes, but still posts a success result on every
+# PR (required-context safe, see PROJECT_BOOTSTRAP §4.1). Bun is the installer +
+# task runner only; vite bundles and vitest tests (never `bun build` / `bun test`).
+on:
+  push:
+    branches: ["main", "feat/**", "fix/**", "docs/**", "chore/**", "ci/**"]
+  pull_request:
+    branches: ["main", "dev", "testVictor", "testSanti"]
+
+concurrency:
+  group: webapp-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  webapp:
+    name: webapp
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: webapp
+    steps:
+      # Checkout first, full history: on push events dorny/paths-filter falls
+      # back to `git diff` and needs the repo + history checked out.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            webapp:
+              - 'webapp/**'
+              - '.github/workflows/webapp-ci.yml'
+
+      - name: Skip (no webapp changes)
+        if: steps.changes.outputs.webapp != 'true'
+        run: echo "No webapp changes; skipping webapp checks."
+
+      - name: Setup Bun
+        if: steps.changes.outputs.webapp == 'true'
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install (frozen lockfile)
+        if: steps.changes.outputs.webapp == 'true'
+        run: bun install --frozen-lockfile
+
+      - name: Lint (oxlint)
+        if: steps.changes.outputs.webapp == 'true'
+        run: bun run lint
+
+      - name: Format check (prettier)
+        if: steps.changes.outputs.webapp == 'true'
+        run: bun run format:check
+
+      - name: Typecheck (tsc)
+        if: steps.changes.outputs.webapp == 'true'
+        run: bun run typecheck
+
+      - name: Test (vitest)
+        if: steps.changes.outputs.webapp == 'true'
+        run: bun run test
+
+      - name: Build (vite)
+        if: steps.changes.outputs.webapp == 'true'
+        run: bun run build
