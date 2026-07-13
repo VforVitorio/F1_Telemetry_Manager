@@ -1,6 +1,8 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { RouterProvider } from '@tanstack/react-router'
 import { router } from './router'
+import { TooltipProvider } from '@/components/Tooltip'
+import { ToastProvider } from '@/components/Toast'
 
 // App-wide providers: TanStack Query (server-state cache) wraps TanStack Router
 // (typed routing). Race telemetry is immutable/historical, so a generous default
@@ -15,7 +17,11 @@ const queryClient = new QueryClient({
 export function Providers() {
   return (
     <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
+      <TooltipProvider>
+        <ToastProvider>
+          <RouterProvider router={router} />
+        </ToastProvider>
+      </TooltipProvider>
     </QueryClientProvider>
   )
 }

@@ -21,8 +21,8 @@
   /* ---------- FOREGROUND RAMP ---------- */
   --fg-1: #ffffff; /* primary text */
   --fg-2: rgba(255, 255, 255, 0.72); /* secondary text */
-  --fg-3: rgba(255, 255, 255, 0.52); /* tertiary / captions */
-  --fg-4: rgba(255, 255, 255, 0.32); /* disabled / hairline labels */
+  --fg-3: rgba(255, 255, 255, 0.6); /* tertiary / captions — WCAG AA (~5.2:1 on #111827) */
+  --fg-4: rgba(255, 255, 255, 0.42); /* disabled / hairline labels — WCAG AA (~4.6:1 on #111827) */
   --fg-inv: #0c0d14; /* on-primary text */
 
   /* ---------- BRAND / PURPLE (PRIMARY) ---------- */
