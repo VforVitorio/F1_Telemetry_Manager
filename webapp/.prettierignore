@@ -3,3 +3,4 @@ node_modules
 coverage
 bun.lock
 bun.lockb
+src/lib/api/schema.ts
