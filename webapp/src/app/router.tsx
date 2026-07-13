@@ -1,11 +1,17 @@
-import { createRootRoute, createRoute, createRouter, Outlet } from '@tanstack/react-router'
+import { createRootRoute, createRoute, createRouter } from '@tanstack/react-router'
 import App from '@/App'
+import { Header } from './Header'
+import { Shell } from './Shell'
 
-// Minimal router wiring (#31). The real route tree + app shell land in #33; for
-// now the root renders an <Outlet /> and a single index route ('/') renders the
-// placeholder App. TanStack Router is here for its typed URL search params, the
-// migration's biggest UX unlock (U2-1), which the feature routes will use.
-const rootRoute = createRootRoute({ component: () => <Outlet /> })
+// Route tree wiring (#33). Root renders the app shell (acrylic rail + routed
+// content plane, see Shell.tsx); the shell's <Outlet/> renders whichever leaf
+// route matched below. '/' keeps rendering the temporary theme-preview App
+// (#32) until the real Home lands; the rest are "coming soon" placeholders
+// until their features ship (one sprint at a time). Each `createRoute` call
+// keeps its `path` a literal string at the call site (not threaded through a
+// prop/array) so TanStack Router's typed route tree infers the exact path
+// union — that's what makes <Link to="..."> in Rail.tsx type-checked.
+const rootRoute = createRootRoute({ component: () => <Shell /> })
 
 const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -13,7 +19,63 @@ const indexRoute = createRoute({
   component: App,
 })
 
-const routeTree = rootRoute.addChildren([indexRoute])
+/** Shared body for routes without a feature yet. */
+function ComingSoon({ title }: { title: string }) {
+  return (
+    <>
+      <Header title={title} />
+      <div className="flex flex-1 items-center justify-center">
+        <p className="text-fg-3">{title} — coming soon</p>
+      </div>
+    </>
+  )
+}
+
+const dashboardRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/dashboard',
+  component: () => <ComingSoon title="Dashboard" />,
+})
+
+const strategyRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/strategy',
+  component: () => <ComingSoon title="Strategy" />,
+})
+
+const raceRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/race',
+  component: () => <ComingSoon title="Race" />,
+})
+
+const labRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/lab',
+  component: () => <ComingSoon title="Lab" />,
+})
+
+const comparisonRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/comparison',
+  component: () => <ComingSoon title="Comparison" />,
+})
+
+const chatRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/chat',
+  component: () => <ComingSoon title="Chat" />,
+})
+
+const routeTree = rootRoute.addChildren([
+  indexRoute,
+  dashboardRoute,
+  strategyRoute,
+  raceRoute,
+  labRoute,
+  comparisonRoute,
+  chatRoute,
+])
 
 export const router = createRouter({ routeTree })
 
