@@ -180,66 +180,14 @@ def get_lap_times(year: int, gp: str, session: str, drivers: List[str]) -> List[
 
         print(f"Filtered to {len(laps_filtered)} valid laps (excluded pit laps and inaccurate laps)")
 
-        # Additional filter: Verify each lap has COMPLETE telemetry data for ALL TELEMETRY GRAPHS
-        # This ensures that all telemetry graphs (Speed, Throttle, Brake, RPM, Gear, DRS, Delta)
-        # can be painted for the selected laps.
-        #
-        # NOTE: X, Y (GPS) are NOT required here because:
-        # - Circuit Domination uses its own API endpoint (get_circuit_domination)
-        # - Distance can be calculated from Speed and Time if GPS is missing
-        #
-        # Required columns from FastF1 for telemetry graphs:
-        # - Speed: For speed graph
-        # - Throttle: For throttle graph
-        # - Brake: For brake graph
-        # - RPM: For RPM graph
-        # - nGear: For gear graph (FastF1 uses 'nGear' not 'Gear')
-        # - DRS: For DRS graph
-        # - Time: For delta graph and distance calculation
-
-        REQUIRED_COLUMNS = ['Speed', 'Throttle', 'Brake', 'RPM', 'nGear', 'DRS', 'Time']
-
-        laps_with_complete_telemetry = []
-        for idx, lap_data in laps_filtered.iterrows():
-            try:
-                # Try to get telemetry for this lap
-                telemetry = lap_data.get_car_data()
-
-                # Check if telemetry exists and is not empty
-                if telemetry is None or telemetry.empty:
-                    continue
-
-                # Verify ALL required columns exist
-                missing_columns = [col for col in REQUIRED_COLUMNS if col not in telemetry.columns]
-                if missing_columns:
-                    print(f"Lap {lap_data.get('LapNumber', '?')} for {lap_data.get('Driver', '?')} missing columns: {missing_columns}")
-                    continue
-
-                # Verify each required column has valid data (not all NaN)
-                has_valid_data = True
-                for col in REQUIRED_COLUMNS:
-                    if telemetry[col].isna().all():
-                        print(f"Lap {lap_data.get('LapNumber', '?')} for {lap_data.get('Driver', '?')}: column '{col}' has no valid data")
-                        has_valid_data = False
-                        break
-
-                # Only include lap if all columns have valid data
-                if has_valid_data:
-                    laps_with_complete_telemetry.append(idx)
-
-            except Exception as e:
-                # Skip laps that fail to load telemetry
-                print(f"Skipping lap {lap_data.get('LapNumber', '?')} for {lap_data.get('Driver', '?')}: {e}")
-                continue
-
-        # Filter to only laps with complete telemetry data
-        if laps_with_complete_telemetry:
-            laps_filtered = laps_filtered.loc[laps_with_complete_telemetry]
-            print(f"✓ Verified {len(laps_filtered)} laps have COMPLETE telemetry data for ALL graphs")
-        else:
-            print("⚠ No laps with complete telemetry data found")
-            laps_filtered = pd.DataFrame()  # Empty DataFrame
-
+        # NOTE (perf): the previous per-lap telemetry validation loop
+        # (`lap.get_car_data()` for EVERY candidate lap, ~50-150 pandas slices per
+        # request, 5-20s on its own even with the session cached) was removed. It
+        # only pre-filtered laps that lack complete telemetry — a guard the UI now
+        # handles gracefully: /lap-telemetry returns {} for such a lap and the
+        # dashboard shows a "pick another lap" notice (since #34). The cheap
+        # IsAccurate + LapTime + no-pit filter above is sufficient to build the
+        # chart, and dropping this loop is the single biggest lap-times speedup.
         result = []
 
         # Iterate through filtered laps
