@@ -119,6 +119,44 @@ export function getDriverColor(code: string, year?: number): string {
   return DRIVER_COLORS_FLAT[key] ?? DEFAULT_DRIVER_COLOR
 }
 
+// --- Legibility floor ---------------------------------------------------------
+// Some real team colours are near-black on the dark UI (Williams #041E42, the
+// Red Bull #2 #1B3D8E): fine as a thick chart line, invisible as text or a thin
+// swatch. `getDriverTextColor` brightens only those below a luminance threshold,
+// so driver NAMES stay team-coloured AND readable. This deviates from strict
+// Streamlit parity on purpose (a designed improvement).
+
+function hexToRgb(hex: string): [number, number, number] {
+  const h = hex.replace('#', '')
+  return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)]
+}
+
+/** WCAG relative luminance (0 = black, 1 = white). */
+function relativeLuminance([r, g, b]: [number, number, number]): number {
+  const channel = (c: number) => {
+    const s = c / 255
+    return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4
+  }
+  return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b)
+}
+
+function mixToward([r, g, b]: [number, number, number], target: number, amount: number): string {
+  const mix = (c: number) => Math.round(c + (target - c) * amount)
+  const toHex = (c: number) => mix(c).toString(16).padStart(2, '0')
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`
+}
+
+// Below this luminance a colour is too dark to read as text on the dark UI.
+const TEXT_LUMINANCE_FLOOR = 0.16
+
+/** Team colour for a driver, brightened toward white when too dark to read as text. */
+export function getDriverTextColor(code: string, year?: number): string {
+  const base = getDriverColor(code, year)
+  const rgb = hexToRgb(base)
+  if (relativeLuminance(rgb) >= TEXT_LUMINANCE_FLOOR) return base
+  return mixToward(rgb, 255, 0.5)
+}
+
 /** Build a `{ driver: colour }` map for the selected drivers. */
 export function driverColorMap(drivers: string[], year?: number): Record<string, string> {
   const map: Record<string, string> = {}

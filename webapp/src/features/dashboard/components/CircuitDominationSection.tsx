@@ -10,9 +10,11 @@ import type { DashboardSearch } from '../search'
 import { useCircuitDomination } from '../queries'
 import type { CircuitDomination } from '@/lib/api/telemetry'
 import { TelemetryLoader } from './TelemetryLoader'
+import { SectionHeader } from './SectionHeader'
 import { Card } from '@/components/Card'
 import { cn } from '@/lib/cn'
-import { computeBounds, computeViewBox, buildSegments } from './circuitDraw'
+import { getDriverTextColor } from '../lib/drivers'
+import { computeBounds, computeViewBox, buildSegments, buildOutlinePath } from './circuitDraw'
 
 export interface CircuitDominationSectionProps {
   search: DashboardSearch
@@ -31,8 +33,10 @@ const MAP_HEIGHT_PX = 360
  *  metres, others a few hundred). */
 const SEGMENT_STROKE_PX = 5
 
-const SECTION_TITLE_CLASSNAME =
-  'text-center text-lg font-display font-medium uppercase tracking-wide text-fg-2'
+/** Faint continuous underlay tracing the whole track, drawn once beneath the
+ *  coloured microsector segments so the gaps between them don't read as a
+ *  broken circuit. */
+const OUTLINE_STROKE_COLOR = 'rgba(255,255,255,0.08)'
 
 /**
  * CIRCUIT DOMINATION: a track outline coloured by whichever driver was
@@ -47,12 +51,13 @@ export function CircuitDominationSection({ search }: CircuitDominationSectionPro
 
   return (
     <section className="flex flex-col gap-4">
-      <h2 className={SECTION_TITLE_CLASSNAME}>Circuit Domination</h2>
+      <SectionHeader title="Circuit Domination" />
       <CircuitDominationBody
         hasSelection={hasSelection}
         hasEnoughDrivers={hasEnoughDrivers}
         isLoading={query.isLoading}
         data={query.data ?? null}
+        year={search.year}
       />
     </section>
   )
@@ -63,6 +68,7 @@ interface CircuitDominationBodyProps {
   hasEnoughDrivers: boolean
   isLoading: boolean
   data: CircuitDomination | null
+  year: DashboardSearch['year']
 }
 
 /** Picks which of the four states to render: no selection yet, selection but
@@ -73,6 +79,7 @@ function CircuitDominationBody({
   hasEnoughDrivers,
   isLoading,
   data,
+  year,
 }: CircuitDominationBodyProps) {
   if (!hasSelection) {
     return <TelemetryLoader minHeight={MAP_HEIGHT_PX} />
@@ -94,19 +101,21 @@ function CircuitDominationBody({
       </p>
     )
   }
-  return <CircuitMap data={data} />
+  return <CircuitMap data={data} year={year} />
 }
 
 interface CircuitMapProps {
   data: CircuitDomination
+  year: DashboardSearch['year']
 }
 
 /** The track SVG plus its driver legend, centered in a narrower column so it
  *  reads as a focal shape rather than stretching full-bleed (Streamlit
  *  centers it in a 50%-width middle column via `st.columns([1, 2, 1])`). */
-function CircuitMap({ data }: CircuitMapProps) {
+function CircuitMap({ data, year }: CircuitMapProps) {
   const bounds = computeBounds(data.x, data.y)
   const viewBox = computeViewBox(bounds)
+  const outlinePoints = buildOutlinePath(data.x, data.y)
   const segments = buildSegments(data.x, data.y, data.colors)
 
   return (
@@ -117,6 +126,15 @@ function CircuitMap({ data }: CircuitMapProps) {
         style={{ height: MAP_HEIGHT_PX }}
       >
         <svg viewBox={viewBox} width="100%" height="100%" preserveAspectRatio="xMidYMid meet">
+          <polyline
+            points={outlinePoints}
+            fill="none"
+            stroke={OUTLINE_STROKE_COLOR}
+            strokeWidth={SEGMENT_STROKE_PX}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            vectorEffect="non-scaling-stroke"
+          />
           {segments.map((segment, index) => (
             <line
               key={index}
@@ -132,18 +150,22 @@ function CircuitMap({ data }: CircuitMapProps) {
           ))}
         </svg>
       </div>
-      <CircuitLegend drivers={data.drivers} />
+      <CircuitLegend drivers={data.drivers} year={year} />
     </Card>
   )
 }
 
 interface CircuitLegendProps {
   drivers: { driver: string; color: string }[]
+  year: DashboardSearch['year']
 }
 
 /** Colour-dot legend, one swatch per driver — the SVG equivalent of the
- *  Streamlit figure's Plotly legend (invisible line traces named per driver). */
-function CircuitLegend({ drivers }: CircuitLegendProps) {
+ *  Streamlit figure's Plotly legend (invisible line traces named per driver).
+ *  The dot keeps the data-driven `entry.color` (which may already carry
+ *  contrast handling from the backend); the driver NAME is team-coloured via
+ *  `getDriverTextColor` so it stays legible against the dark UI. */
+function CircuitLegend({ drivers, year }: CircuitLegendProps) {
   return (
     <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2">
       {drivers.map((entry) => (
@@ -153,7 +175,12 @@ function CircuitLegend({ drivers }: CircuitLegendProps) {
             className="inline-block size-3 rounded-full"
             style={{ backgroundColor: entry.color }}
           />
-          <span className="font-mono text-xs tracking-wide text-fg-2">{entry.driver}</span>
+          <span
+            className="font-mono text-xs tracking-wide"
+            style={{ color: getDriverTextColor(entry.driver, year) }}
+          >
+            {entry.driver}
+          </span>
         </div>
       ))}
     </div>

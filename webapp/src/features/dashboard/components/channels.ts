@@ -33,6 +33,11 @@ export interface ChannelConfig {
    *  gear and DRS are discrete states (gear_graph.py / drs_graph.py both use
    *  a step shape for this reason), not continuous quantities. */
   stepped?: boolean
+  /** Renders as a filled state band (shorter chart, ~35%-opacity area under
+   *  the line) instead of the standard telemetry line — DRS is really an
+   *  on/off state, not a quantity to trace, so a band reads more like
+   *  "engaged" than a thin 0/1 line does. */
+  band?: boolean
   yAxis?: ChannelYAxis
   /** Extracts the plotted series from a driver's telemetry. */
   transform: (telemetry: LapTelemetry) => number[]
@@ -74,6 +79,7 @@ export const CHANNELS: ChannelConfig[] = [
     title: 'DRS',
     yName: 'DRS',
     stepped: true,
+    band: true,
     yAxis: {
       min: 0,
       max: 1,

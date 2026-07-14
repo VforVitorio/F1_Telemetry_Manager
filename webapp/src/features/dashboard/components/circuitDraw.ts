@@ -83,6 +83,23 @@ export function computeViewBox(bounds: Bounds): string {
 }
 
 /**
+ * Builds the SVG `points` attribute for a `<polyline>` tracing every track
+ * coordinate in order (y-flipped, same convention as `buildSegments`). Drawn
+ * once as a faint continuous outline underneath the coloured microsector
+ * segments, so gaps between segments (there is no line between the last
+ * point of one microsector and the first of the next) don't read as a
+ * broken track.
+ */
+export function buildOutlinePath(x: number[], y: number[]): string {
+  const pointCount = Math.min(x.length, y.length)
+  const points: string[] = []
+  for (let i = 0; i < pointCount; i++) {
+    points.push(`${x[i]},${flipY(y[i])}`)
+  }
+  return points.join(' ')
+}
+
+/**
  * Builds one line segment per consecutive coordinate pair, each carrying the
  * colour of the driver who dominated that microsector. `colors[i]` paints
  * the segment from `point[i]` to `point[i+1]` (so `colors.length === x.length - 1`
