@@ -11,10 +11,10 @@ import { useCallback, useMemo } from 'react'
 import ReactECharts from 'echarts-for-react'
 import type { EChartsOption } from 'echarts'
 import { registerF1Theme } from '@/charts/registerEcharts'
-import { echartsTheme, F1_THEME } from '@/charts/echartsTheme'
+import { echartsTheme, F1_THEME, tireColors } from '@/charts/echartsTheme'
 import type { LapTime } from '@/lib/api/telemetry'
-import { getDriverColor } from '../lib/drivers'
-import { compoundEmoji, compoundLabel } from '../lib/compounds'
+import { getDriverColor, getDriverTextColor } from '../lib/drivers'
+import { compoundLabel, compoundVariant } from '../lib/compounds'
 import { formatLapTime, formatLapTimeAxis } from '../lib/lapTime'
 
 // Register the token theme at module load, before any chart's init runs
@@ -45,9 +45,18 @@ interface DriverSeriesOption {
   name: string
   type: 'line'
   symbolSize: number
-  lineStyle: { color: string }
+  lineStyle: { color: string; width: number }
   itemStyle: { color: string }
+  emphasis: { scale: number }
   data: LapPoint[]
+}
+
+/** One legend entry, team-coloured via `textStyle` — a bare string legend
+ *  entry shares ONE colour for every driver, so each entry needs its own
+ *  `DataItem` object instead (icon/size stay on the shared `legend` option). */
+interface LegendEntry {
+  name: string
+  textStyle: { color: string }
 }
 
 /** Runtime narrowing for whatever `unknown` an ECharts callback hands back. */
@@ -74,32 +83,73 @@ function groupByDriver(laps: LapTime[]): Map<string, LapTime[]> {
   return byDriver
 }
 
-/** Build one driver's line+marker series, coloured by TEAM colour. */
+/** Build one driver's line+marker series, coloured by TEAM colour. Markers
+ *  stay small (`symbolSize: 5`) and the line thin (`width: 1.5`) so a dense
+ *  multi-driver plot doesn't bead into a wall of dots; `emphasis.scale` grows
+ *  the hovered point back up so it's still an obvious click target. */
 function buildDriverSeries(driver: string, laps: LapTime[], color: string): DriverSeriesOption {
   return {
     name: driver,
     type: 'line',
-    symbolSize: 7,
-    lineStyle: { color },
+    symbolSize: 5,
+    lineStyle: { color, width: 1.5 },
     itemStyle: { color },
+    emphasis: { scale: 1.6 },
     data: laps.map((lap) => ({ value: [lap.lap_number, lap.lap_time], compound: lap.compound })),
   }
 }
 
-/** Tooltip text: `<emoji> DRIVER — Lap N — M:SS.mmm — Compound`. */
-function formatLapTooltip(raw: unknown): string {
-  if (!raw || typeof raw !== 'object') return ''
-  const { seriesName, data } = raw as { seriesName?: string; data?: unknown }
-  if (!isLapPoint(data)) return ''
-  const [lapNumber, lapTime] = data.value
-  return `${compoundEmoji(data.compound)} ${seriesName ?? ''} — Lap ${lapNumber} — ${formatLapTime(lapTime)} — ${compoundLabel(data.compound)}`
+/** Legend entries, each carrying its own driver-team text colour (the shared
+ *  `legend.icon`/`itemWidth`/`itemHeight` options keep every swatch the same
+ *  shape/size — only the colour differs per driver). */
+function buildLegendData(
+  seriesList: DriverSeriesOption[],
+  year: number | undefined,
+): LegendEntry[] {
+  return seriesList.map((series) => ({
+    name: series.name,
+    textStyle: { color: getDriverTextColor(series.name, year) },
+  }))
+}
+
+/** 8px rounded compound-colour swatch for the tooltip, replacing the old emoji
+ *  marker. An unknown compound gets a neutral grey — NOT the medium yellow,
+ *  which would falsely read as a real tyre. */
+function compoundDotHtml(compound: string): string {
+  const variant = compoundVariant(compound)
+  const hex = variant ? tireColors[variant] : '#6b7280'
+  return `<span style="display:inline-block;width:8px;height:8px;border-radius:9999px;background:${hex};margin-right:4px;"></span>`
+}
+
+/** Tooltip HTML: team-coloured driver name — Lap N — M:SS.mmm — compound dot + label. */
+function formatLapTooltip(year: number | undefined) {
+  return (raw: unknown): string => {
+    if (!raw || typeof raw !== 'object') return ''
+    const { seriesName, data } = raw as { seriesName?: string; data?: unknown }
+    if (!isLapPoint(data)) return ''
+    const [lapNumber, lapTime] = data.value
+    const driverName = seriesName ?? ''
+    const driverHtml = seriesName
+      ? `<b style="color:${getDriverTextColor(seriesName, year)}">${driverName}</b>`
+      : `<b>${driverName}</b>`
+    return `${driverHtml} — Lap ${lapNumber} — ${formatLapTime(lapTime)} — ${compoundDotHtml(data.compound)}${compoundLabel(data.compound)}`
+  }
 }
 
 /** Build the full chart option from the per-driver series list. */
-function buildLapChartOption(seriesList: DriverSeriesOption[]): EChartsOption {
+function buildLapChartOption(
+  seriesList: DriverSeriesOption[],
+  year: number | undefined,
+): EChartsOption {
   return {
-    tooltip: { trigger: 'item', formatter: formatLapTooltip },
-    legend: { data: seriesList.map((series) => series.name), top: 0 },
+    tooltip: { trigger: 'item', formatter: formatLapTooltip(year) },
+    legend: {
+      data: buildLegendData(seriesList, year),
+      icon: 'roundRect',
+      itemWidth: 10,
+      itemHeight: 3,
+      top: 0,
+    },
     grid: { top: 44, left: 56, right: 24, bottom: 44, containLabel: true },
     xAxis: {
       type: 'value',
@@ -162,7 +212,7 @@ export function LapChart({ laps, drivers, year, onLapClick }: LapChartProps) {
       .map((driver) =>
         buildDriverSeries(driver, byDriver.get(driver) ?? [], getDriverColor(driver, year)),
       )
-    return buildLapChartOption(seriesList)
+    return buildLapChartOption(seriesList, year)
   }, [laps, drivers, year])
 
   const handleClick = useCallback(
@@ -174,12 +224,14 @@ export function LapChart({ laps, drivers, year, onLapClick }: LapChartProps) {
   )
 
   return (
-    <ReactECharts
-      theme={F1_THEME}
-      option={option}
-      style={{ height: 400 }}
-      notMerge
-      onEvents={{ click: handleClick }}
-    />
+    <div role="img" aria-label="Lap times by lap, per driver">
+      <ReactECharts
+        theme={F1_THEME}
+        option={option}
+        style={{ height: 400 }}
+        notMerge
+        onEvents={{ click: handleClick }}
+      />
+    </div>
   )
 }

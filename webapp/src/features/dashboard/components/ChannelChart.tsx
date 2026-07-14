@@ -10,15 +10,21 @@
 // `hovermode='x unified'` becomes `tooltip.trigger: 'axis'` here, so
 // scrubbing any one chart shows every driver's value at that distance.
 
-import { useMemo } from 'react'
+import { memo, useMemo } from 'react'
 import ReactECharts from 'echarts-for-react'
-import type { EChartsOption, LineSeriesOption } from 'echarts'
+import type {
+  DefaultLabelFormatterCallbackParams,
+  EChartsOption,
+  LineSeriesOption,
+  TooltipComponentFormatterCallbackParams,
+} from 'echarts'
 import * as echarts from 'echarts'
 import { registerF1Theme } from '@/charts/registerEcharts'
 import { F1_THEME } from '@/charts/echartsTheme'
 import type { LapTelemetry } from '@/lib/api/telemetry'
-import { getDriverColor } from '../lib/drivers'
+import { getDriverColor, getDriverTextColor } from '../lib/drivers'
 import type { ChannelConfig } from './channels'
+import { TelemetryLoader } from './TelemetryLoader'
 
 // Register the token theme at module load, before any chart's init runs
 // (echarts-for-react inits with the `theme` prop in componentDidMount, which
@@ -26,20 +32,69 @@ import type { ChannelConfig } from './channels'
 registerF1Theme()
 
 const CHART_HEIGHT = 320
+// DRS renders as a state band, not a full telemetry trace — a shorter card
+// keeps it from claiming as much vertical rhythm as Speed/RPM/etc.
+const BAND_CHART_HEIGHT = 180
+
+// Legend only earns its keep once there's something to disambiguate between —
+// a lone "— VER" floating atop a single-driver chart is noise, not
+// information. Hiding it frees the strip `grid.top` reserved for it.
+const LEGEND_GRID_TOP = 44
+const NO_LEGEND_GRID_TOP = 16
 
 // Every telemetry ECharts instance joins this group so `echarts.connect`
 // moves every chart's crosshair together when one is scrubbed. That's a
 // meaningful sync, not just a visual one: x is distance on all 7 charts.
 const CROSSHAIR_GROUP = 'telemetry-crosshair'
 
-const AXIS_TOOLTIP: EChartsOption['tooltip'] = { trigger: 'axis', axisPointer: { type: 'line' } }
+interface LegendEntry {
+  name: string
+  color: string
+}
 
-/** Shared option scaffolding (tooltip/legend/grid/x-axis) every telemetry
- *  chart reuses; callers only supply the y-axis and series. The y-axis name is
- *  anchored to the left of the axis line (`align: 'left'`) so a label like
- *  "Throttle (%)" extends into the plot instead of half of it clipping off the
- *  container's left edge. */
-function baseOption(driversWithData: string[], yAxis: EChartsOption['yAxis']): EChartsOption {
+/**
+ * One tooltip row per hovered series: the driver code in its (readable) team
+ * colour, the value right-aligned in mono — turns ECharts' default
+ * left-aligned wall of numbers into something closer to a timing scoreboard.
+ * Shared by every telemetry chart (baseOption below), so drivers read the
+ * same way whether it's Speed, Delta, or the DRS band.
+ */
+function buildTooltipFormatter(year: number | undefined) {
+  return (params: TooltipComponentFormatterCallbackParams): string => {
+    const items: DefaultLabelFormatterCallbackParams[] = Array.isArray(params) ? params : [params]
+    return items
+      .map(({ seriesName, value }) => {
+        if (!seriesName) return ''
+        const raw = Array.isArray(value) ? value[value.length - 1] : value
+        const display =
+          typeof raw === 'number'
+            ? Number.isInteger(raw)
+              ? String(raw) // gear / DRS are integers — no ".0"
+              : raw.toFixed(1)
+            : String(raw ?? '')
+        return `<div style="display:flex;justify-content:space-between;gap:20px;">
+  <span style="color:${getDriverTextColor(seriesName, year)}">${seriesName}</span>
+  <span style="font-family:'JetBrains Mono Variable',monospace">${display}</span>
+</div>`
+      })
+      .join('')
+  }
+}
+
+/**
+ * Shared option scaffolding (tooltip/legend/grid/x-axis) every telemetry
+ * chart reuses; callers only supply the y-axis and series. Legend entries
+ * carry each driver's readable team colour so the driver name shows
+ * in-colour instead of plain white; with only one driver loaded the legend
+ * is dropped entirely (nothing to disambiguate) and the freed strip goes
+ * back to the plot via `grid.top`.
+ */
+function baseOption(
+  legendEntries: LegendEntry[],
+  yAxis: EChartsOption['yAxis'],
+  year: number | undefined,
+): EChartsOption {
+  const showLegend = legendEntries.length > 1
   const yAxisStyled = {
     // `scale: true` autoranges around the data instead of forcing a 0 baseline
     // (Plotly's default in the Streamlit original) — RPM/Speed/Delta would
@@ -47,16 +102,43 @@ function baseOption(driversWithData: string[], yAxis: EChartsOption['yAxis']): E
     // (throttle 0-100, gear, DRS) override this, so it only affects the
     // free-ranged ones.
     scale: true,
-    nameLocation: 'end' as const,
-    nameGap: 12,
-    nameTextStyle: { align: 'left' as const },
     ...(yAxis as object),
   }
   return {
-    tooltip: AXIS_TOOLTIP,
-    legend: { data: driversWithData, top: 0 },
-    grid: { top: 44, left: 8, right: 20, bottom: 8, containLabel: true },
-    xAxis: { type: 'value', name: 'Distance (m)', nameLocation: 'middle', nameGap: 28 },
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: { type: 'line' },
+      extraCssText: 'border-radius:12px;padding:10px 12px',
+      formatter: buildTooltipFormatter(year),
+    },
+    legend: showLegend
+      ? {
+          data: legendEntries.map(({ name, color }) => ({ name, textStyle: { color } })),
+          icon: 'roundRect',
+          itemWidth: 10,
+          itemHeight: 3,
+          top: 0,
+        }
+      : { show: false },
+    grid: {
+      top: showLegend ? LEGEND_GRID_TOP : NO_LEGEND_GRID_TOP,
+      left: 8,
+      right: 20,
+      bottom: 8,
+      containLabel: true,
+    },
+    // The y-axis drops its own `name` — each card's header already carries
+    // the channel's unit-bearing title (e.g. "Speed (km/h)"), so a second
+    // axis label would just repeat it a third time alongside the legend.
+    // `splitLine` is off too: dense multi-driver traces over a full grid
+    // read as moiré noise: a hairline axis alone is quieter.
+    xAxis: {
+      type: 'value',
+      name: 'Distance (m)',
+      nameLocation: 'middle',
+      nameGap: 28,
+      splitLine: { show: false },
+    },
     yAxis: yAxisStyled,
   }
 }
@@ -65,11 +147,15 @@ function baseOption(driversWithData: string[], yAxis: EChartsOption['yAxis']): E
  * One ECharts line series per loaded driver, coloured by team. `points`
  * returns a driver's [distance, value] pairs — the only thing that differs
  * between a plain channel (read one array) and Delta (diff two arrays).
+ * `band` fills the trace down to the axis at ~35% of the driver colour —
+ * used only by the DRS state chart, where a filled band reads as "engaged"
+ * more clearly than a thin stepped line does.
  */
 function buildDriverSeries(
   drivers: string[],
   year: number | undefined,
   stepped: boolean | undefined,
+  band: boolean | undefined,
   points: (driver: string) => Array<[number, number]>,
 ): LineSeriesOption[] {
   return drivers.map((driver) => ({
@@ -79,6 +165,7 @@ function buildDriverSeries(
     step: stepped ? 'end' : undefined,
     lineStyle: { width: 2, color: getDriverColor(driver, year) },
     itemStyle: { color: getDriverColor(driver, year) },
+    areaStyle: band ? { opacity: 0.35 } : undefined,
     data: points(driver),
   }))
 }
@@ -90,21 +177,28 @@ function buildChannelOption(
   channel: ChannelConfig,
 ): EChartsOption {
   const loaded = drivers.filter((driver) => byDriver[driver])
-  const series = buildDriverSeries(loaded, year, channel.stepped, (driver) => {
+  const legendEntries = loaded.map((driver) => ({
+    name: driver,
+    color: getDriverTextColor(driver, year),
+  }))
+  const series = buildDriverSeries(loaded, year, channel.stepped, channel.band, (driver) => {
     const telemetry = byDriver[driver]
     const values = channel.transform(telemetry)
     return telemetry.distance.map((distance, i): [number, number] => [distance, values[i]])
   })
 
   return {
-    ...baseOption(loaded, {
-      type: 'value',
-      name: channel.yName,
-      min: channel.yAxis?.min,
-      max: channel.yAxis?.max,
-      interval: channel.yAxis?.interval,
-      axisLabel: channel.yAxis?.formatter ? { formatter: channel.yAxis.formatter } : undefined,
-    }),
+    ...baseOption(
+      legendEntries,
+      {
+        type: 'value',
+        min: channel.yAxis?.min,
+        max: channel.yAxis?.max,
+        interval: channel.yAxis?.interval,
+        axisLabel: channel.yAxis?.formatter ? { formatter: channel.yAxis.formatter } : undefined,
+      },
+      year,
+    ),
     series,
   }
 }
@@ -114,13 +208,21 @@ function buildChannelOption(
  * line chart and joins the crosshair group so scrubbing one channel moves
  * the vertical guide on all the others at the same distance.
  */
-function SyncedLineChart({ option, ariaLabel }: { option: EChartsOption; ariaLabel: string }) {
+function SyncedLineChart({
+  option,
+  ariaLabel,
+  height = CHART_HEIGHT,
+}: {
+  option: EChartsOption
+  ariaLabel: string
+  height?: number
+}) {
   return (
     <div role="img" aria-label={ariaLabel}>
       <ReactECharts
         theme={F1_THEME}
         option={option}
-        style={{ height: CHART_HEIGHT }}
+        style={{ height }}
         notMerge
         onChartReady={(instance) => {
           instance.group = CROSSHAIR_GROUP
@@ -140,14 +242,30 @@ export interface ChannelChartProps {
 }
 
 /** Renders one telemetry channel (speed/throttle/brake/rpm/gear/drs) as an
- *  ECharts line per loaded driver, x = distance in meters. */
-export function ChannelChart({ title, byDriver, drivers, year, channel }: ChannelChartProps) {
+ *  ECharts line per loaded driver, x = distance in meters. DRS renders as a
+ *  shorter, filled state band instead of the standard line height (see
+ *  `channel.band` in channels.ts). Memoized: 6 of these mount per grid, and
+ *  most re-renders (layout toggle, an unrelated driver's data settling)
+ *  don't change this channel's own `byDriver`/`drivers`/`year`. */
+export const ChannelChart = memo(function ChannelChart({
+  title,
+  byDriver,
+  drivers,
+  year,
+  channel,
+}: ChannelChartProps) {
   const option = useMemo(
     () => buildChannelOption(byDriver, drivers, year, channel),
     [byDriver, drivers, year, channel],
   )
-  return <SyncedLineChart option={option} ariaLabel={`${title} telemetry chart`} />
-}
+  return (
+    <SyncedLineChart
+      option={option}
+      ariaLabel={`${title} telemetry chart`}
+      height={channel.band ? BAND_CHART_HEIGHT : CHART_HEIGHT}
+    />
+  )
+})
 
 // ---- Delta: cross-driver, needs its own data prep --------------------------
 
@@ -205,10 +323,14 @@ function buildDeltaOption(
 ): EChartsOption {
   const loaded = drivers.filter((driver) => byDriver[driver])
   const reference = findReferenceDriver(byDriver, loaded)
-  if (!reference) return baseOption([], { type: 'value', name: 'Delta (s)' })
+  if (!reference) return baseOption([], { type: 'value' }, year)
 
   const refTelemetry = byDriver[reference]
-  const series = buildDriverSeries(loaded, year, false, (driver) => {
+  const legendEntries = loaded.map((driver) => ({
+    name: driver,
+    color: getDriverTextColor(driver, year),
+  }))
+  const series = buildDriverSeries(loaded, year, false, false, (driver) => {
     const telemetry = byDriver[driver]
     return telemetry.distance.map((distance, i): [number, number] => {
       const refTime = interp(distance, refTelemetry.distance, refTelemetry.time)
@@ -230,27 +352,43 @@ function buildDeltaOption(
     }
   }
 
-  return { ...baseOption(loaded, { type: 'value', name: 'Delta (s)' }), series }
+  return { ...baseOption(legendEntries, { type: 'value' }, year), series }
 }
 
 export interface DeltaChartProps {
   byDriver: Record<string, LapTelemetry>
   drivers: string[]
   year: number | undefined
+  /** True while at least one selected lap is still loading (from
+   *  `useLapTelemetries`). Distinguishes "still fetching the 2nd driver"
+   *  from "nobody picked a 2nd driver yet" — without it, a 2-driver
+   *  selection mid-fetch shows the same "needs ≥2 drivers" note as the true
+   *  empty state, which reads as broken rather than in progress. */
+  isLoading: boolean
 }
 
 /**
  * Time delta vs. the fastest loaded driver, interpolated onto their distance
  * grid. Needs >=2 loaded drivers to have anyone to compare against —
- * `delta_graph.py` shows an `st.info` notice in the same case.
+ * `delta_graph.py` shows an `st.info` notice in the same case, unless a 2nd+
+ * driver is still loading, in which case the shared loader plays instead of
+ * a note that looks like a bug.
  */
-export function DeltaChart({ byDriver, drivers, year }: DeltaChartProps) {
+export const DeltaChart = memo(function DeltaChart({
+  byDriver,
+  drivers,
+  year,
+  isLoading,
+}: DeltaChartProps) {
   const loaded = drivers.filter((driver) => byDriver[driver])
   const option = useMemo(() => buildDeltaOption(byDriver, drivers, year), [byDriver, drivers, year])
 
   if (loaded.length < MIN_DELTA_DRIVERS) {
+    if (drivers.length >= MIN_DELTA_DRIVERS && isLoading) {
+      return <TelemetryLoader />
+    }
     return <p className="px-2 py-12 text-center text-sm text-fg-3">Delta needs ≥2 drivers</p>
   }
 
   return <SyncedLineChart option={option} ariaLabel="Delta telemetry chart" />
-}
+})

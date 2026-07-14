@@ -2,47 +2,47 @@
 // `frontend/components/dashboard/lap_graph.py::render_control_buttons` /
 // `_display_filter_status`.
 //
-// Pure presentational + one pure computation (fastest lap per driver); all
+// Pure presentational; the fastest-lap computation is the shared
+// `../lib/fastestLap` helper (also used by the page's auto-load effect). All
 // store writes happen in the caller (`LapChartSection`) so this component
 // never touches Zustand directly.
 
+import { Eye, EyeOff, Timer } from 'lucide-react'
 import { Button } from '@/components/Button'
+import { cn } from '@/lib/cn'
 import type { LapTime } from '@/lib/api/telemetry'
+import { fastestLapPerDriver } from '../lib/fastestLap'
 
-/** Each driver's fastest lap (by `lap_time`), computed from the FULL
- *  (unfiltered) lap times — the outlier/invalid toggles must not hide a
- *  driver's genuine fastest lap from this shortcut. */
-function fastestLapPerDriver(lapTimes: LapTime[], drivers: string[]): Record<string, number> {
-  const fastest: Record<string, number> = {}
-  for (const driver of drivers) {
-    const driverLaps = lapTimes.filter((lap) => lap.driver === driver)
-    if (driverLaps.length === 0) continue
-    const quickest = driverLaps.reduce((best, lap) => (lap.lap_time < best.lap_time ? lap : best))
-    fastest[driver] = quickest.lap_number
-  }
-  return fastest
-}
-
-/** "Showing/Hiding N outlier laps | Hiding N invalid laps" status line,
- *  matching `_display_filter_status`'s message assembly exactly. */
-function buildFilterStatus(
-  outlierCount: number,
-  invalidCount: number,
-  showOutliers: boolean,
-  showInvalidLaps: boolean,
-): string {
-  const parts: string[] = []
-  if (outlierCount > 0) {
-    parts.push(
-      showOutliers
-        ? `📊 Showing ${outlierCount} outlier laps`
-        : `🚫 Hiding ${outlierCount} outlier laps`,
-    )
-  }
-  if (invalidCount > 0 && !showInvalidLaps) {
-    parts.push(`🚫 Hiding ${invalidCount} invalid laps`)
-  }
-  return parts.join(' | ')
+/** Pressed/unpressed toggle chip for a lap-visibility filter, with the
+ *  affected lap count embedded in the label — replaces the old standalone
+ *  filter-status line, which duplicated these same counts as plain text. */
+function FilterChip({
+  label,
+  count,
+  pressed,
+  onToggle,
+}: {
+  label: string
+  count: number
+  pressed: boolean
+  onToggle: () => void
+}) {
+  const Icon = pressed ? Eye : EyeOff
+  return (
+    <button
+      type="button"
+      aria-pressed={pressed}
+      onClick={onToggle}
+      className={cn(
+        'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 focus-visible:ring-offset-2 focus-visible:ring-offset-bg-0',
+        pressed ? 'bg-bg-4 text-fg-1' : 'text-fg-3 hover:bg-bg-4 hover:text-fg-2',
+      )}
+    >
+      <Icon className="size-4" aria-hidden="true" />
+      {label} · {count}
+    </button>
+  )
 }
 
 export interface LapControlsProps {
@@ -58,8 +58,9 @@ export interface LapControlsProps {
   onToggleInvalidLaps: () => void
 }
 
-/** Fastest-laps shortcut + outlier/invalid visibility toggles, plus the
- *  resulting filter-status line. */
+/** Fastest-laps shortcut + outlier/invalid visibility toggle chips, in a
+ *  left-aligned auto-width row (not a full-width grid — these are compact
+ *  controls, not equal-weight destinations). */
 export function LapControls({
   lapTimes,
   drivers,
@@ -71,8 +72,6 @@ export function LapControls({
   onToggleOutliers,
   onToggleInvalidLaps,
 }: LapControlsProps) {
-  const filterStatus = buildFilterStatus(outlierCount, invalidCount, showOutliers, showInvalidLaps)
-
   /** Load each driver's fastest lap — no-op when there are no laps yet, so the
    *  button can't wipe the current selection with an empty map. */
   const handleSelectFastest = () => {
@@ -81,19 +80,23 @@ export function LapControls({
   }
 
   return (
-    <div className="flex flex-col gap-2">
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <Button variant="ghost" onClick={handleSelectFastest}>
-          🏁 SELECT FASTEST LAPS
-        </Button>
-        <Button variant="ghost" onClick={onToggleOutliers}>
-          {showOutliers ? 'HIDE OUTLIERS' : 'SHOW OUTLIERS'}
-        </Button>
-        <Button variant="ghost" onClick={onToggleInvalidLaps}>
-          {showInvalidLaps ? 'HIDE INVALID LAPS' : 'SHOW INVALID LAPS'}
-        </Button>
-      </div>
-      {filterStatus ? <p className="text-sm text-fg-3">{filterStatus}</p> : null}
+    <div className="flex flex-wrap items-center gap-2">
+      <Button variant="ghost" size="sm" onClick={handleSelectFastest}>
+        <Timer className="size-4" aria-hidden="true" />
+        Select fastest laps
+      </Button>
+      <FilterChip
+        label="Outliers"
+        count={outlierCount}
+        pressed={showOutliers}
+        onToggle={onToggleOutliers}
+      />
+      <FilterChip
+        label="Invalid"
+        count={invalidCount}
+        pressed={showInvalidLaps}
+        onToggle={onToggleInvalidLaps}
+      />
     </div>
   )
 }

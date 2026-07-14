@@ -11,12 +11,14 @@
 // instead of a chart — Víctor's hard requirement, see TelemetryLoader.tsx.
 
 import type { ReactNode } from 'react'
+import { TriangleAlert } from 'lucide-react'
 import { ChartCard } from '@/components/ChartCard'
 import { Button } from '@/components/Button'
 import { cn } from '@/lib/cn'
 import type { DashboardSearch } from '../search'
 import { useLapTelemetries } from '../queries'
 import { useDashboardStore, type ChartLayout } from '../store'
+import { SectionHeader } from './SectionHeader'
 import { TelemetryLoader } from './TelemetryLoader'
 import { ChannelChart, DeltaChart } from './ChannelChart'
 import { CHANNELS, DELTA_TITLE } from './channels'
@@ -61,7 +63,7 @@ function NoTelemetryNotice({ failedDrivers }: { failedDrivers: string[] }) {
       role="status"
       className="flex items-center gap-3 rounded-2xl border border-hairline border-l-4 border-l-warning bg-bg-3 px-4 py-6 text-sm text-fg-2"
     >
-      <span aria-hidden="true">⚠️</span>
+      <TriangleAlert className="size-5 shrink-0 text-warning" aria-hidden="true" />
       <span>{noTelemetryMessage(failedDrivers)}</span>
     </div>
   )
@@ -112,10 +114,9 @@ export function TelemetryGrid({ search }: TelemetryGridProps) {
 
   return (
     <section className="flex flex-col gap-4">
-      <div className="flex items-center justify-between gap-3">
-        <h2 className="font-display text-lg tracking-wide text-fg-2 uppercase">Telemetry</h2>
+      <SectionHeader title="Telemetry">
         <LayoutToggle layout={chartLayout} onToggle={toggleChartLayout} />
-      </div>
+      </SectionHeader>
 
       {settledEmpty ? (
         <NoTelemetryNotice failedDrivers={failedDrivers} />
@@ -126,7 +127,7 @@ export function TelemetryGrid({ search }: TelemetryGridProps) {
           ) : null}
 
           <div className={cn(LAYOUT_CLASSNAMES[chartLayout])}>
-            <TelemetryCard title={speedChannel.title} hasAny={hasAny}>
+            <TelemetryCard title={speedChannel.yName} hasAny={hasAny}>
               <ChannelChart
                 title={speedChannel.title}
                 byDriver={byDriver}
@@ -137,11 +138,11 @@ export function TelemetryGrid({ search }: TelemetryGridProps) {
             </TelemetryCard>
 
             <TelemetryCard title={DELTA_TITLE} hasAny={hasAny}>
-              <DeltaChart byDriver={byDriver} drivers={drivers} year={year} />
+              <DeltaChart byDriver={byDriver} drivers={drivers} year={year} isLoading={isLoading} />
             </TelemetryCard>
 
             {restChannels.map((channel) => (
-              <TelemetryCard key={channel.key} title={channel.title} hasAny={hasAny}>
+              <TelemetryCard key={channel.key} title={channel.yName} hasAny={hasAny}>
                 <ChannelChart
                   title={channel.title}
                   byDriver={byDriver}

@@ -55,12 +55,15 @@ function capDriversCsv(raw: unknown): string | undefined {
   return capped.length > 0 ? capped.join(',') : undefined
 }
 
-/** `validateSearch` for the /dashboard route: coerce raw router search. */
+/** `validateSearch` for the /dashboard route: coerce raw router search AND
+ *  enforce the cascade (drivers need a session, session needs a GP, GP needs a
+ *  year). A hand-truncated link like `?drivers=VER,LEC` therefore drops the
+ *  orphan drivers instead of rendering the page in a broken half-selected state. */
 export function validateDashboardSearch(raw: Record<string, unknown>): RawDashboardSearch {
   const year = coerceYear(raw.year)
-  const gp = coerceStr(raw.gp)
-  const session = coerceStr(raw.session)
-  const drivers = capDriversCsv(raw.drivers)
+  const gp = year != null ? coerceStr(raw.gp) : undefined
+  const session = gp ? coerceStr(raw.session) : undefined
+  const drivers = session ? capDriversCsv(raw.drivers) : undefined
   return {
     ...(year != null ? { year } : {}),
     ...(gp ? { gp } : {}),

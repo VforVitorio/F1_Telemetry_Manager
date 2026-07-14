@@ -7,6 +7,7 @@ import type { ReactNode } from 'react'
 import type { DashboardSearch } from '../search'
 import { MAX_DRIVERS } from '../search'
 import { useGps, useSessions, useDrivers } from '../queries'
+import { getDriverColor } from '../lib/drivers'
 import { Combobox, MultiCombobox, type ComboboxOption } from '@/components/Combobox'
 import { cn } from '@/lib/cn'
 
@@ -99,6 +100,7 @@ export function SelectorsToolbar({ value, onChange }: SelectorsToolbarProps) {
           placeholder="Select drivers (max 3)"
           disabled={!value.session || driversQuery.isLoading}
           max={MAX_DRIVERS}
+          getOptionAccent={(code) => getDriverColor(code, value.year)}
         />
       </SelectorField>
     </div>

@@ -8,6 +8,7 @@
 // `{ driver: telemetry }` record, so click-to-load / fastest-laps are just
 // store writes and the charts fetch reactively.
 
+import { useMemo } from 'react'
 import { useQueries, useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api/client'
 import { queryKeys } from '@/lib/queryKeys'
@@ -24,7 +25,10 @@ import {
 } from '@/lib/api/telemetry'
 import type { DashboardSearch } from './search'
 
-const HISTORICAL = { staleTime: Infinity, gcTime: Infinity } as const
+// Historical data never changes: cache forever, and cap retries at 1 so a
+// downed backend fails fast instead of spinning through the default 3-retry
+// exponential backoff (which, on 10s+ FastF1 calls, means minutes of spinner).
+const HISTORICAL = { staleTime: Infinity, gcTime: Infinity, retry: 1 } as const
 
 /** Available GPs for a season. */
 export function useGps(year: number | undefined) {
@@ -85,6 +89,21 @@ export function useDrivers(
 }
 
 const ready = (s: DashboardSearch) => s.year != null && !!s.gp && !!s.session
+
+/**
+ * Fire-and-forget: ask the backend to warm the FastF1 session cache for this
+ * (year, gp, session). Called when the user picks a session so the ~2-15s parse
+ * starts while they choose drivers — by the time lap-times fires, it's warm.
+ * Untyped raw fetch (same-origin via the dev proxy / nginx); errors are ignored.
+ */
+export function prewarmTelemetry(year: number, gp: string, session: string): void {
+  // Same base as the typed client (client.ts) so it works split-origin too.
+  const base = import.meta.env.VITE_API_BASE ?? ''
+  const query = new URLSearchParams({ year: String(year), gp, session })
+  void fetch(`${base}/api/v1/telemetry/prewarm?${query.toString()}`, { method: 'POST' }).catch(
+    () => {},
+  )
+}
 
 /** Lap-time series for the selected drivers (feeds the lap chart). */
 export function useLapTimes(search: DashboardSearch) {
@@ -175,30 +194,51 @@ export function useLapTelemetries(
     })),
   })
 
-  const byDriver: Record<string, LapTelemetry> = {}
-  const failedDrivers: string[] = []
-  let anyLoading = false
-  results.forEach((r, i) => {
-    if (!canFetch) return
-    const driver = entries[i][0]
-    if (r.isLoading) {
-      anyLoading = true
-      return
-    }
-    if (r.data) {
-      byDriver[driver] = r.data
-      return
-    }
-    // Settled (success with a `{}` body → null, or error after retries) but no
-    // telemetry: a pit/out/incomplete lap or a failed fetch.
-    if (r.isError || r.isSuccess) failedDrivers.push(driver)
-  })
+  // Memoize the combined result on a content signature so `byDriver` keeps a
+  // STABLE identity across unrelated re-renders (outlier/layout toggles, hovers)
+  // — without this the 7 telemetry charts' option `useMemo`s recompute thousands
+  // of points every render. The signature must capture EVERY input to `byDriver`:
+  // the session context (so navigating between sessions can't return the prior
+  // session's cached telemetry for one frame), each query's driver:lap:status,
+  // and `dataUpdatedAt` (so a refetch that keeps `status: 'success'` still busts
+  // the memo). `year`/`gp`/`session`/`canFetch` are already in scope above.
+  const signature =
+    `${canFetch}|${year ?? ''}|${gp ?? ''}|${session ?? ''}|` +
+    results
+      .map((r, i) => `${entries[i]?.[0]}:${entries[i]?.[1]}:${r.status}:${r.dataUpdatedAt}`)
+      .join('|')
 
-  return {
-    byDriver,
-    isLoading: anyLoading,
-    hasAny: Object.keys(byDriver).length > 0,
-    hasSelection: entries.length > 0,
-    failedDrivers,
-  }
+  return useMemo<LapTelemetriesResult>(
+    () => {
+      const byDriver: Record<string, LapTelemetry> = {}
+      const failedDrivers: string[] = []
+      let anyLoading = false
+      results.forEach((r, i) => {
+        if (!canFetch) return
+        const driver = entries[i][0]
+        if (r.isLoading) {
+          anyLoading = true
+          return
+        }
+        if (r.data) {
+          byDriver[driver] = r.data
+          return
+        }
+        // Settled (success with a `{}` body → null, or error after retries) but
+        // no telemetry: a pit/out/incomplete lap or a failed fetch.
+        if (r.isError || r.isSuccess) failedDrivers.push(driver)
+      })
+      return {
+        byDriver,
+        isLoading: anyLoading,
+        hasAny: Object.keys(byDriver).length > 0,
+        hasSelection: entries.length > 0,
+        failedDrivers,
+      }
+    },
+    // Keyed on the content signature above; `results`/`entries`/`canFetch` are
+    // read inside but only matter when the signature changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [signature],
+  )
 }

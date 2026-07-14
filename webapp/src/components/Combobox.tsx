@@ -60,6 +60,18 @@ function XIcon({ className }: { className?: string }) {
   )
 }
 
+/** Small colour swatch shown before an option's label when `getOptionAccent`
+ *  is provided (e.g. a driver's team colour in the drivers multi-select). */
+function AccentDot({ color }: { color: string }) {
+  return (
+    <span
+      aria-hidden="true"
+      className="inline-block size-2 shrink-0 rounded-full"
+      style={{ backgroundColor: color }}
+    />
+  )
+}
+
 const PANEL_CLASSNAME = cn(
   'w-[var(--radix-popover-trigger-width)] overflow-hidden rounded-xl border border-divider bg-bg-4',
   'shadow-[var(--shadow-elev)] outline-none',
@@ -181,13 +193,26 @@ export interface MultiComboboxProps {
   className?: string
   /** Accessible name for the trigger when the visible label lives elsewhere. */
   ariaLabel?: string
+  /** When provided, renders a small colour dot before an option's label (both
+   *  the selected chips and the dropdown items) — e.g. a driver's team colour. */
+  getOptionAccent?: (value: string) => string | undefined
 }
 
 /** Multi-select combobox. Selections render as removable chips in the
  *  trigger; once `max` is reached, remaining options render disabled in the
  *  list instead of silently doing nothing on select. */
 export const MultiCombobox = forwardRef<HTMLDivElement, MultiComboboxProps>(function MultiCombobox(
-  { options, value, onChange, placeholder = 'Select...', disabled, max, className, ariaLabel },
+  {
+    options,
+    value,
+    onChange,
+    placeholder = 'Select...',
+    disabled,
+    max,
+    className,
+    ariaLabel,
+    getOptionAccent,
+  },
   ref,
 ) {
   const [open, setOpen] = useState(false)
@@ -240,26 +265,30 @@ export const MultiCombobox = forwardRef<HTMLDivElement, MultiComboboxProps>(func
           )}
         >
           {selectedOptions.length === 0 && <span className="px-1 text-fg-3">{placeholder}</span>}
-          {selectedOptions.map((option) => (
-            <span
-              key={option.value}
-              className="flex items-center gap-1 rounded-full bg-bg-5 py-0.5 pl-2.5 pr-1 text-fg-1"
-            >
-              {option.label}
-              <button
-                type="button"
-                aria-label={`Remove ${option.label}`}
-                onClick={(event) => {
-                  event.stopPropagation()
-                  removeValue(option.value)
-                }}
-                onPointerDown={(event) => event.stopPropagation()}
-                className="rounded-full p-0.5 text-fg-3 hover:bg-bg-4 hover:text-fg-1"
+          {selectedOptions.map((option) => {
+            const accent = getOptionAccent?.(option.value)
+            return (
+              <span
+                key={option.value}
+                className="flex items-center gap-1 rounded-full bg-bg-5 py-0.5 pl-2.5 pr-1 text-fg-1"
               >
-                <XIcon className="size-3" />
-              </button>
-            </span>
-          ))}
+                {accent && <AccentDot color={accent} />}
+                {option.label}
+                <button
+                  type="button"
+                  aria-label={`Remove ${option.label}`}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    removeValue(option.value)
+                  }}
+                  onPointerDown={(event) => event.stopPropagation()}
+                  className="rounded-full p-0.5 text-fg-3 hover:bg-bg-4 hover:text-fg-1"
+                >
+                  <XIcon className="size-3" />
+                </button>
+              </span>
+            )
+          })}
           <ChevronDownIcon className="ml-auto size-4 shrink-0 text-fg-3" />
         </div>
       </Popover.Trigger>
@@ -267,6 +296,7 @@ export const MultiCombobox = forwardRef<HTMLDivElement, MultiComboboxProps>(func
         {options.map((option) => {
           const selected = value.includes(option.value)
           const disabledItem = !selected && atMax
+          const accent = getOptionAccent?.(option.value)
           return (
             <Command.Item
               key={option.value}
@@ -275,7 +305,10 @@ export const MultiCombobox = forwardRef<HTMLDivElement, MultiComboboxProps>(func
               onSelect={() => handleSelect(option.value)}
               className={cn(ITEM_CLASSNAME, !disabledItem && 'cursor-pointer')}
             >
-              <span className="truncate">{option.label}</span>
+              <span className="flex min-w-0 items-center gap-2">
+                {accent && <AccentDot color={accent} />}
+                <span className="truncate">{option.label}</span>
+              </span>
               {selected && <CheckIcon className="size-4 shrink-0 text-purple-400" />}
             </Command.Item>
           )
