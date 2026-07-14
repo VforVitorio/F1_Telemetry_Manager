@@ -1,6 +1,7 @@
-import fastf1
 import pandas as pd
 from typing import List, Optional
+
+from backend.services.telemetry.session_cache import get_loaded_session
 
 
 class SessionData:
@@ -15,9 +16,11 @@ class SessionData:
         self.session_data = self._load_session()
 
     def _load_session(self):
-        session = fastf1.get_session(self.year, self.circuit, self.current_session)
-        session.load(telemetry=self.telemetry, laps=self.laps, weather=self.weather)
-        return session
+        # Delegates to the process-wide session cache: the same FastF1 session is
+        # parsed once and reused across the 4-6 SessionData objects a single
+        # dashboard interaction builds (see session_cache.py). Read-only after
+        # load, so sharing one object across requests is safe.
+        return get_loaded_session(self.year, self.circuit, self.current_session)
 
     def get_driver_lap_times(self, drivers: Optional[List[str]] = None):
         """

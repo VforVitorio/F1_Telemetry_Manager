@@ -16,7 +16,7 @@ router = APIRouter(prefix="/circuit-domination", tags=["telemetry"])
 
 
 @router.get("")
-async def get_circuit_domination(
+def get_circuit_domination(
     year: int = Query(..., ge=2018, le=2030, description="Racing season year"),
     gp: str = Query(..., min_length=1, description="Grand Prix name (e.g., 'Spain', 'Belgium')"),
     session: str = Query(..., pattern="^(FP1|FP2|FP3|Q|R|S|SQ)$", description="Session type"),

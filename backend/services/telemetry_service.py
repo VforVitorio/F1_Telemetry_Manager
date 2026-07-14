@@ -15,6 +15,7 @@ import os
 import warnings
 
 from backend.core.driver_colors import get_driver_color
+from backend.services.telemetry.session_cache import get_loaded_session
 
 # Suppress specific FastF1/pandas warnings
 warnings.filterwarnings('ignore', message='.*fill_value.*')
@@ -94,9 +95,9 @@ def get_circuit_domination_data(
     try:
         logger.info(
             f"Requesting session from FastF1: {year} {gp} {session_type}")
-        session = fastf1.get_session(year, gp, session_type)
-        logger.info("Loading session data (this may take time on first run)...")
-        session.load()
+        # Reuse the process-wide session cache (parse once, shared with the
+        # telemetry endpoints) instead of a fresh load per request.
+        session = get_loaded_session(year, gp, session_type)
         logger.info("Session loaded successfully")
     except Exception as e:
         logger.error(f"Failed to load session: {e}", exc_info=True)
@@ -394,10 +395,9 @@ def fetch_lap_telemetry(
     logger.info(
         f"Fetching lap telemetry: {year} {gp} {session_type} - {driver} {lap_description}")
 
-    # Load session
+    # Load session (reuse the process-wide session cache)
     try:
-        session = fastf1.get_session(year, gp, session_type)
-        session.load()
+        session = get_loaded_session(year, gp, session_type)
         logger.info(f"Session loaded: {year} {gp} {session_type}")
     except Exception as e:
         logger.error(f"Failed to load session: {e}")
