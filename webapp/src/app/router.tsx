@@ -2,6 +2,8 @@ import { createRootRoute, createRoute, createRouter } from '@tanstack/react-rout
 import App from '@/App'
 import { Header } from './Header'
 import { Shell } from './Shell'
+import { DashboardPage } from '@/features/dashboard/DashboardPage'
+import { validateDashboardSearch } from '@/features/dashboard/search'
 
 // Route tree wiring (#33). Root renders the app shell (acrylic rail + routed
 // content plane, see Shell.tsx); the shell's <Outlet/> renders whichever leaf
@@ -34,7 +36,8 @@ function ComingSoon({ title }: { title: string }) {
 const dashboardRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/dashboard',
-  component: () => <ComingSoon title="Dashboard" />,
+  validateSearch: validateDashboardSearch,
+  component: DashboardPage,
 })
 
 const strategyRoute = createRoute({
@@ -55,9 +58,12 @@ const labRoute = createRoute({
   component: () => <ComingSoon title="Lab" />,
 })
 
+// Comparison shares the Dashboard's selection shape so the "Go to comparison"
+// cross-link can carry year/gp/session/drivers forward (wired up in #36).
 const comparisonRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/comparison',
+  validateSearch: validateDashboardSearch,
   component: () => <ComingSoon title="Comparison" />,
 })
 

@@ -7,6 +7,12 @@ export const queryKeys = {
     sessions: (year: number, gp: string) => ['telemetry', 'sessions', year, gp] as const,
     drivers: (year: number, gp: string, session: string) =>
       ['telemetry', 'drivers', year, gp, session] as const,
+    lapTimes: (year: number, gp: string, session: string, drivers: string) =>
+      ['telemetry', 'lap-times', year, gp, session, drivers] as const,
+    lapTelemetry: (year: number, gp: string, session: string, driver: string, lap: number) =>
+      ['telemetry', 'lap-telemetry', year, gp, session, driver, lap] as const,
+    circuitDomination: (year: number, gp: string, session: string, drivers: string) =>
+      ['telemetry', 'circuit-domination', year, gp, session, drivers] as const,
   },
   chat: {
     health: () => ['chat', 'health'] as const,
