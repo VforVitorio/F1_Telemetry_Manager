@@ -114,11 +114,13 @@ export interface ComboboxProps {
   placeholder?: string
   disabled?: boolean
   className?: string
+  /** Accessible name for the trigger when the visible label lives elsewhere. */
+  ariaLabel?: string
 }
 
 /** Single-select typeahead combobox (e.g. "pick a circuit"). */
 export const Combobox = forwardRef<HTMLButtonElement, ComboboxProps>(function Combobox(
-  { options, value, onChange, placeholder = 'Select...', disabled, className },
+  { options, value, onChange, placeholder = 'Select...', disabled, className, ariaLabel },
   ref,
 ) {
   const [open, setOpen] = useState(false)
@@ -136,6 +138,7 @@ export const Combobox = forwardRef<HTMLButtonElement, ComboboxProps>(function Co
           ref={ref}
           type="button"
           disabled={disabled}
+          aria-label={ariaLabel}
           className={cn(
             'flex h-10 w-full items-center justify-between gap-2 rounded-lg border border-hairline bg-bg-3 px-3 text-sm text-fg-1 transition-colors',
             'hover:bg-bg-4',
@@ -176,13 +179,15 @@ export interface MultiComboboxProps {
   /** Caps how many options can be selected at once (e.g. a 3-driver comparison). */
   max?: number
   className?: string
+  /** Accessible name for the trigger when the visible label lives elsewhere. */
+  ariaLabel?: string
 }
 
 /** Multi-select combobox. Selections render as removable chips in the
  *  trigger; once `max` is reached, remaining options render disabled in the
  *  list instead of silently doing nothing on select. */
 export const MultiCombobox = forwardRef<HTMLDivElement, MultiComboboxProps>(function MultiCombobox(
-  { options, value, onChange, placeholder = 'Select...', disabled, max, className },
+  { options, value, onChange, placeholder = 'Select...', disabled, max, className, ariaLabel },
   ref,
 ) {
   const [open, setOpen] = useState(false)
@@ -220,6 +225,7 @@ export const MultiCombobox = forwardRef<HTMLDivElement, MultiComboboxProps>(func
         <div
           ref={ref}
           role="combobox"
+          aria-label={ariaLabel}
           aria-expanded={!disabled && open}
           aria-haspopup="listbox"
           aria-disabled={disabled}
