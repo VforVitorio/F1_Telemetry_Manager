@@ -16,7 +16,7 @@
 import type { ReactNode } from 'react'
 import { Pencil, Play, RotateCcw } from 'lucide-react'
 import type { StrategySearch } from '../search'
-import { STRATEGY_YEAR, analysedLap } from '../search'
+import { STRATEGY_YEAR } from '../search'
 import type { LapRange } from '@/lib/api/strategy'
 import { Combobox, type ComboboxOption } from '@/components/Combobox'
 import { Slider, DualRangeSlider } from '@/components/Slider'
@@ -123,7 +123,6 @@ function ExpandedForm({
   const lapsReady = lapRange != null
   const lapValue: [number, number] =
     search.laps ?? (lapRange ? [lapRange.min_lap, lapRange.max_lap] : [0, 0])
-  const analysedLapNumber = analysedLap(search) ?? lapRange?.max_lap
 
   const issue = scenarioIssue(search, lapRange)
   const canRun = issue === undefined
@@ -172,7 +171,7 @@ function ExpandedForm({
       </div>
 
       <div className={cn('grid grid-cols-1 gap-4', 'sm:grid-cols-2')}>
-        <Field label="Lap window">
+        <Field label="Evidence window">
           <div className="flex flex-col gap-2">
             {lapsReady ? (
               <DualRangeSlider
@@ -184,11 +183,6 @@ function ExpandedForm({
               />
             ) : (
               <p className="text-xs text-fg-4">Pick a GP and driver to unlock the lap window</p>
-            )}
-            {analysedLapNumber != null && (
-              <Pill tone="purple" className="w-fit">
-                Analysing lap {analysedLapNumber}
-              </Pill>
             )}
           </div>
         </Field>
@@ -230,8 +224,6 @@ interface CollapsedSummaryProps {
 
 /** Compact post-run summary: the scenario as a pill row, plus Edit/Re-run. */
 function CollapsedSummary({ search, onRun, running, onEdit }: CollapsedSummaryProps) {
-  const lap = analysedLap(search)
-
   return (
     <div className="flex flex-wrap items-center gap-2 rounded-xl border border-hairline bg-bg-3 p-3">
       {search.gp && <Pill tone="neutral">{search.gp}</Pill>}
@@ -245,7 +237,12 @@ function CollapsedSummary({ search, onRun, running, onEdit }: CollapsedSummaryPr
           vs <DriverLabel code={search.rival} />
         </Pill>
       )}
-      {lap != null && <Pill tone="purple">Lap {lap}</Pill>}
+      {search.laps && (
+        <Pill tone="purple">
+          window {search.laps[0]}-{search.laps[1]}
+        </Pill>
+      )}
+      {search.lap != null && <Pill tone="purple">lap {search.lap}</Pill>}
       <Pill tone="neutral">{formatRisk(search.risk)}</Pill>
 
       <div className="ml-auto flex items-center gap-2">

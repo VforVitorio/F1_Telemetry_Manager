@@ -321,3 +321,36 @@ export async function runRecommend(
   const data = await postJson<Envelope<StrategyRecommendation>>('recommend', body, signal)
   return data.result
 }
+
+/** One lap on the pace trajectory (POST /pace-range): actual vs model-predicted
+ *  lap time with its bootstrap CI, plus the compound/stint for banding. `actual`
+ *  / `pred` / the CI bounds are null for laps the model can't score (a stint's
+ *  first lap, or a lap with no valid previous lap). */
+export interface PaceRangePoint {
+  lap: number
+  actual: number | null
+  pred: number | null
+  ci_p10: number | null
+  ci_p90: number | null
+  compound: string
+  stint: number
+}
+
+/**
+ * Batch pace predictions across a lap window — the Race Trace's data. Pure ML
+ * (no LLM, no orchestrator), so it's cheap; fetch the driver's WHOLE window once
+ * and slice client-side rather than refetching as the evidence window changes.
+ * Note: unlike the agent endpoints this returns `{ predictions }` directly, not
+ * the `{ agent, result }` envelope.
+ */
+export async function fetchPaceRange(
+  gp: string,
+  driver: string,
+  lapStart: number,
+  lapEnd: number,
+  year = YEAR,
+): Promise<PaceRangePoint[]> {
+  const body = { year, gp, driver, lap_start: lapStart, lap_end: lapEnd }
+  const data = await postJson<{ predictions?: PaceRangePoint[] }>('pace-range', body)
+  return data.predictions ?? []
+}

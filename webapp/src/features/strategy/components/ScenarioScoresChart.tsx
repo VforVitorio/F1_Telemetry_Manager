@@ -292,7 +292,7 @@ function buildScoresOption(
   }
 }
 
-export interface ScenarioScoresChartProps {
+export interface ScoresPlotProps {
   /** e.g. `{"STAY_OUT": {E,P10,P90,score}, "PIT_NOW": {...}}` — one entry per
    *  Monte-Carlo-scored strategy candidate. Always present on a completed run,
    *  possibly empty (see `StrategyRecommendation`'s docstring). */
@@ -301,12 +301,17 @@ export interface ScenarioScoresChartProps {
   chosenAction: StrategyAction
 }
 
-/** Monte-Carlo evidence as a dot-interval plot: one row per candidate action,
- *  sorted best-first by expected value, each an E dot + P10-P90 uncertainty
- *  whisker + a right-aligned E/delta-to-winner label. The chosen action renders
- *  in the purple accent, the rest muted. Scores routinely go negative, so the
- *  axis is data-driven, not zero-based. */
-export function ScenarioScoresChart({ scores, chosenAction }: ScenarioScoresChartProps) {
+/** Monte-Carlo evidence as a FRAMELESS dot-interval plot: one row per
+ *  candidate action, sorted best-first by expected value, each an E dot +
+ *  P10-P90 uncertainty whisker + a right-aligned E/delta-to-winner label. The
+ *  chosen action renders in the purple accent, the rest muted. Scores
+ *  routinely go negative, so the axis is data-driven, not zero-based.
+ *
+ *  Deliberately has no `ChartCard` shell — it's built for embedding directly
+ *  inside another surface (the Strategy tab's `DecisionBanner`, which
+ *  co-locates the decision with its own evidence). Callers that want the
+ *  titled, maximizable card use `ScenarioScoresChart` below instead. */
+export function ScoresPlot({ scores, chosenAction }: ScoresPlotProps) {
   const chartTheme = useChartTheme()
   const palette = chartTheme === F1_LIGHT_THEME ? LIGHT_SCORE_PALETTE : DARK_SCORE_PALETTE
   const rows = useMemo(() => sortedRows(scores), [scores])
@@ -318,26 +323,44 @@ export function ScenarioScoresChart({ scores, chosenAction }: ScenarioScoresChar
 
   if (rows.length === 0) {
     return (
-      <ChartCard title="Scenario scores">
-        <p className="px-2 py-12 text-center text-sm text-fg-3">No scenario scores for this run</p>
-      </ChartCard>
+      <p className="px-2 py-12 text-center text-sm text-fg-3">No scenario scores for this run</p>
     )
   }
 
   return (
+    <div
+      role="img"
+      aria-label="Monte-Carlo scenario scores: expected value with P10 to P90 range, one row per candidate action"
+    >
+      <ReactECharts
+        theme={chartTheme}
+        key={chartTheme}
+        option={paintedOption}
+        style={{ height: chartHeight(rows.length) }}
+        notMerge
+      />
+    </div>
+  )
+}
+
+export interface ScenarioScoresChartProps {
+  /** e.g. `{"STAY_OUT": {E,P10,P90,score}, "PIT_NOW": {...}}` — one entry per
+   *  Monte-Carlo-scored strategy candidate. Always present on a completed run,
+   *  possibly empty (see `StrategyRecommendation`'s docstring). */
+  scores: Record<string, ScenarioScore>
+  /** The orchestrator's recommended action — its row is highlighted. */
+  chosenAction: StrategyAction
+}
+
+/** Titled, maximizable `ChartCard` shell around `ScoresPlot` — for placements
+ *  that show the Monte-Carlo evidence as its own standalone chart (e.g. an
+ *  evidence-trail section) rather than embedded inside another card. See
+ *  `ScoresPlot` for the actual dot-interval plot; this wrapper only adds the
+ *  header + maximize affordance. */
+export function ScenarioScoresChart({ scores, chosenAction }: ScenarioScoresChartProps) {
+  return (
     <ChartCard title="Scenario scores">
-      <div
-        role="img"
-        aria-label="Monte-Carlo scenario scores: expected value with P10 to P90 range, one row per candidate action"
-      >
-        <ReactECharts
-          theme={chartTheme}
-          key={chartTheme}
-          option={paintedOption}
-          style={{ height: chartHeight(rows.length) }}
-          notMerge
-        />
-      </div>
+      <ScoresPlot scores={scores} chosenAction={chosenAction} />
     </ChartCard>
   )
 }

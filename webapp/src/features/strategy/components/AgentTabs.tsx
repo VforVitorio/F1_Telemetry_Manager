@@ -194,20 +194,22 @@ function MiniBars({ items, format }: MiniBarsProps) {
               style={{ height: `${Math.max(6, (item.value / max) * 100)}%` }}
             />
           </div>
-          <span className="font-mono text-xs tabular-nums text-fg-2">{format(item.value)}</span>
-          <span className="text-[10px] uppercase tracking-wide text-fg-4">{item.label}</span>
+          <span className="font-mono text-xs font-medium tabular-nums text-fg-2">
+            {format(item.value)}
+          </span>
+          <span className="text-[11px] text-fg-4">{item.label}</span>
         </div>
       ))}
     </div>
   )
 }
 
-/** Small uppercase caption above a micro-chart, matching `StatCard`'s eyebrow
- *  styling so a tab's charts read as part of the same visual system. */
+/** Small lowercase caption above a micro-chart. Deliberately quiet (no
+ *  uppercase/tracking) — it's a per-chart label, not a section title. */
 function ChartLabel({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex flex-col gap-1.5">
-      <span className="text-xs font-medium uppercase tracking-widest text-fg-3">{label}</span>
+      <span className="text-[11px] text-fg-4">{label}</span>
       {children}
     </div>
   )
@@ -265,9 +267,10 @@ interface AgentTabPanelProps {
   enabled: boolean
 }
 
-/** Pace evidence: predicted lap time plus both deltas as StatCards, a
- *  confidence-interval range bar around the point prediction, and the
- *  agent's reasoning. */
+/** Pace evidence: predicted lap time plus both deltas as StatCards, and the
+ *  agent's reasoning. The confidence interval now lives on the full-width
+ *  Race Trace chart (with real lap-by-lap context), so this tab stays lean
+ *  instead of repeating a tiny duplicate range bar. */
 function PaceTab({ lapState, enabled }: AgentTabPanelProps) {
   const query = useAgent('pace', lapState, enabled)
 
@@ -299,14 +302,6 @@ function PaceTab({ lapState, enabled }: AgentTabPanelProps) {
           hint="Negative = faster than the last lap"
         />
       </div>
-      <ChartLabel label="Confidence interval">
-        <RangeBar
-          low={pace.ci_p10}
-          mid={pace.lap_time_pred}
-          high={pace.ci_p90}
-          format={(value) => `${value.toFixed(2)}s`}
-        />
-      </ChartLabel>
       <ReasoningDisclosure reasoning={pace.reasoning} />
     </div>
   )
@@ -371,11 +366,11 @@ function SituationTab({ lapState, enabled }: AgentTabPanelProps) {
             value={situation.overtake_prob ?? 0}
             note="Calibrated model probability"
           />
-          <span className="text-xs uppercase tracking-wide text-fg-4">Overtake</span>
+          <span className="text-[11px] text-fg-4">Overtake</span>
         </div>
         <div className="flex flex-col items-center gap-2">
           <ConfidenceDial value={situation.sc_prob_3lap ?? 0} note="Calibrated model probability" />
-          <span className="text-xs uppercase tracking-wide text-fg-4">Safety car (3 laps)</span>
+          <span className="text-[11px] text-fg-4">Safety car (3 laps)</span>
         </div>
       </div>
       <MetricRow
@@ -430,7 +425,7 @@ function PitTab({ lapState, enabled }: AgentTabPanelProps) {
         <div className="flex flex-wrap items-center gap-4">
           <div className="flex flex-col items-center gap-2">
             <ConfidenceDial value={pit.undercut_prob ?? 0} note="Calibrated model probability" />
-            <span className="text-xs uppercase tracking-wide text-fg-4">Undercut</span>
+            <span className="text-[11px] text-fg-4">Undercut</span>
           </div>
           {pit.undercut_target ? (
             <span className="text-sm text-fg-3">
