@@ -76,7 +76,12 @@ export function CompoundLegend({ lapTimes, drivers, year }: CompoundLegendProps)
         return (
           <div key={compound} className="flex items-center gap-1.5">
             {variant ? (
-              <Pill compound={variant}>{compoundLabel(compound)}</Pill>
+              // Permanent hairline border (B3): HARD is a near-white chip
+              // that vanishes on a white card in the light theme; the border
+              // is near-invisible in dark and load-bearing in light.
+              <Pill compound={variant} className="border border-hairline">
+                {compoundLabel(compound)}
+              </Pill>
             ) : (
               <Pill tone="neutral">{compoundLabel(compound)}</Pill>
             )}

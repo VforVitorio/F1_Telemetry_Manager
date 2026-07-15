@@ -19,8 +19,8 @@ import type {
   TooltipComponentFormatterCallbackParams,
 } from 'echarts'
 import * as echarts from 'echarts'
-import { registerF1Theme } from '@/charts/registerEcharts'
-import { F1_THEME } from '@/charts/echartsTheme'
+import { registerF1Theme, useChartTheme } from '@/charts/registerEcharts'
+import { F1_LIGHT_THEME } from '@/charts/echartsTheme'
 import type { LapTelemetry } from '@/lib/api/telemetry'
 import { getDriverColor, getDriverTextColor } from '../lib/drivers'
 import type { ChannelConfig } from './channels'
@@ -48,6 +48,12 @@ const NO_LEGEND_GRID_TOP = 16
 // and, since dataZoom lives in `baseOption` below, a zoom/pan on one
 // propagates group-wide too.
 const CROSSHAIR_GROUP = 'telemetry-crosshair'
+
+// Delta's y=0 reference markLine (see buildDeltaOption) is a per-series
+// style, not governed by the registered ECharts theme — it needs its own
+// light/dark swap, mirroring echartsTheme.ts's fg/hairline palettes.
+const MARK_LINE_COLOR_DARK = 'rgba(255,255,255,0.35)'
+const MARK_LINE_COLOR_LIGHT = 'rgba(20,18,31,0.35)'
 
 interface LegendEntry {
   name: string
@@ -249,10 +255,12 @@ function SyncedLineChart({
   ariaLabel: string
   height?: number
 }) {
+  const chartTheme = useChartTheme()
   return (
     <div role="img" aria-label={ariaLabel}>
       <ReactECharts
-        theme={F1_THEME}
+        theme={chartTheme}
+        key={chartTheme}
         option={option}
         style={{ height }}
         notMerge
@@ -358,6 +366,7 @@ function buildDeltaOption(
   byDriver: Record<string, LapTelemetry>,
   drivers: string[],
   year: number | undefined,
+  markLineColor: string,
 ): EChartsOption {
   const loaded = drivers.filter((driver) => byDriver[driver])
   const reference = findReferenceDriver(byDriver, loaded)
@@ -379,13 +388,15 @@ function buildDeltaOption(
   // Dashed y=0 reference guide — the reference driver's own delta line hugs
   // it. ECharts attaches markLine per-series (no chart-level equivalent), so
   // it rides on the first series (mutating in place; `firstSeries` is the
-  // same object as `series[0]`).
+  // same object as `series[0]`). markLine styles aren't governed by the
+  // registered theme either (same reasoning as Gauge.tsx), so its color is
+  // threaded in per active theme mode.
   const firstSeries = series[0]
   if (firstSeries) {
     firstSeries.markLine = {
       symbol: 'none',
       silent: true,
-      lineStyle: { type: 'dashed', color: 'rgba(255,255,255,0.35)' },
+      lineStyle: { type: 'dashed', color: markLineColor },
       data: [{ yAxis: 0 }],
     }
   }
@@ -419,7 +430,12 @@ export const DeltaChart = memo(function DeltaChart({
   isLoading,
 }: DeltaChartProps) {
   const loaded = drivers.filter((driver) => byDriver[driver])
-  const option = useMemo(() => buildDeltaOption(byDriver, drivers, year), [byDriver, drivers, year])
+  const chartTheme = useChartTheme()
+  const markLineColor = chartTheme === F1_LIGHT_THEME ? MARK_LINE_COLOR_LIGHT : MARK_LINE_COLOR_DARK
+  const option = useMemo(
+    () => buildDeltaOption(byDriver, drivers, year, markLineColor),
+    [byDriver, drivers, year, markLineColor],
+  )
 
   if (loaded.length < MIN_DELTA_DRIVERS) {
     if (drivers.length >= MIN_DELTA_DRIVERS && isLoading) {

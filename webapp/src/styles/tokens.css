@@ -107,3 +107,56 @@
   --tracking-wide: 0.04em;
   --tracking-widest: 0.18em;
 }
+
+/* =========================================================
+   LIGHT THEME (E1) — a token swap, stamped via data-theme='light' on
+   <html> (see app/providers.tsx + the FOUC guard in index.html). Only the
+   *semantic* ramp flips: the background/foreground ladders, dividers, shadows
+   and the hero gradient. Identity colours (purple, blue, tyre compounds) and
+   chrome gradients stay put — they read on both themes. This block is more
+   specific than `html { color-scheme: dark }`, so `color-scheme: light` wins
+   here declaratively (no @media, single source of truth = the attribute).
+
+   Not solved by a var swap: HARD's white chip (--tire-hard) would vanish on a
+   light card — instead every compound pill carries a permanent border-hairline
+   (invisible-ish in dark, load-bearing in light). Status colours are darkened
+   to pass contrast on white. */
+:root[data-theme='light'] {
+  color-scheme: light;
+
+  --bg-0: #f5f5fa; /* page */
+  --bg-1: #eef0f7; /* deep surface (hero) */
+  --bg-2: #e9eaf4; /* sidebar / chrome */
+  --bg-3: #ffffff; /* card resting */
+  --bg-4: #f7f7fc; /* card hovered / elevated */
+  --bg-5: #eceaf9; /* input bg */
+
+  --fg-1: #14121f; /* near-black, purple tint (mirror of dark --bg-1) */
+  --fg-2: rgba(20, 18, 31, 0.75);
+  --fg-3: rgba(20, 18, 31, 0.58);
+  --fg-4: rgba(20, 18, 31, 0.42);
+  --fg-inv: #ffffff;
+
+  --accent-hover: var(--purple-700); /* purple-300 fails as text on white */
+
+  --success: #15803d;
+  --warning: #b45309;
+  --danger: #dc2626;
+  --info: #1d4ed8;
+
+  --divider: rgba(20, 18, 31, 0.1);
+  --divider-strong: rgba(20, 18, 31, 0.18);
+  --hairline: rgba(20, 18, 31, 0.06);
+
+  --grad-hero: radial-gradient(
+    ellipse 120% 80% at 50% 0%,
+    rgba(108, 92, 231, 0.14) 0%,
+    rgba(108, 92, 231, 0.05) 35%,
+    transparent 70%
+  );
+
+  --shadow-card: 0 2px 10px rgba(20, 18, 31, 0.08);
+  --shadow-elev: 0 12px 40px rgba(20, 18, 31, 0.14);
+  --shadow-glow: 0 0 0 1px rgba(108, 92, 231, 0.3), 0 12px 40px rgba(108, 92, 231, 0.15);
+  --shadow-inset: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}

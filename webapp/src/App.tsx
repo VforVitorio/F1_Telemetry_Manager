@@ -46,7 +46,12 @@ export default function App() {
           {TYRES.map(([label, bg]) => (
             <span
               key={label}
-              className={cn('rounded-full px-3 py-1 font-mono text-xs font-semibold text-bg-0', bg)}
+              // border-hairline (B3): keeps HARD's near-white chip visible
+              // against a white card once the light theme lands.
+              className={cn(
+                'rounded-full border border-hairline px-3 py-1 font-mono text-xs font-semibold text-bg-0',
+                bg,
+              )}
             >
               {label}
             </span>

@@ -1,8 +1,8 @@
 import { useMemo } from 'react'
 import ReactECharts from 'echarts-for-react'
 import type { EChartsOption } from 'echarts'
-import { registerF1Theme } from './registerEcharts'
-import { F1_THEME } from './echartsTheme'
+import { registerF1Theme, useChartTheme } from './registerEcharts'
+import { F1_LIGHT_THEME } from './echartsTheme'
 
 // Register the token theme at module load — before any chart's init runs.
 // (echarts-for-react inits with the `theme` prop in componentDidMount, which
@@ -15,10 +15,30 @@ registerF1Theme()
 // touch a raw ECharts option for this shape: pass a value, get a token-themed
 // arc back. Progress-only design (no needle) reads cleanly at small sizes.
 
-const PURPLE_600 = '#6c5ce7'
-const HAIRLINE = 'rgba(255,255,255,0.10)'
-const FG_1 = '#ffffff'
-const FG_3 = 'rgba(255,255,255,0.52)'
+// The gauge's track/detail/title colors are set per-series (ECharts merges a
+// series-level `itemStyle`/`color` over the registered theme's defaults), so
+// swapping the registered `theme` prop alone does not re-color them — they
+// need their own light/dark palette here, mirroring echartsTheme.ts's swap.
+const PURPLE_600 = '#6c5ce7' // identity color — same accent in both themes
+
+interface GaugePalette {
+  hairline: string
+  fg1: string
+  fg3: string
+}
+
+const DARK_GAUGE_PALETTE: GaugePalette = {
+  hairline: 'rgba(255,255,255,0.10)',
+  fg1: '#ffffff',
+  fg3: 'rgba(255,255,255,0.52)',
+}
+
+const LIGHT_GAUGE_PALETTE: GaugePalette = {
+  hairline: 'rgba(20,18,31,0.10)',
+  fg1: '#14121f',
+  fg3: 'rgba(20,18,31,0.58)',
+}
+
 const MONO = "'JetBrains Mono Variable', ui-monospace, monospace"
 const DISPLAY = "'Space Grotesk Variable', system-ui, sans-serif"
 
@@ -36,13 +56,20 @@ interface GaugeOptionInput {
   max: number
   label: string | undefined
   formatValue: (value: number) => string
+  palette: GaugePalette
 }
 
 /** Build the ECharts gauge option: hairline full-circle track, purple
  *  progress arc, no pointer/anchor, and a mono center readout formatted via
  *  `formatValue`. Pulled out of the component so the option shape is easy to
  *  read independent of the render/effect wiring. */
-function buildGaugeOption({ value, max, label, formatValue }: GaugeOptionInput): EChartsOption {
+function buildGaugeOption({
+  value,
+  max,
+  label,
+  formatValue,
+  palette,
+}: GaugeOptionInput): EChartsOption {
   return {
     series: [
       {
@@ -61,7 +88,7 @@ function buildGaugeOption({ value, max, label, formatValue }: GaugeOptionInput):
         axisLine: {
           lineStyle: {
             width: 10,
-            color: [[1, HAIRLINE]],
+            color: [[1, palette.hairline]],
           },
         },
         axisTick: { show: false },
@@ -71,7 +98,7 @@ function buildGaugeOption({ value, max, label, formatValue }: GaugeOptionInput):
         detail: {
           valueAnimation: true,
           formatter: (detailValue: number) => formatValue(detailValue),
-          color: FG_1,
+          color: palette.fg1,
           fontFamily: MONO,
           fontSize: 24,
           fontWeight: 600,
@@ -80,7 +107,7 @@ function buildGaugeOption({ value, max, label, formatValue }: GaugeOptionInput):
         title: {
           show: Boolean(label),
           offsetCenter: [0, '35%'],
-          color: FG_3,
+          color: palette.fg3,
           fontFamily: DISPLAY,
           fontSize: 12,
         },
@@ -111,10 +138,14 @@ export function Gauge({
   formatValue = defaultFormatValue,
   height = DEFAULT_HEIGHT_PX,
 }: GaugeProps) {
+  const chartTheme = useChartTheme()
+  const palette = chartTheme === F1_LIGHT_THEME ? LIGHT_GAUGE_PALETTE : DARK_GAUGE_PALETTE
   const option = useMemo(
-    () => buildGaugeOption({ value, max, label, formatValue }),
-    [value, max, label, formatValue],
+    () => buildGaugeOption({ value, max, label, formatValue, palette }),
+    [value, max, label, formatValue, palette],
   )
 
-  return <ReactECharts theme={F1_THEME} option={option} style={{ height }} notMerge />
+  return (
+    <ReactECharts theme={chartTheme} key={chartTheme} option={option} style={{ height }} notMerge />
+  )
 }
