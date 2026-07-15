@@ -116,6 +116,11 @@ function baseOption(
     ...(yAxis as object),
   }
   return {
+    // No entrance/update animation on the telemetry traces. A timing-screen
+    // reads as an instrument, not a motion piece — and, practically, replaying
+    // the sweep on every driver toggle / data-settle (and twice under React
+    // StrictMode's dev double-mount) reads as a stutter, not polish.
+    animation: false,
     tooltip: {
       trigger: 'axis',
       axisPointer: { type: 'line' },

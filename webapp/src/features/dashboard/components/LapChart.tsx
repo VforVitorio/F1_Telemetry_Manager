@@ -190,6 +190,11 @@ function buildLapChartOption(
   axisNameStyle: { color: string; fontFamily: string },
 ): EChartsOption {
   return {
+    // Match the telemetry charts: no entrance/update animation. The lap chart
+    // rebuilds on every driver toggle and selected-lap change, so replaying the
+    // line-draw each time (and twice under StrictMode's dev double-mount) reads
+    // as a stutter rather than polish.
+    animation: false,
     tooltip: { trigger: 'item', formatter: formatLapTooltip(year) },
     legend: {
       data: buildLegendData(seriesList, year),

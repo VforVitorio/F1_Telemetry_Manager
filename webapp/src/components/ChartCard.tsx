@@ -51,19 +51,24 @@ export const ChartCard = forwardRef<HTMLDivElement, ChartCardProps>(function Cha
       <h3 className="truncate font-display text-sm font-medium text-fg-1">{title}</h3>
       <div className="flex items-center gap-1">
         {actions}
-        <Button
-          variant="ghost"
-          size="sm"
-          aria-label={isCollapsed ? 'Expand chart' : 'Collapse chart'}
-          onClick={() => setIsCollapsed((value) => !value)}
-          className="size-8 px-0 text-fg-3"
-        >
-          {isCollapsed ? (
-            <Plus className="size-4" aria-hidden="true" />
-          ) : (
-            <Minus className="size-4" aria-hidden="true" />
-          )}
-        </Button>
+        {/* Collapse is a grid-only affordance. In the maximized overlay it just
+            hides the body, stranding the user on an empty full-screen card with
+            no way back (Restore is the way out) — so it's not offered there. */}
+        {!isMaximized && (
+          <Button
+            variant="ghost"
+            size="sm"
+            aria-label={isCollapsed ? 'Expand chart' : 'Collapse chart'}
+            onClick={() => setIsCollapsed((value) => !value)}
+            className="size-8 px-0 text-fg-3"
+          >
+            {isCollapsed ? (
+              <Plus className="size-4" aria-hidden="true" />
+            ) : (
+              <Minus className="size-4" aria-hidden="true" />
+            )}
+          </Button>
+        )}
         <Button
           variant="ghost"
           size="sm"
@@ -81,11 +86,15 @@ export const ChartCard = forwardRef<HTMLDivElement, ChartCardProps>(function Cha
     </div>
   )
 
-  const body = isCollapsed ? null : <div className="flex-1 overflow-auto p-4">{children}</div>
+  // Maximizing always shows the content — a collapsed-in-grid chart still opens
+  // full-screen with its body (and Restore is the only exit), so there's no way
+  // to land on an empty maximized card.
+  const showBody = isMaximized || !isCollapsed
+  const body = showBody ? <div className="flex-1 overflow-auto p-4">{children}</div> : null
   const footerStrip =
-    isCollapsed || !footer ? null : (
+    showBody && footer ? (
       <div className="shrink-0 border-t border-hairline px-4 py-2.5">{footer}</div>
-    )
+    ) : null
 
   if (isMaximized) {
     return createPortal(

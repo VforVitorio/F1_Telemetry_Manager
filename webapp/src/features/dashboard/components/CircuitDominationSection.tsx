@@ -24,8 +24,9 @@ export interface CircuitDominationSectionProps {
  *  no "dominance" to compare). */
 const MIN_DRIVERS_FOR_MAP = 2
 
-/** Matches the Streamlit figure's `height=360` (60% of its original 600px). */
-const MAP_HEIGHT_PX = 360
+/** Track height. Bumped past the Streamlit figure's 360 so the circuit reads
+ *  as the focal shape of the zone, with room for the coloured microsectors. */
+const MAP_HEIGHT_PX = 460
 
 /** Screen-pixel stroke width. Paired with `vector-effect="non-scaling-stroke"`
  *  on each segment so the line reads the same thickness regardless of how
@@ -109,17 +110,36 @@ interface CircuitMapProps {
   year: DashboardSearch['year']
 }
 
-/** The track SVG plus its driver legend, centered in a narrower column so it
- *  reads as a focal shape rather than stretching full-bleed (Streamlit
- *  centers it in a 50%-width middle column via `st.columns([1, 2, 1])`). */
+/** Share of microsectors each driver was fastest through (0-100, rounded).
+ *  Derived from the same per-microsector colour array the segments are drawn
+ *  in, so the legend's "% dominated" always matches what's on the track. */
+function dominationShares(
+  colors: string[],
+  drivers: { driver: string; color: string }[],
+): Record<string, number> {
+  const total = colors.length
+  const shares: Record<string, number> = {}
+  if (total === 0) return shares
+  for (const { driver, color } of drivers) {
+    const count = colors.filter((segmentColor) => segmentColor === color).length
+    shares[driver] = Math.round((count / total) * 100)
+  }
+  return shares
+}
+
+/** The track SVG plus its driver legend. Fills its column so it reads as the
+ *  focal shape of the zone; each coloured microsector carries a `<title>` so
+ *  hovering the track reveals which driver was fastest through it. */
 function CircuitMap({ data, year }: CircuitMapProps) {
   const bounds = computeBounds(data.x, data.y)
   const viewBox = computeViewBox(bounds)
   const outlinePoints = buildOutlinePath(data.x, data.y)
   const segments = buildSegments(data.x, data.y, data.colors)
+  const colorToDriver = new Map(data.drivers.map((entry) => [entry.color, entry.driver]))
+  const shares = dominationShares(data.colors, data.drivers)
 
   return (
-    <Card elevation="resting" className={cn('mx-auto flex w-full max-w-3xl flex-col gap-4 p-4')}>
+    <Card elevation="resting" className={cn('mx-auto flex w-full max-w-4xl flex-col gap-4 p-4')}>
       <div
         role="img"
         aria-label="Circuit domination map: colored by fastest driver per microsector"
@@ -146,26 +166,32 @@ function CircuitMap({ data, year }: CircuitMapProps) {
               strokeWidth={SEGMENT_STROKE_PX}
               strokeLinecap="round"
               vectorEffect="non-scaling-stroke"
-            />
+              className="transition-opacity hover:opacity-60"
+            >
+              <title>{colorToDriver.get(segment.color) ?? 'Fastest'} fastest through here</title>
+            </line>
           ))}
         </svg>
       </div>
-      <CircuitLegend drivers={data.drivers} year={year} />
+      <CircuitLegend drivers={data.drivers} shares={shares} year={year} />
     </Card>
   )
 }
 
 interface CircuitLegendProps {
   drivers: { driver: string; color: string }[]
+  /** driver code -> % of microsectors that driver was fastest through. */
+  shares: Record<string, number>
   year: DashboardSearch['year']
 }
 
-/** Colour-dot legend, one swatch per driver — the SVG equivalent of the
- *  Streamlit figure's Plotly legend (invisible line traces named per driver).
- *  The dot keeps the data-driven `entry.color` (which may already carry
- *  contrast handling from the backend); the driver NAME is team-coloured via
- *  `getDriverTextColor` so it stays legible against the dark UI. */
-function CircuitLegend({ drivers, year }: CircuitLegendProps) {
+/** Colour-dot legend, one swatch per driver, with the driver's share of the
+ *  track (% of microsectors they were fastest through) in mono next to the
+ *  name — the SVG equivalent of the Streamlit figure's Plotly legend, plus the
+ *  at-a-glance "who dominated more" the coloured map only implies. The dot
+ *  keeps the data-driven `entry.color`; the NAME is team-coloured via
+ *  `getDriverTextColor` so it stays legible against the UI. */
+function CircuitLegend({ drivers, shares, year }: CircuitLegendProps) {
   return (
     <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2">
       {drivers.map((entry) => (
@@ -181,6 +207,11 @@ function CircuitLegend({ drivers, year }: CircuitLegendProps) {
           >
             {entry.driver}
           </span>
+          {shares[entry.driver] != null && (
+            <span className="font-mono text-xs tabular-nums text-fg-3">
+              {shares[entry.driver]}%
+            </span>
+          )}
         </div>
       ))}
     </div>
