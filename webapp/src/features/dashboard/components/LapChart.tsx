@@ -21,7 +21,7 @@ import { useFirstPaintAnimation } from '@/charts/useFirstPaintAnimation'
 import { buildEchartsTheme, F1_LIGHT_THEME, tireColors } from '@/charts/echartsTheme'
 import { ChartMaximizedContext } from '@/components/ChartCard'
 import type { LapTime } from '@/lib/api/telemetry'
-import { getDriverColor, getDriverTextColor } from '../lib/drivers'
+import { getDriverColor, getDriverTextColor } from '@/lib/drivers'
 import { compoundLabel, compoundVariant } from '../lib/compounds'
 import { formatLapTime, formatLapTimeAxis } from '../lib/lapTime'
 

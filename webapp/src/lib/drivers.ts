@@ -3,6 +3,10 @@
 // charts keep IDENTICAL colours. Each driver gets their team's colour for that
 // season (2023-2025 lineups). Keep in sync with the Python source if lineups
 // change.
+//
+// Lives in `src/lib/` (not a feature folder) because two features consume it:
+// Dashboard (chart line colours) and Strategy (team-coloured driver / rival
+// names). Shared → app-level, so features stay decoupled siblings.
 
 const RED_BULL = '#3671C6'
 const RED_BULL_2 = '#1B3D8E'

@@ -5,6 +5,8 @@ import { HomePage } from '@/features/home/HomePage'
 import { ThemePreview } from '@/features/dev/ThemePreview'
 import { DashboardPage } from '@/features/dashboard/DashboardPage'
 import { validateDashboardSearch } from '@/features/dashboard/search'
+import { StrategyPage } from '@/features/strategy/StrategyPage'
+import { validateStrategySearch } from '@/features/strategy/search'
 
 // Route tree wiring (#33). Root renders the app shell (acrylic rail + routed
 // content plane, see Shell.tsx); the shell's <Outlet/> renders whichever leaf
@@ -42,14 +44,14 @@ const dashboardRoute = createRoute({
   component: DashboardPage,
 })
 
-// Strategy shares the Dashboard's selection shape so the Home launcher's
-// "Open in Strategy" can carry year/gp/session/drivers forward (wired up in
-// #35), exactly like /comparison below.
+// Strategy (#35) — the multi-agent pit wall. Its own scenario search shape
+// (gp/driver/rival/laps/risk); the Home launcher maps its Year>GP>Session>Drivers
+// selection onto it (GP + first two drivers → driver/rival).
 const strategyRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/strategy',
-  validateSearch: validateDashboardSearch,
-  component: () => <ComingSoon title="Strategy" />,
+  validateSearch: validateStrategySearch,
+  component: StrategyPage,
 })
 
 // Dev-only theme QA surface (not in the rail); the palette the migration used

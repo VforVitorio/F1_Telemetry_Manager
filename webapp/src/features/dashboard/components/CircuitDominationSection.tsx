@@ -13,7 +13,7 @@ import { TelemetryLoader } from './TelemetryLoader'
 import { SectionHeader } from './SectionHeader'
 import { Card } from '@/components/Card'
 import { cn } from '@/lib/cn'
-import { getDriverTextColor } from '../lib/drivers'
+import { getDriverTextColor } from '@/lib/drivers'
 import { computeBounds, computeViewBox, buildSegments, buildOutlinePath } from './circuitDraw'
 
 export interface CircuitDominationSectionProps {
