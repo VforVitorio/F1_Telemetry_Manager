@@ -1,25 +1,31 @@
 // LAP CHART section. Streamlit parity: `frontend/components/dashboard/lap_graph.py`.
 //
-// Owns the data fetch (`useLapTimes`) and the store reads/writes; the three
-// sub-components (`LapChart`, `LapControls`, `CompoundLegend`) are dumb
-// renderers of whatever slice they're handed. The outlier/invalid filters are
-// applied here (client-side, no refetch — `applyLapFilters`) and only the
-// resulting `visible` laps are plotted; buttons and the legend keep working
-// off the FULL `lapTimes`, matching the Streamlit source's split between
-// "what's plotted" and "what's counted".
+// Owns the data fetch (`useLapTimes`) and the store reads/writes; `LapChart`,
+// `LapControls`, and `LapChartFooter` are dumb renderers of whatever slice
+// they're handed. The outlier/invalid filters are applied here (client-side,
+// no refetch — `applyLapFilters`) and only the resulting `visible` laps are
+// plotted; the controls and footer keep working off the FULL `lapTimes`,
+// matching the Streamlit source's split between "what's plotted" and "what's
+// counted".
+//
+// Everything the chart owns — controls, telemetry status, compound legend —
+// folds into the ONE `ChartCard`: controls sit in the header `actions` slot,
+// status + legend in the `footer` strip, so the card reads as a single unit
+// instead of a chart plus a stack of loose blocks below it (round-2 fix #3,
+// see `docs/migration/design-specs/dashboard-round2.md#3`).
 
 import { useMemo } from 'react'
-import { Activity, Info, MousePointerClick } from 'lucide-react'
+import { Info } from 'lucide-react'
 import type { DashboardSearch } from '../search'
 import { useLapTimes } from '../queries'
 import { useDashboardStore } from '../store'
 import { applyLapFilters } from '../lib/outliers'
-import { getDriverTextColor } from '../lib/drivers'
+import { useToast } from '@/components/Toast'
 import { Skeleton } from '@/components/Skeleton'
 import { ChartCard } from '@/components/ChartCard'
 import { LapChart } from './LapChart'
 import { LapControls } from './LapControls'
-import { CompoundLegend } from './CompoundLegend'
+import { LapChartFooter } from './LapChartFooter'
 
 export interface LapChartSectionProps {
   search: DashboardSearch
@@ -40,18 +46,13 @@ function NoLapDataBanner() {
   )
 }
 
-/** `{ driver, lap }` pairs for the "Showing telemetry" caption, in the
- *  store map's insertion order (click order / fastest-laps batch order). */
-function telemetryCaptionParts(selectedLapsPerDriver: Record<string, number>) {
-  return Object.entries(selectedLapsPerDriver).map(([driver, lap]) => ({ driver, lap }))
-}
-
-/** LAP CHART section: chart (or its loading/empty state), control buttons,
- *  a click-to-load tip, the current telemetry-selection caption, and the
- *  tyre compound legend, in that order. */
+/** LAP CHART section: one `ChartCard` — the chart body (or its loading/empty
+ *  state), the fastest-laps/outlier/invalid controls in the header, and the
+ *  telemetry-status + compound-legend strip in the footer. */
 export function LapChartSection({ search }: LapChartSectionProps) {
   const lapTimesQuery = useLapTimes(search)
   const lapTimes = useMemo(() => lapTimesQuery.data ?? [], [lapTimesQuery.data])
+  const { toast } = useToast()
 
   const showOutliers = useDashboardStore((s) => s.showOutliers)
   const showInvalidLaps = useDashboardStore((s) => s.showInvalidLaps)
@@ -70,11 +71,57 @@ export function LapChartSection({ search }: LapChartSectionProps) {
   // shows its own EmptyState otherwise) — this only guards the in-between
   // moment where lap-times came back empty for the current selection.
   const isEmpty = lapTimes.length === 0
-  const captionParts = telemetryCaptionParts(selectedLapsPerDriver)
+
+  /** Click-to-load, with feedback that the click actually landed: an
+   *  already-loaded lap gets an info toast (no store write, no refetch); a
+   *  new lap gets a success toast once the fetch is queued. Compensates for
+   *  the chart's ring marker (see `LapChart`) being easy to miss when the
+   *  telemetry grid it feeds is below the fold. */
+  function handleLapClick(driver: string, lap: number) {
+    if (selectedLapsPerDriver[driver] === lap) {
+      toast({
+        title: `${driver} lap ${lap}`,
+        description: 'Already showing this lap.',
+        tone: 'info',
+      })
+      return
+    }
+    setLap(driver, lap)
+    toast({
+      title: `${driver} lap ${lap} loaded`,
+      description: 'Telemetry updated below.',
+      tone: 'success',
+    })
+  }
 
   return (
     <section className="flex flex-col gap-4">
-      <ChartCard title="Lap Chart">
+      <ChartCard
+        title="Lap Chart"
+        actions={
+          <LapControls
+            lapTimes={lapTimes}
+            drivers={search.drivers}
+            showOutliers={showOutliers}
+            showInvalidLaps={showInvalidLaps}
+            outlierCount={filterResult.outlierCount}
+            invalidCount={filterResult.invalidCount}
+            onSelectFastestLaps={setFastestLaps}
+            onToggleOutliers={toggleOutliers}
+            onToggleInvalidLaps={toggleInvalidLaps}
+          />
+        }
+        footer={
+          lapTimes.length > 0 ? (
+            <LapChartFooter
+              selectedLapsPerDriver={selectedLapsPerDriver}
+              lapTimes={lapTimes}
+              drivers={search.drivers}
+              year={search.year}
+            />
+          ) : undefined
+        }
+      >
         {lapTimesQuery.isLoading ? (
           <Skeleton className="h-100 w-full" />
         ) : isEmpty ? (
@@ -84,50 +131,11 @@ export function LapChartSection({ search }: LapChartSectionProps) {
             laps={filterResult.visible}
             drivers={search.drivers}
             year={search.year}
-            onLapClick={setLap}
+            selectedLaps={selectedLapsPerDriver}
+            onLapClick={handleLapClick}
           />
         )}
       </ChartCard>
-
-      <LapControls
-        lapTimes={lapTimes}
-        drivers={search.drivers}
-        showOutliers={showOutliers}
-        showInvalidLaps={showInvalidLaps}
-        outlierCount={filterResult.outlierCount}
-        invalidCount={filterResult.invalidCount}
-        onSelectFastestLaps={setFastestLaps}
-        onToggleOutliers={toggleOutliers}
-        onToggleInvalidLaps={toggleInvalidLaps}
-      />
-
-      <p className="flex items-center gap-2 text-sm text-fg-3">
-        <MousePointerClick className="size-4 shrink-0" aria-hidden="true" />
-        Click a lap to inspect it — fastest laps load automatically.
-      </p>
-
-      {captionParts.length > 0 ? (
-        <p className="flex items-center gap-2 text-sm text-fg-2">
-          <Activity className="size-4 shrink-0 text-fg-3" aria-hidden="true" />
-          <span>
-            Showing telemetry:{' '}
-            {captionParts.map((part, index) => (
-              <span key={part.driver}>
-                {index > 0 ? ', ' : ''}
-                <strong
-                  className="font-semibold"
-                  style={{ color: getDriverTextColor(part.driver, search.year) }}
-                >
-                  {part.driver}
-                </strong>{' '}
-                (Lap <span className="font-mono tabular-nums">{part.lap}</span>)
-              </span>
-            ))}
-          </span>
-        </p>
-      ) : null}
-
-      <CompoundLegend lapTimes={lapTimes} drivers={search.drivers} year={search.year} />
     </section>
   )
 }

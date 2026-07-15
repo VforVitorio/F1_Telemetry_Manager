@@ -6,10 +6,16 @@
 // that lap's telemetry via `onLapClick`, which the section wires to the
 // dashboard store's `setLap` (click-to-load; this component never fetches
 // telemetry itself).
+//
+// Click picking runs on zrender directly (`bindNearestPointClick`), not
+// ECharts' `onEvents.click` — the plotted symbols are a de-cluttered 5px dot
+// (see `buildDriverSeries`), too small a hit target on a ~80-lap race. The
+// picker instead accepts any click within a 20px radius of the nearest
+// plotted point (round-2 fix, see `docs/migration/design-specs/dashboard-round2.md#1`).
 
-import { useCallback, useMemo } from 'react'
+import { useCallback, useMemo, useRef } from 'react'
 import ReactECharts from 'echarts-for-react'
-import type { EChartsOption } from 'echarts'
+import type { ECharts, EChartsOption } from 'echarts'
 import { registerF1Theme } from '@/charts/registerEcharts'
 import { echartsTheme, F1_THEME, tireColors } from '@/charts/echartsTheme'
 import type { LapTime } from '@/lib/api/telemetry'
@@ -31,11 +37,28 @@ const AXIS_NAME_STYLE = {
 }
 
 /** One plotted point: `[lapNumber, lapTime]`, with `compound` carried
- *  alongside so the tooltip can show tyre info without a second lookup. */
+ *  alongside so the tooltip can show tyre info without a second lookup.
+ *  `symbolSize`/`itemStyle` are per-point overrides — only set on the
+ *  driver's currently-selected lap, to draw it as a visible ring (see
+ *  `SELECTED_LAP_SYMBOL_SIZE`). ECharts merges a per-data `itemStyle` on top
+ *  of the series-level one, so the ring keeps the driver's fill colour and
+ *  only adds the border. */
 interface LapPoint {
   value: [number, number]
   compound: string
+  symbolSize?: number
+  itemStyle?: { borderColor: string; borderWidth: number }
 }
+
+// Selected-lap ring: bigger symbol + white border, independent of the driver
+// colour underneath — a white ring reads on every team colour on the dark UI.
+const SELECTED_LAP_SYMBOL_SIZE = 11
+const SELECTED_LAP_RING_STYLE = { borderColor: '#fff', borderWidth: 2 }
+
+// Nearest-point click picking (item 1) — see the module docblock.
+const NEAREST_POINT_RADIUS_PX = 20
+// A real drag (pan/box-zoom, item 5) must not also register as a lap pick.
+const DRAG_CLICK_GUARD_PX = 4
 
 /** A single driver's series — kept as our own shape (not `echarts`'
  *  `LineSeriesOption`) so the extra `compound` field on each point never
@@ -83,11 +106,32 @@ function groupByDriver(laps: LapTime[]): Map<string, LapTime[]> {
   return byDriver
 }
 
+/** One lap turned into a plotted point; the driver's currently-selected lap
+ *  (loaded telemetry) gets the ring override so it's visible on the chart
+ *  itself, not just in the footer caption below. */
+function buildLapPoint(lap: LapTime, selectedLap: number | undefined): LapPoint {
+  const isSelected = lap.lap_number === selectedLap
+  return {
+    value: [lap.lap_number, lap.lap_time],
+    compound: lap.compound,
+    ...(isSelected
+      ? { symbolSize: SELECTED_LAP_SYMBOL_SIZE, itemStyle: SELECTED_LAP_RING_STYLE }
+      : {}),
+  }
+}
+
 /** Build one driver's line+marker series, coloured by TEAM colour. Markers
  *  stay small (`symbolSize: 5`) and the line thin (`width: 1.5`) so a dense
  *  multi-driver plot doesn't bead into a wall of dots; `emphasis.scale` grows
- *  the hovered point back up so it's still an obvious click target. */
-function buildDriverSeries(driver: string, laps: LapTime[], color: string): DriverSeriesOption {
+ *  the hovered point back up so it's still an obvious click target. The hit
+ *  target for clicking, though, is decoupled from this visual size — see
+ *  `findNearestPoint`. */
+function buildDriverSeries(
+  driver: string,
+  laps: LapTime[],
+  color: string,
+  selectedLap: number | undefined,
+): DriverSeriesOption {
   return {
     name: driver,
     type: 'line',
@@ -95,7 +139,7 @@ function buildDriverSeries(driver: string, laps: LapTime[], color: string): Driv
     lineStyle: { color, width: 1.5 },
     itemStyle: { color },
     emphasis: { scale: 1.6 },
-    data: laps.map((lap) => ({ value: [lap.lap_number, lap.lap_time], compound: lap.compound })),
+    data: laps.map((lap) => buildLapPoint(lap, selectedLap)),
   }
 }
 
@@ -171,26 +215,141 @@ function buildLapChartOption(
       scale: true,
     },
     series: seriesList,
+    // Drag-to-zoom (item 5): inside = click-drag pan + Shift+wheel zoom;
+    // plain wheel stays page scroll. `filterMode: 'none'` keeps zoom/pan from
+    // rescaling the y-axis. `x = lap number` here (unlike the telemetry
+    // charts' `x = distance`), so this chart is NOT joined to their
+    // `echarts.connect` crosshair group — its zoom stays independent.
+    dataZoom: [
+      {
+        type: 'inside',
+        xAxisIndex: 0,
+        filterMode: 'none',
+        zoomOnMouseWheel: 'shift',
+        moveOnMouseMove: true,
+        moveOnMouseWheel: false,
+      },
+    ],
+    // Toolbox box-zoom (Plotly-style, x-only via `yAxisIndex: 'none'`) + a
+    // reset button — the discoverable alternative to the shift-drag gesture.
+    toolbox: {
+      right: 8,
+      top: 0,
+      feature: {
+        dataZoom: { yAxisIndex: 'none', filterMode: 'none' },
+        restore: {},
+      },
+    },
   }
 }
 
-/** A driver code + lap number pulled off a click event, or null when the
- *  click missed a data point (background/axis click). */
-interface LapClickTarget {
+/** One driver's plotted points, exactly as handed to its ECharts series —
+ *  `seriesIndex` in the picker below is this array's index, since it's built
+ *  in lockstep with `option.series`. */
+interface PickerSeries {
   driver: string
-  lapNumber: number
+  points: LapPoint[]
 }
 
-function extractLapClick(raw: unknown): LapClickTarget | null {
-  if (!raw || typeof raw !== 'object') return null
-  const params = raw as { seriesName?: string; data?: unknown; value?: unknown }
-  const driver = params.seriesName
-  const fromData = isLapPoint(params.data) ? params.data.value[0] : undefined
-  const fromValue =
-    Array.isArray(params.value) && typeof params.value[0] === 'number' ? params.value[0] : undefined
-  const lapNumber = fromData ?? fromValue
-  if (!driver || lapNumber == null) return null
-  return { driver, lapNumber }
+/** What the zrender click handler reads on every click: the currently
+ *  plotted series (post-filter, so a filtered-out lap can't be picked) and
+ *  the latest `onLapClick` callback. Mirrored into a ref (see `LapChart`)
+ *  because the handler itself is bound once, in `onChartReady`. */
+interface PickerRefValue {
+  series: PickerSeries[]
+  onLapClick: (driver: string, lapNumber: number) => void
+}
+
+/** Minimal shape read off zrender's raw pointer events — the real event
+ *  (`ElementEvent`) carries plenty more, this is all the picker needs. */
+interface ZrPointerEvent {
+  offsetX: number
+  offsetY: number
+}
+
+/** One plotted point, resolved to its on-screen pixel position. */
+interface PixelPoint {
+  driver: string
+  lapNumber: number
+  px: number
+  py: number
+}
+
+/** Every plotted point across all series, converted once to pixel space via
+ *  `convertToPixel` — cheap even for a full ~80-lap x 3-driver grid (max
+ *  ~240 points per click). */
+function toPixelPoints(chart: ECharts, series: PickerSeries[]): PixelPoint[] {
+  const pixelPoints: PixelPoint[] = []
+  series.forEach((driverSeries, seriesIndex) => {
+    for (const point of driverSeries.points) {
+      const [px, py] = chart.convertToPixel({ seriesIndex }, point.value)
+      pixelPoints.push({ driver: driverSeries.driver, lapNumber: point.value[0], px, py })
+    }
+  })
+  return pixelPoints
+}
+
+function squaredPixelDistance(point: PixelPoint, clickX: number, clickY: number): number {
+  return (point.px - clickX) ** 2 + (point.py - clickY) ** 2
+}
+
+/** Nearest plotted point to a click, in PIXEL space (not data space) — pixel
+ *  distance is what a viewer actually judges as "the closest dot", which can
+ *  differ from data-space nearest when the y-axis spans wildly different lap
+ *  times (e.g. a rain-affected race). Returns null when nothing plotted is
+ *  within `NEAREST_POINT_RADIUS_PX`, so legend/axis-adjacent clicks stay
+ *  inert instead of snapping to a far-away point. */
+function findNearestPoint(
+  chart: ECharts,
+  series: PickerSeries[],
+  clickX: number,
+  clickY: number,
+): { driver: string; lapNumber: number } | null {
+  let nearest: PixelPoint | null = null
+  let nearestDistanceSq = Infinity
+
+  for (const point of toPixelPoints(chart, series)) {
+    const distanceSq = squaredPixelDistance(point, clickX, clickY)
+    if (distanceSq < nearestDistanceSq) {
+      nearestDistanceSq = distanceSq
+      nearest = point
+    }
+  }
+
+  if (!nearest || nearestDistanceSq > NEAREST_POINT_RADIUS_PX ** 2) return null
+  return { driver: nearest.driver, lapNumber: nearest.lapNumber }
+}
+
+/** Registers the nearest-point click picker directly on zrender, once per
+ *  chart instance (called from `onChartReady`, which — unlike `onEvents` —
+ *  only fires on mount, so this never double-binds across the option
+ *  rebuilds `notMerge` triggers on every data change).
+ *
+ *  Three guards, in order: (1) a real mousedown→click drag (pan or the
+ *  toolbox box-zoom, item 5) is ignored via the pixel-delta check, so
+ *  dragging never fires a phantom lap pick; (2) `containPixel` rejects
+ *  clicks outside the plot area (legend, axis, toolbox icons); (3)
+ *  `findNearestPoint`'s radius rejects clicks too far from any plotted dot. */
+function bindNearestPointClick(chart: ECharts, pickerRef: { current: PickerRefValue }): void {
+  const zr = chart.getZr()
+  let downPoint: { x: number; y: number } | null = null
+
+  zr.on('mousedown', (e: ZrPointerEvent) => {
+    downPoint = { x: e.offsetX, y: e.offsetY }
+  })
+
+  zr.on('click', (e: ZrPointerEvent) => {
+    const dragged =
+      downPoint != null &&
+      Math.hypot(e.offsetX - downPoint.x, e.offsetY - downPoint.y) >= DRAG_CLICK_GUARD_PX
+    downPoint = null
+    if (dragged) return
+    if (!chart.containPixel({ gridIndex: 0 }, [e.offsetX, e.offsetY])) return
+
+    const { series, onLapClick } = pickerRef.current
+    const nearest = findNearestPoint(chart, series, e.offsetX, e.offsetY)
+    if (nearest) onLapClick(nearest.driver, nearest.lapNumber)
+  })
 }
 
 export interface LapChartProps {
@@ -200,28 +359,41 @@ export interface LapChartProps {
   drivers: string[]
   year: number | undefined
   onLapClick: (driver: string, lapNumber: number) => void
+  /** driver code -> the lap number whose telemetry is currently loaded, so
+   *  that lap's point can be drawn as a visible ring on the chart. */
+  selectedLaps: Record<string, number>
 }
 
 /** Lap-time chart: one coloured-by-driver line per selected driver, with
- *  click-to-load and a compound-aware tooltip. */
-export function LapChart({ laps, drivers, year, onLapClick }: LapChartProps) {
-  const option = useMemo(() => {
+ *  click-to-load (nearest-point picking) and a compound-aware tooltip. */
+export function LapChart({ laps, drivers, year, onLapClick, selectedLaps }: LapChartProps) {
+  const { option, pickerSeries } = useMemo(() => {
     const byDriver = groupByDriver(laps)
     const seriesList = drivers
       .filter((driver) => byDriver.has(driver))
       .map((driver) =>
-        buildDriverSeries(driver, byDriver.get(driver) ?? [], getDriverColor(driver, year)),
+        buildDriverSeries(
+          driver,
+          byDriver.get(driver) ?? [],
+          getDriverColor(driver, year),
+          selectedLaps[driver],
+        ),
       )
-    return buildLapChartOption(seriesList, year)
-  }, [laps, drivers, year])
+    return {
+      option: buildLapChartOption(seriesList, year),
+      pickerSeries: seriesList.map((series) => ({ driver: series.name, points: series.data })),
+    }
+  }, [laps, drivers, year, selectedLaps])
 
-  const handleClick = useCallback(
-    (raw: unknown) => {
-      const click = extractLapClick(raw)
-      if (click) onLapClick(click.driver, click.lapNumber)
-    },
-    [onLapClick],
-  )
+  // Latest-ref mirror: the zrender click handler is registered once (see
+  // `handleChartReady` below) and reads through this ref on every click, so
+  // it always sees the current laps/onLapClick without re-binding.
+  const pickerRef = useRef<PickerRefValue>({ series: pickerSeries, onLapClick })
+  pickerRef.current = { series: pickerSeries, onLapClick }
+
+  const handleChartReady = useCallback((chart: ECharts) => {
+    bindNearestPointClick(chart, pickerRef)
+  }, [])
 
   return (
     <div role="img" aria-label="Lap times by lap, per driver">
@@ -230,7 +402,7 @@ export function LapChart({ laps, drivers, year, onLapClick }: LapChartProps) {
         option={option}
         style={{ height: 400 }}
         notMerge
-        onEvents={{ click: handleClick }}
+        onChartReady={handleChartReady}
       />
     </div>
   )

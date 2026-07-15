@@ -60,6 +60,30 @@ function XIcon({ className }: { className?: string }) {
   )
 }
 
+/** Spinner shown in place of the chevron while a combobox's options are
+ *  still loading (e.g. the drivers roster while the backend parses a FastF1
+ *  session) — distinguishes "working" from "disabled/unavailable". */
+function SpinnerIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      fill="none"
+      className={cn('animate-spin', className)}
+      aria-hidden="true"
+    >
+      <circle
+        cx="8"
+        cy="8"
+        r="6"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeDasharray="28 10"
+      />
+    </svg>
+  )
+}
+
 /** Small colour swatch shown before an option's label when `getOptionAccent`
  *  is provided (e.g. a driver's team colour in the drivers multi-select). */
 function AccentDot({ color }: { color: string }) {
@@ -125,6 +149,9 @@ export interface ComboboxProps {
   onChange: (value: string) => void
   placeholder?: string
   disabled?: boolean
+  /** Options are being fetched — shows a spinner instead of the chevron and
+   *  suspends interaction, without reading as `disabled` (opacity-50). */
+  loading?: boolean
   className?: string
   /** Accessible name for the trigger when the visible label lives elsewhere. */
   ariaLabel?: string
@@ -132,7 +159,7 @@ export interface ComboboxProps {
 
 /** Single-select typeahead combobox (e.g. "pick a circuit"). */
 export const Combobox = forwardRef<HTMLButtonElement, ComboboxProps>(function Combobox(
-  { options, value, onChange, placeholder = 'Select...', disabled, className, ariaLabel },
+  { options, value, onChange, placeholder = 'Select...', disabled, loading, className, ariaLabel },
   ref,
 ) {
   const [open, setOpen] = useState(false)
@@ -151,18 +178,24 @@ export const Combobox = forwardRef<HTMLButtonElement, ComboboxProps>(function Co
           type="button"
           disabled={disabled}
           aria-label={ariaLabel}
+          aria-busy={loading || undefined}
           className={cn(
             'flex h-10 w-full items-center justify-between gap-2 rounded-lg border border-hairline bg-bg-3 px-3 text-sm text-fg-1 transition-colors',
             'hover:bg-bg-4',
             'focus-visible:ring-2 focus-visible:ring-purple-400 focus-visible:ring-offset-2 focus-visible:ring-offset-bg-0 focus-visible:outline-none',
             'disabled:pointer-events-none disabled:opacity-50',
+            loading && 'pointer-events-none opacity-80',
             className,
           )}
         >
           <span className={cn('truncate', !selectedLabel && 'text-fg-3')}>
             {selectedLabel ?? placeholder}
           </span>
-          <ChevronDownIcon className="size-4 shrink-0 text-fg-3" />
+          {loading ? (
+            <SpinnerIcon className="size-4 shrink-0 text-fg-3" />
+          ) : (
+            <ChevronDownIcon className="size-4 shrink-0 text-fg-3" />
+          )}
         </button>
       </Popover.Trigger>
       <ComboboxPanel>
@@ -188,6 +221,9 @@ export interface MultiComboboxProps {
   onChange: (value: string[]) => void
   placeholder?: string
   disabled?: boolean
+  /** Options are being fetched — shows a spinner instead of the chevron and
+   *  suspends interaction, without reading as `disabled` (opacity-50). */
+  loading?: boolean
   /** Caps how many options can be selected at once (e.g. a 3-driver comparison). */
   max?: number
   className?: string
@@ -208,6 +244,7 @@ export const MultiCombobox = forwardRef<HTMLDivElement, MultiComboboxProps>(func
     onChange,
     placeholder = 'Select...',
     disabled,
+    loading,
     max,
     className,
     ariaLabel,
@@ -218,13 +255,14 @@ export const MultiCombobox = forwardRef<HTMLDivElement, MultiComboboxProps>(func
   const [open, setOpen] = useState(false)
   const atMax = max !== undefined && value.length >= max
   const selectedOptions = options.filter((option) => value.includes(option.value))
+  const interactive = !disabled && !loading
 
   function handleOpenChange(next: boolean) {
-    if (!disabled) setOpen(next)
+    if (interactive) setOpen(next)
   }
 
   function handleTriggerKeyDown(event: KeyboardEvent<HTMLDivElement>) {
-    if (disabled) return
+    if (!interactive) return
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault()
       setOpen((current) => !current)
@@ -245,22 +283,24 @@ export const MultiCombobox = forwardRef<HTMLDivElement, MultiComboboxProps>(func
   }
 
   return (
-    <Popover.Root open={!disabled && open} onOpenChange={handleOpenChange}>
+    <Popover.Root open={interactive && open} onOpenChange={handleOpenChange}>
       <Popover.Trigger asChild>
         <div
           ref={ref}
           role="combobox"
           aria-label={ariaLabel}
-          aria-expanded={!disabled && open}
+          aria-expanded={interactive && open}
           aria-haspopup="listbox"
           aria-disabled={disabled}
-          tabIndex={disabled ? -1 : 0}
+          aria-busy={loading || undefined}
+          tabIndex={interactive ? 0 : -1}
           onKeyDown={handleTriggerKeyDown}
           className={cn(
             'flex min-h-10 w-full flex-wrap items-center gap-1.5 rounded-lg border border-hairline bg-bg-3 px-2 py-1.5 text-sm transition-colors',
             'hover:bg-bg-4',
             'focus-visible:ring-2 focus-visible:ring-purple-400 focus-visible:ring-offset-2 focus-visible:ring-offset-bg-0 focus-visible:outline-none',
             disabled && 'pointer-events-none opacity-50',
+            loading && !disabled && 'pointer-events-none opacity-80',
             className,
           )}
         >
@@ -289,7 +329,11 @@ export const MultiCombobox = forwardRef<HTMLDivElement, MultiComboboxProps>(func
               </span>
             )
           })}
-          <ChevronDownIcon className="ml-auto size-4 shrink-0 text-fg-3" />
+          {loading ? (
+            <SpinnerIcon className="ml-auto size-4 shrink-0 text-fg-3" />
+          ) : (
+            <ChevronDownIcon className="ml-auto size-4 shrink-0 text-fg-3" />
+          )}
         </div>
       </Popover.Trigger>
       <ComboboxPanel>

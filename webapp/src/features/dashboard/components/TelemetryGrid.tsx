@@ -1,9 +1,12 @@
-// TELEMETRY section (issue #34, §6.1): 7 per-channel charts — Speed, Delta,
-// Throttle, Brake, RPM, Gear, DRS, matching the render order in
-// frontend/pages/dashboard.py — in a grid<->stack layout, each plotting one
-// line per loaded driver against distance. Delta is cross-driver (needs a
-// reference lap) so it renders through the dedicated `DeltaChart`; the other
-// 6 channels share the generic `ChannelChart`, driven by `channels.ts`.
+// TELEMETRY section (issue #34, §6.1; round 2 adds Accel): 8 per-channel
+// charts — Speed, Delta, Throttle, Brake, RPM, Gear, Accel, DRS — in a
+// grid<->stack layout, each plotting one line per loaded driver against
+// distance. The first 7 (everything but Accel) match the render order in
+// frontend/pages/dashboard.py; Accel has no Streamlit precedent, inserted
+// between Gear and DRS (channels.ts) to fill the grid's lonely last-row DRS
+// slot. Delta is cross-driver (needs a reference lap) so it renders through
+// the dedicated `DeltaChart`; the other 7 channels share the generic
+// `ChannelChart`, driven by `channels.ts`.
 //
 // Data comes from `useLapTelemetries`, keyed by the store's
 // `selectedLapsPerDriver` (the lap chart writes to it on click-to-load).
@@ -109,7 +112,9 @@ export function TelemetryGrid({ search }: TelemetryGridProps) {
 
   // Speed leads, Delta is hardcoded second (cross-driver, not part of
   // CHANNELS), then the rest of CHANNELS in their declared order — matches
-  // dashboard.py's render order (speed/delta/throttle/brake/rpm/gear/drs).
+  // dashboard.py's render order (speed/delta/throttle/brake/rpm/gear/drs)
+  // with Accel (round 2) inserted before drs, yielding 8 grid slots:
+  // [Speed·Delta] [Throttle·Brake] [RPM·Gear] [Accel·DRS].
   const [speedChannel, ...restChannels] = CHANNELS
 
   return (
