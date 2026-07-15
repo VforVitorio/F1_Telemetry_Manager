@@ -10,13 +10,14 @@
 // with a `custom` series — the documented ECharts recipe for error bars:
 // `renderItem` reads `[categoryIndex, P10, P90, E]` per row and projects it
 // through `api.coord()` into pixel space, then draws a line + two end caps +
-// a dot at E. That series shares the bar series' category axis, so the two
-// stay pixel-aligned without any extra bookkeeping.
+// a dot at E, plus a right-margin value label. It is the ONLY series (no bars:
+// a bar's LENGTH is meaningless once MC scores go negative, which they
+// routinely do), so it owns the category axis directly — a dot-interval plot,
+// where position, not length, carries the value.
 
 import { useMemo } from 'react'
 import ReactECharts from 'echarts-for-react'
 import type {
-  BarSeriesOption,
   CustomSeriesOption,
   CustomSeriesRenderItem,
   EChartsOption,
@@ -41,19 +42,16 @@ const ACCENT_WHISKER = '#a29bfe'
 // color bypasses the registered theme entirely) — same reasoning as
 // Gauge.tsx's GaugePalette and ChannelChart's DeltaChart markLineColor.
 interface ScorePalette {
-  mutedBar: string
   mutedWhisker: string
   label: string
 }
 
 const DARK_SCORE_PALETTE: ScorePalette = {
-  mutedBar: 'rgba(255,255,255,0.16)',
   mutedWhisker: 'rgba(255,255,255,0.45)',
   label: 'rgba(255,255,255,0.72)',
 }
 
 const LIGHT_SCORE_PALETTE: ScorePalette = {
-  mutedBar: 'rgba(20,18,31,0.14)',
   mutedWhisker: 'rgba(20,18,31,0.45)',
   label: 'rgba(20,18,31,0.75)',
 }
@@ -122,36 +120,38 @@ function buildScoreTooltipFormatter(rows: ScenarioRow[]) {
   }
 }
 
-/** The x-axis window: `min` is pinned to 0 rather than the widest P10 lower
- *  bound — scores are bounded [0,1], and a truncated baseline made bar
- *  LENGTH encode `E - baseline` instead of `E` itself, visually exaggerating
- *  how much better the winner looked. `max` is still padded a little past
- *  the widest P10-P90 spread (capped at 1) so no whisker cap ever touches
- *  the plot edge. */
+/** The x-axis window spans the full P10-P90-E range across rows, padded so no
+ *  cap or dot touches the plot edge. DATA-DRIVEN, not pinned to 0: the
+ *  Monte-Carlo score `α·E + (1−α)·P10` is routinely NEGATIVE (a losing
+ *  scenario scores below zero), so a zero baseline would clip most rows
+ *  off-scale and pile their labels onto the category axis. This is a
+ *  dot-interval plot — position, not bar length, encodes the value — so a
+ *  non-zero baseline is honest: a point's POSITION never lies the way a
+ *  truncated bar LENGTH would. */
 function axisRange(rows: ScenarioRow[]): { min: number; max: number } {
-  const bounds = rows.flatMap((row) => [row.score.P10, row.score.P90])
+  const bounds = rows.flatMap((row) => [row.score.P10, row.score.P90, row.score.E])
   const low = Math.min(...bounds)
   const high = Math.max(...bounds)
-  const pad = (high - low) * 0.15 || 0.1
-  return { min: 0, max: Math.min(1, high + pad) }
+  const pad = (high - low) * 0.12 || 0.1
+  return { min: low - pad, max: high + pad }
 }
 
 /**
- * Draws one row's P10-P90 whisker: a horizontal line between the two bounds,
- * a short vertical cap at each end, a dot at E, and — past the P90 cap — the
- * E/delta label itself. That label used to be the bar series' own
- * `label: { position: 'right' }`, which sits at x = E: exactly where this
- * whisker's line crosses, so it got struck through. Drawing it here instead,
- * clear of the P90 cap, is the fix. Row data is `[categoryIndex, P10, P90, E]`;
- * `api.coord()` projects an `[x, categoryIndex]` pair through the shared
- * value/category axes, so the whisker (and its label) lands exactly where
- * the paired bar series' row sits — no separate layout math needed.
+ * Draws one row of the dot-interval plot: a P10-P90 whisker (line + end caps),
+ * a dot at the expected value E, and the E/delta label. The label is pinned to
+ * the RIGHT MARGIN (`axisMax` position + a gap), aligned into a value column,
+ * NOT anchored past the whisker's own P90 cap: with negative scores the P90
+ * point can sit at the far left, so a label tied to it would collide with the
+ * category-axis labels. Row data is `[categoryIndex, P10, P90, E]`; `api.coord()`
+ * projects an `[x, categoryIndex]` pair through the value/category axes so every
+ * mark lands on its category's row without separate layout math.
  */
 function buildWhiskerRenderItem(
   chosenIndex: number,
   palette: ScorePalette,
   rows: ScenarioRow[],
   bestE: number,
+  axisMax: number,
 ): CustomSeriesRenderItem {
   return (params, api) => {
     const categoryIndex = api.value(0) as number
@@ -206,8 +206,9 @@ function buildWhiskerRenderItem(
           type: 'text',
           style: {
             text: labelText,
-            x: highPoint[0] + WHISKER_LABEL_GAP_PX,
-            y: highPoint[1],
+            x: api.coord([axisMax, categoryIndex])[0] + WHISKER_LABEL_GAP_PX,
+            y: meanPoint[1],
+            textAlign: 'left',
             textVerticalAlign: 'middle',
             fontFamily: MONO,
             fontSize: 11,
@@ -219,49 +220,25 @@ function buildWhiskerRenderItem(
   }
 }
 
-/** The bar series: length = E, colored purple for the chosen action and a
- *  muted neutral for the rest, so the recommendation reads as the obvious
- *  pick even before a viewer reads any label. Its own label stays off — a
- *  `position: 'right'` label sits at x = E, exactly where the paired
- *  whisker's line crosses it, so the label now renders inside
- *  `buildWhiskerRenderItem` instead, past the P90 cap where nothing
- *  overlaps it. */
-function buildBarSeries(
-  rows: ScenarioRow[],
-  chosenAction: StrategyAction,
-  palette: ScorePalette,
-): BarSeriesOption {
-  return {
-    type: 'bar',
-    barWidth: '46%',
-    z: 5,
-    data: rows.map((row) => ({
-      value: row.score.E,
-      itemStyle: {
-        color: row.action === chosenAction ? ACCENT : palette.mutedBar,
-        borderRadius: 4,
-      },
-    })),
-    label: { show: false },
-  }
-}
-
-/** The whisker overlay — a `silent` custom series (see module docstring)
- *  sharing the bar series' category axis so both stay pixel-aligned. Also
- *  draws the E/delta label past its P90 cap (see `buildWhiskerRenderItem`),
- *  hence the extra `bestE` argument. */
+/** The dot-interval series — a single `custom` series (see module docstring):
+ *  one P10-P90 whisker + a dot at E + a right-aligned E/delta label per row.
+ *  It is the ONLY series; there is deliberately no bar, because a bar's LENGTH
+ *  is meaningless once scores go negative (see axisRange). It owns the category
+ *  axis, so its rows line up with the y-axis labels. The chosen action renders
+ *  in the purple accent, the rest muted. */
 function buildWhiskerSeries(
   rows: ScenarioRow[],
   chosenAction: StrategyAction,
   palette: ScorePalette,
   bestE: number,
+  axisMax: number,
 ): CustomSeriesOption {
   const chosenIndex = rows.findIndex((row) => row.action === chosenAction)
   return {
     type: 'custom',
     silent: true,
     z: 10,
-    renderItem: buildWhiskerRenderItem(chosenIndex, palette, rows, bestE),
+    renderItem: buildWhiskerRenderItem(chosenIndex, palette, rows, bestE, axisMax),
     data: rows.map((row, index) => [index, row.score.P10, row.score.P90, row.score.E]),
   }
 }
@@ -311,10 +288,7 @@ function buildScoresOption(
       // still reads the raw `row.action` enum key.
       data: rows.map((row) => row.action.replace(/_/g, ' ')),
     },
-    series: [
-      buildBarSeries(rows, chosenAction, palette),
-      buildWhiskerSeries(rows, chosenAction, palette, bestE),
-    ],
+    series: [buildWhiskerSeries(rows, chosenAction, palette, bestE, max)],
   }
 }
 
@@ -327,10 +301,11 @@ export interface ScenarioScoresChartProps {
   chosenAction: StrategyAction
 }
 
-/** Horizontal Monte-Carlo evidence bar: one row per candidate action, sorted
- *  best-first by expected value, with a P10-P90 uncertainty whisker per row.
- *  The chosen action's bar and whisker render in the purple accent; the rest
- *  in a muted neutral. */
+/** Monte-Carlo evidence as a dot-interval plot: one row per candidate action,
+ *  sorted best-first by expected value, each an E dot + P10-P90 uncertainty
+ *  whisker + a right-aligned E/delta-to-winner label. The chosen action renders
+ *  in the purple accent, the rest muted. Scores routinely go negative, so the
+ *  axis is data-driven, not zero-based. */
 export function ScenarioScoresChart({ scores, chosenAction }: ScenarioScoresChartProps) {
   const chartTheme = useChartTheme()
   const palette = chartTheme === F1_LIGHT_THEME ? LIGHT_SCORE_PALETTE : DARK_SCORE_PALETTE
