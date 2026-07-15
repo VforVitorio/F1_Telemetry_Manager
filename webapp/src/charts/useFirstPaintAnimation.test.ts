@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest'
-import { renderHook } from '@testing-library/react'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { renderHook, act } from '@testing-library/react'
 import type { EChartsOption } from 'echarts'
 import { useFirstPaintAnimation } from './useFirstPaintAnimation'
 
@@ -12,27 +12,40 @@ const twoSeries: EChartsOption = {
   ],
 }
 
-describe('useFirstPaintAnimation', () => {
-  it('keeps animation off until the first render that has series', () => {
-    const { result } = renderHook((o: EChartsOption) => useFirstPaintAnimation(o), {
-      initialProps: noSeries,
-    })
-    expect(result.current.animation).toBe(false)
-  })
+// A bit longer than the hook's internal SETTLE_MS debounce window.
+const PAST_SETTLE = 160
 
-  it('animates only the first data paint, not later data updates', () => {
+describe('useFirstPaintAnimation', () => {
+  beforeEach(() => vi.useFakeTimers())
+  afterEach(() => vi.useRealTimers())
+
+  it('coalesces the settling churn and animates the paint exactly once', () => {
     const { result, rerender } = renderHook((o: EChartsOption) => useFirstPaintAnimation(o), {
       initialProps: noSeries,
     })
-    expect(result.current.animation).toBe(false) // no data yet
+    // nothing to paint yet
+    expect(result.current.animation).toBe(false)
 
+    // data lands in a burst (VER, then LEC) inside the settle window — the
+    // applied option must NOT change per arrival (that's what would cancel the
+    // animation); it stays the initial empty option until the burst settles.
     rerender(oneSeries)
-    // first data paint: option passed through untouched, ECharts' default
-    // animation (undefined → true) draws the entrance sweep.
+    rerender(twoSeries)
+    expect(result.current.series).toHaveLength(0)
+
+    act(() => {
+      vi.advanceTimersByTime(PAST_SETTLE)
+    })
+    // one settled apply, with both series and the entrance animation left on
+    // (undefined → ECharts default true).
+    expect(result.current.series).toHaveLength(2)
     expect(result.current.animation).toBeUndefined()
 
-    rerender(twoSeries)
-    // a second driver's telemetry landing must NOT replay the sweep.
+    // a later interaction settles without replaying the sweep.
+    rerender(oneSeries)
+    act(() => {
+      vi.advanceTimersByTime(PAST_SETTLE)
+    })
     expect(result.current.animation).toBe(false)
   })
 })
