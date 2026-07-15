@@ -22,7 +22,7 @@ import { TelemetryGrid } from './components/TelemetryGrid'
 import { useDashboardStore } from './store'
 import { useLapTimes, prewarmTelemetry } from './queries'
 import { fastestLapPerDriver } from './lib/fastestLap'
-import { fromRaw, toRaw, type DashboardSearch } from './search'
+import { applySelectionPatch, fromRaw, toRaw, type DashboardSearch } from './search'
 
 const routeApi = getRouteApi('/dashboard')
 
@@ -75,10 +75,10 @@ export function DashboardPage() {
 
   /** Patch the URL selection, applying the cascading reset of dependent levels. */
   const handleChange = (patch: Partial<DashboardSearch>) => {
-    // Re-picking the SAME value must not wipe the downstream selection.
-    if ('year' in patch && patch.year === search.year) return
-    if ('gp' in patch && patch.gp === search.gp) return
-    if ('session' in patch && patch.session === search.session) return
+    const next = applySelectionPatch(search, patch)
+    // Re-picking the SAME upstream value returns the original object — nothing
+    // to navigate or warm.
+    if (next === search) return
 
     // Warm the session cache the moment a session is chosen — the parse runs
     // while the user picks drivers, so the charts don't hang afterwards.
@@ -86,17 +86,6 @@ export function DashboardPage() {
       prewarmTelemetry(search.year, search.gp, patch.session)
     }
 
-    const next: DashboardSearch = { ...search, ...patch }
-    if ('year' in patch) {
-      next.gp = undefined
-      next.session = undefined
-      next.drivers = []
-    } else if ('gp' in patch) {
-      next.session = undefined
-      next.drivers = []
-    } else if ('session' in patch) {
-      next.drivers = []
-    }
     void navigate({ search: toRaw(next) })
   }
 
