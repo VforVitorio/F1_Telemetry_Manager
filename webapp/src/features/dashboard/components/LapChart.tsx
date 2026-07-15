@@ -13,11 +13,12 @@
 // picker instead accepts any click within a 20px radius of the nearest
 // plotted point (round-2 fix, see `docs/migration/design-specs/dashboard-round2.md#1`).
 
-import { useCallback, useMemo, useRef } from 'react'
+import { useCallback, useContext, useMemo, useRef } from 'react'
 import ReactECharts from 'echarts-for-react'
 import type { ECharts, EChartsOption } from 'echarts'
 import { registerF1Theme, useChartTheme } from '@/charts/registerEcharts'
 import { buildEchartsTheme, F1_LIGHT_THEME, tireColors } from '@/charts/echartsTheme'
+import { ChartMaximizedContext } from '@/components/ChartCard'
 import type { LapTime } from '@/lib/api/telemetry'
 import { getDriverColor, getDriverTextColor } from '../lib/drivers'
 import { compoundLabel, compoundVariant } from '../lib/compounds'
@@ -377,6 +378,10 @@ export interface LapChartProps {
  *  click-to-load (nearest-point picking) and a compound-aware tooltip. */
 export function LapChart({ laps, drivers, year, onLapClick, selectedLaps }: LapChartProps) {
   const chartTheme = useChartTheme()
+  // Fill the maximized overlay instead of the fixed 400px grid height, and fold
+  // `maximized` into the chart key so it remounts at the new size (keeps the
+  // nearest-point click picking + hover aligned — see ChartCard's context).
+  const maximized = useContext(ChartMaximizedContext)
   const { option, pickerSeries } = useMemo(() => {
     const byDriver = groupByDriver(laps)
     const seriesList = drivers
@@ -407,12 +412,16 @@ export function LapChart({ laps, drivers, year, onLapClick, selectedLaps }: LapC
   }, [])
 
   return (
-    <div role="img" aria-label="Lap times by lap, per driver">
+    <div
+      role="img"
+      aria-label="Lap times by lap, per driver"
+      className={maximized ? 'h-full' : undefined}
+    >
       <ReactECharts
         theme={chartTheme}
-        key={chartTheme}
+        key={`${chartTheme}-${maximized}`}
         option={option}
-        style={{ height: 400 }}
+        style={{ height: maximized ? '100%' : 400 }}
         notMerge
         onChartReady={handleChartReady}
       />

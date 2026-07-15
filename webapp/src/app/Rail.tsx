@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react'
 import {
   type LucideIcon,
   ArrowRightLeft,
@@ -14,9 +14,17 @@ import {
 import { Link } from '@tanstack/react-router'
 import { cn } from '@/lib/cn'
 import { Z } from '@/lib/zIndex'
-import { useUiStore } from '@/stores/ui'
+import { RAIL_WIDTH_MAX, RAIL_WIDTH_MIN, useUiStore } from '@/stores/ui'
 import { Button } from '@/components/Button'
 import { Tooltip } from '@/components/Tooltip'
+
+// Fixed collapsed width (icon-only rail, never resizable) — the counterpart
+// to `railWidth` in stores/ui.ts, which only governs the expanded state.
+const RAIL_WIDTH_COLLAPSED = 76
+
+// Keyboard step for the resize handle (role="separator"), so the control is
+// operable without a pointer per the WAI-ARIA window-splitter pattern.
+const RAIL_RESIZE_STEP = 16
 
 // Shared Link styling (#33, redesigned round 2 per docs/migration/design-specs/
 // app-chrome-round2.md §3 — the docs-sidebar grammar instead of a generic flat
@@ -124,23 +132,75 @@ function NavSection({
 /**
  * Acrylic left icon rail, redesigned to carry F1 StratLab's brand vocabulary
  * (docs-sidebar grouping + a brand block) instead of a generic flat list:
- * 76px collapsed / 232px expanded, driven by the shared `useUiStore` so the
- * collapsed state survives navigation and reloads (persisted under
- * `f1sl.ui`). Width itself is never transitioned — baseline-ui restricts
- * animation to transform/opacity (cheap, compositor-only); a width change is
- * a layout property, so it snaps instantly instead.
+ * 76px collapsed / a user-resizable 200-360px expanded (default 232px),
+ * driven by the shared `useUiStore` so both the collapsed state and the
+ * chosen width survive navigation and reloads (persisted under `f1sl.ui`).
+ *
+ * Width now transitions on collapse/expand (`transition-[width]`, ~200ms,
+ * `motion-reduce`-guarded) — a deliberate, narrow exception to baseline-ui's
+ * transform/opacity-only rule: once the rail became resizable, a hard snap
+ * on toggle read as broken next to a draggable edge. The main content pane
+ * (Shell.tsx) never needs to mirror this explicitly — it's a `flex-1`
+ * sibling of this `<nav>`, so the browser recomputes its box on every frame
+ * of the rail's width transition for free; there's no second width value to
+ * keep in lockstep.
+ *
+ * The transition is suppressed (`transition-none`) while the resize handle
+ * is being dragged, so the edge tracks the pointer 1:1 instead of lagging
+ * behind an easing curve.
  */
 export function Rail() {
   const railCollapsed = useUiStore((state) => state.railCollapsed)
   const toggleRail = useUiStore((state) => state.toggleRail)
+  const railWidth = useUiStore((state) => state.railWidth)
+  const setRailWidth = useUiStore((state) => state.setRailWidth)
+
+  // Drag-to-resize. `dragStartRef` holds the pointer x + rail width at the
+  // moment the drag began, so `handleResizeMove` can compute an absolute
+  // target width from the total pointer delta rather than accumulating
+  // per-event deltas (which would drift under fast pointer moves).
+  const [isResizing, setIsResizing] = useState(false)
+  const dragStartRef = useRef({ x: 0, width: railWidth })
+
+  function handleResizeStart(event: PointerEvent<HTMLDivElement>) {
+    if (railCollapsed) return
+    event.currentTarget.setPointerCapture(event.pointerId)
+    dragStartRef.current = { x: event.clientX, width: railWidth }
+    setIsResizing(true)
+  }
+
+  function handleResizeMove(event: PointerEvent<HTMLDivElement>) {
+    if (!isResizing) return
+    const delta = event.clientX - dragStartRef.current.x
+    setRailWidth(dragStartRef.current.width + delta)
+  }
+
+  function handleResizeEnd(event: PointerEvent<HTMLDivElement>) {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    }
+    setIsResizing(false)
+  }
+
+  function handleResizeKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (event.key === 'ArrowLeft') {
+      event.preventDefault()
+      setRailWidth(railWidth - RAIL_RESIZE_STEP)
+    } else if (event.key === 'ArrowRight') {
+      event.preventDefault()
+      setRailWidth(railWidth + RAIL_RESIZE_STEP)
+    }
+  }
 
   return (
     <nav
       aria-label="Primary"
-      style={{ zIndex: Z.rail }}
+      style={{ zIndex: Z.rail, width: railCollapsed ? RAIL_WIDTH_COLLAPSED : railWidth }}
       className={cn(
         'sticky top-0 flex h-dvh shrink-0 flex-col border-r border-divider bg-bg-2/70 backdrop-blur-md',
-        railCollapsed ? 'w-19' : 'w-58',
+        isResizing
+          ? 'transition-none'
+          : 'transition-[width] duration-200 ease-out motion-reduce:transition-none',
       )}
     >
       {/* Brand block. Aligns with Header's h-14 so rail + header form one
@@ -335,6 +395,34 @@ export function Rail() {
           </Button>
         </Tooltip>
       </div>
+
+      {/* Drag-to-resize handle. Absolutely positioned against the `sticky`
+          nav (a positioned element, so it's a valid containing block) and
+          rendered as the nav's last child, which — with no explicit z-index
+          on either side — is enough for it to paint above the normal-flow
+          content above it. Not rendered at all while collapsed: a collapsed
+          icon-only rail has no width worth dragging. */}
+      {!railCollapsed && (
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize navigation"
+          aria-valuenow={Math.round(railWidth)}
+          aria-valuemin={RAIL_WIDTH_MIN}
+          aria-valuemax={RAIL_WIDTH_MAX}
+          tabIndex={0}
+          onPointerDown={handleResizeStart}
+          onPointerMove={handleResizeMove}
+          onPointerUp={handleResizeEnd}
+          onPointerCancel={handleResizeEnd}
+          onKeyDown={handleResizeKeyDown}
+          className={cn(
+            'absolute inset-y-0 right-0 w-1.5 cursor-col-resize touch-none rounded-r-sm select-none',
+            'transition-colors hover:bg-purple-400/30 focus-visible:bg-purple-400/40 focus-visible:outline-none',
+            isResizing && 'bg-purple-400/40',
+          )}
+        />
+      )}
     </nav>
   )
 }

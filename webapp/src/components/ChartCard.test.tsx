@@ -33,7 +33,7 @@ describe('ChartCard', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
-  it('hides the body when the collapse button is clicked', () => {
+  it('keeps the body visible (no collapse affordance) — maximize is the only control', () => {
     render(
       <ChartCard title="Lap Times">
         <div>chart body</div>
@@ -41,7 +41,6 @@ describe('ChartCard', () => {
     )
 
     expect(screen.getByText('chart body')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: /collapse chart/i }))
-    expect(screen.queryByText('chart body')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /collapse chart/i })).not.toBeInTheDocument()
   })
 })

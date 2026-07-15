@@ -1,38 +1,52 @@
-import { forwardRef, useEffect, useState, type HTMLAttributes, type ReactNode } from 'react'
+import {
+  createContext,
+  forwardRef,
+  useEffect,
+  useState,
+  type HTMLAttributes,
+  type ReactNode,
+} from 'react'
 import { createPortal } from 'react-dom'
-import { Maximize2, Minimize2, Minus, Plus } from 'lucide-react'
+import { Maximize2, Minimize2 } from 'lucide-react'
 import { Card } from '@/components/Card'
 import { Button } from '@/components/Button'
 import { cn } from '@/lib/cn'
 import { Z } from '@/lib/zIndex'
 
-// Titled shell for a single chart: header (title + actions slot + maximize +
-// collapse), a scroll-contained body, and an optional footer strip. "Maximize"
-// portals the card to a full-viewport overlay so a chart can be inspected
-// without fighting a cramped dashboard grid cell; "collapse" just hides the
-// body (and footer) in place, for dashboards where a driver wants to fold a
-// chart they aren't using right now.
+// Titled shell for a single chart: header (title + actions slot + maximize), a
+// body, and an optional footer strip. "Maximize" portals the card to a
+// full-viewport overlay so a chart can be inspected without fighting a cramped
+// grid cell — the only per-chart control, since a full-screen view covers the
+// "look closer" need a collapse toggle used to.
+//
+// Charts read `ChartMaximizedContext` to FILL that overlay (rather than keeping
+// their fixed grid height and leaving dead space) and to key a remount so
+// ECharts re-measures at the new size — without it the canvas keeps its grid
+// dimensions and the hover/tooltip hit-testing lands in the wrong place.
 //
 // Acrylic-law exception: the overlay backdrop is chrome, not a data plane, so
 // `backdrop-blur` is allowed here even though data surfaces (the Card itself)
 // stay solid `--bg` with a hairline border, per Card.tsx.
+
+/** True while the chart is rendered inside the maximized full-viewport overlay.
+ *  Chart bodies read this to switch from their fixed grid height to filling the
+ *  overlay, and to key a remount so ECharts re-measures at the new size. */
+export const ChartMaximizedContext = createContext(false)
 
 export interface ChartCardProps extends HTMLAttributes<HTMLDivElement> {
   title: string
   /** Right-aligned header slot, e.g. a range picker or a legend toggle. */
   actions?: ReactNode
   children?: ReactNode
-  /** Optional strip below the body (status / legend). Hidden while collapsed. */
+  /** Optional strip below the body (status / legend). */
   footer?: ReactNode
-  defaultCollapsed?: boolean
 }
 
 export const ChartCard = forwardRef<HTMLDivElement, ChartCardProps>(function ChartCard(
-  { title, actions, children, footer, defaultCollapsed = false, className, ...props },
+  { title, actions, children, footer, className, ...props },
   ref,
 ) {
   const [isMaximized, setIsMaximized] = useState(false)
-  const [isCollapsed, setIsCollapsed] = useState(defaultCollapsed)
 
   // Escape restores the maximized overlay, matching standard dialog behavior
   // even though this isn't a Radix Dialog (no focus trap needed here since
@@ -51,24 +65,6 @@ export const ChartCard = forwardRef<HTMLDivElement, ChartCardProps>(function Cha
       <h3 className="truncate font-display text-sm font-medium text-fg-1">{title}</h3>
       <div className="flex items-center gap-1">
         {actions}
-        {/* Collapse is a grid-only affordance. In the maximized overlay it just
-            hides the body, stranding the user on an empty full-screen card with
-            no way back (Restore is the way out) — so it's not offered there. */}
-        {!isMaximized && (
-          <Button
-            variant="ghost"
-            size="sm"
-            aria-label={isCollapsed ? 'Expand chart' : 'Collapse chart'}
-            onClick={() => setIsCollapsed((value) => !value)}
-            className="size-8 px-0 text-fg-3"
-          >
-            {isCollapsed ? (
-              <Plus className="size-4" aria-hidden="true" />
-            ) : (
-              <Minus className="size-4" aria-hidden="true" />
-            )}
-          </Button>
-        )}
         <Button
           variant="ghost"
           size="sm"
@@ -86,15 +82,18 @@ export const ChartCard = forwardRef<HTMLDivElement, ChartCardProps>(function Cha
     </div>
   )
 
-  // Maximizing always shows the content — a collapsed-in-grid chart still opens
-  // full-screen with its body (and Restore is the only exit), so there's no way
-  // to land on an empty maximized card.
-  const showBody = isMaximized || !isCollapsed
-  const body = showBody ? <div className="flex-1 overflow-auto p-4">{children}</div> : null
-  const footerStrip =
-    showBody && footer ? (
-      <div className="shrink-0 border-t border-hairline px-4 py-2.5">{footer}</div>
-    ) : null
+  const body = <div className="flex-1 overflow-auto p-4">{children}</div>
+  const footerStrip = footer ? (
+    <div className="shrink-0 border-t border-hairline px-4 py-2.5">{footer}</div>
+  ) : null
+
+  const content = (
+    <ChartMaximizedContext.Provider value={isMaximized}>
+      {header}
+      {body}
+      {footerStrip}
+    </ChartMaximizedContext.Provider>
+  )
 
   if (isMaximized) {
     return createPortal(
@@ -110,9 +109,7 @@ export const ChartCard = forwardRef<HTMLDivElement, ChartCardProps>(function Cha
           className={cn('flex h-full w-full flex-col', className)}
           {...props}
         >
-          {header}
-          {body}
-          {footerStrip}
+          {content}
         </Card>
       </div>,
       document.body,
@@ -121,9 +118,7 @@ export const ChartCard = forwardRef<HTMLDivElement, ChartCardProps>(function Cha
 
   return (
     <Card ref={ref} className={cn('flex flex-col', className)} {...props}>
-      {header}
-      {body}
-      {footerStrip}
+      {content}
     </Card>
   )
 })
