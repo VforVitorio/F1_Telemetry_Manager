@@ -93,9 +93,30 @@ describe('applyStrategyPatch — cascade + no-op identity', () => {
   })
 })
 
-describe('analysedLap', () => {
-  it('is the right edge of the lap window, or undefined', () => {
+describe('analysedLap — decision cursor', () => {
+  it('is the cursor lap, else the window end, else undefined', () => {
+    expect(analysedLap({ risk: 0.5, laps: [8, 28], lap: 20 })).toBe(20)
     expect(analysedLap({ risk: 0.5, laps: [8, 28] })).toBe(28)
     expect(analysedLap({ risk: 0.5 })).toBeUndefined()
+  })
+})
+
+describe('lap decision cursor — clamp + cascade', () => {
+  it('clamps a hand-edited cursor into the window', () => {
+    expect(validateStrategySearch({ gp: 'GP', driver: 'VER', laps: '8-28', lap: '99' }).lap).toBe(
+      28,
+    )
+    expect(validateStrategySearch({ gp: 'GP', driver: 'VER', laps: '8-28', lap: '1' }).lap).toBe(8)
+  })
+
+  it('drops the cursor when the driver changes and re-clamps when the window shrinks', () => {
+    const base = { gp: 'GP', driver: 'VER', laps: [8, 28] as [number, number], lap: 24, risk: 0.5 }
+    expect(applyStrategyPatch(base, { driver: 'NOR' }).lap).toBeUndefined()
+    expect(applyStrategyPatch(base, { laps: [8, 20] }).lap).toBe(20)
+  })
+
+  it('omits the cursor from the URL when it just equals the window end', () => {
+    expect(toRaw({ risk: 0.5, laps: [8, 28], lap: 28 }).lap).toBeUndefined()
+    expect(toRaw({ risk: 0.5, laps: [8, 28], lap: 24 }).lap).toBe(24)
   })
 })

@@ -1,12 +1,16 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import { DecisionCard } from './DecisionCard'
+import { DecisionBanner } from './DecisionBanner'
+import { DecisionDetails } from './DecisionDetails'
 import type { LapState, StrategyRecommendation } from '@/lib/api/strategy'
 
-// The Decision Card's whole job is to surface the full v2 schema WHILE staying
-// null-tolerant: a no-LLM / degraded run returns only action + reasoning +
-// confidence with every other field null/empty, and that must read as a shorter
-// brief, never a broken one. These two renders (rich + sparse) pin that contract.
+// The Decision Banner (hero call + Monte-Carlo evidence) and Decision Details
+// (key risks, playbook, reasoning, regulation context) together surface the
+// full v2 schema WHILE staying null-tolerant: a no-LLM / degraded run returns
+// only action + reasoning + confidence with every other field null/empty, and
+// that must read as a shorter brief, never a broken one. These renders (rich
+// + sparse) pin that contract across both components — the same contract
+// `DecisionCard` used to pin as one combined surface.
 
 const lapState: LapState = {
   lap_number: 30,
@@ -77,10 +81,15 @@ const sparseResult: StrategyRecommendation = {
   regulation_context: '',
 }
 
-describe('DecisionCard', () => {
-  it('surfaces the full v2 brief when every field is present', () => {
+describe('DecisionBanner', () => {
+  it('surfaces the full hero call when every field is present', () => {
     render(
-      <DecisionCard result={richResult} lapState={lapState} rival="LEC" onDownloadJson={vi.fn()} />,
+      <DecisionBanner
+        result={richResult}
+        lapState={lapState}
+        rival="LEC"
+        onDownloadJson={vi.fn()}
+      />,
     )
     expect(screen.getByText('PIT NOW')).toBeInTheDocument()
     expect(screen.getByText('82%')).toBeInTheDocument()
@@ -88,18 +97,35 @@ describe('DecisionCard', () => {
     expect(screen.getByText(/TARGET 78\.450/)).toBeInTheDocument()
     expect(screen.getByText('AGGRESSIVE')).toBeInTheDocument()
     expect(screen.getByText(/Box lap/)).toBeInTheDocument()
-    expect(screen.getByText(/Cliff risk rising/)).toBeInTheDocument()
-    expect(screen.getByText("Engineer's note")).toBeInTheDocument()
-    expect(screen.getByText('Regulation context')).toBeInTheDocument()
     expect(screen.getByText(/stint ends ~lap 52/)).toBeInTheDocument()
   })
 
-  it('degrades to a shorter brief when optional fields are absent — no broken sections', () => {
-    render(<DecisionCard result={sparseResult} lapState={lapState} onDownloadJson={vi.fn()} />)
+  it('degrades to the minimum hero call when optional fields are absent — no broken sections', () => {
+    render(<DecisionBanner result={sparseResult} lapState={lapState} onDownloadJson={vi.fn()} />)
     expect(screen.getByText('STAY OUT')).toBeInTheDocument()
     expect(screen.getByText('50%')).toBeInTheDocument()
-    // None of the optional sections should render for a sparse result.
+    // The pit-plan block should not render at all for a sparse result.
     expect(screen.queryByText(/Box lap/)).not.toBeInTheDocument()
+    // Never leak literal null/undefined/NaN into the DOM.
+    expect(screen.queryByText(/undefined|NaN|null/)).not.toBeInTheDocument()
+  })
+})
+
+describe('DecisionDetails', () => {
+  it('surfaces key risks, the playbook, and both disclosures when present', () => {
+    render(<DecisionDetails result={richResult} />)
+    expect(screen.getByText('Key risks')).toBeInTheDocument()
+    expect(screen.getByText(/Cliff risk rising/)).toBeInTheDocument()
+    expect(screen.getByText('Playbook')).toBeInTheDocument()
+    expect(screen.getByText("Engineer's note")).toBeInTheDocument()
+    expect(screen.getByText('Regulation context')).toBeInTheDocument()
+  })
+
+  it('degrades to a shorter brief when optional fields are absent — no broken sections', () => {
+    render(<DecisionDetails result={sparseResult} />)
+    // `reasoning` is a required field, so the engineer's note still renders.
+    expect(screen.getByText("Engineer's note")).toBeInTheDocument()
+    // None of the optional sections should render for a sparse result.
     expect(screen.queryByText('Key risks')).not.toBeInTheDocument()
     expect(screen.queryByText('Playbook')).not.toBeInTheDocument()
     expect(screen.queryByText('Regulation context')).not.toBeInTheDocument()

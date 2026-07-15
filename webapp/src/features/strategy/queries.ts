@@ -14,6 +14,7 @@ import { queryKeys } from '@/lib/queryKeys'
 import {
   fetchLapRange,
   fetchLapState,
+  fetchPaceRange,
   fetchStrategyDrivers,
   fetchStrategyGps,
   runAgent,
@@ -22,6 +23,7 @@ import {
   type AgentResultMap,
   type LapRange,
   type LapState,
+  type PaceRangePoint,
   type StrategyRecommendation,
 } from '@/lib/api/strategy'
 import { analysedLap, type StrategySearch } from './search'
@@ -83,6 +85,51 @@ export function useAgent<A extends AgentName>(
         : ['strategy', 'agent', agent, 'idle'],
     queryFn: (): Promise<AgentResultMap[A]> => runAgent(agent, lapState!),
     enabled: enabled && lapState != null,
+    ...STATIC,
+  })
+}
+
+/**
+ * Real per-lap pace (actual vs predicted + CI + compound/stint) across the
+ * driver's WHOLE lap range — the Race Trace's data. Fetched once per driver
+ * (keyed on the full range) and sliced client-side to the evidence window, so
+ * scrubbing the window or the decision cursor never refetches. Pure ML, cached
+ * forever.
+ */
+export function usePaceRange(
+  gp: string | undefined,
+  driver: string | undefined,
+  lapRange: LapRange | undefined,
+) {
+  return useQuery({
+    queryKey:
+      gp && driver && lapRange
+        ? queryKeys.strategy.paceRange(gp, driver, lapRange.min_lap, lapRange.max_lap)
+        : ['strategy', 'pace-range', 'idle'],
+    queryFn: (): Promise<PaceRangePoint[]> =>
+      fetchPaceRange(gp!, driver!, lapRange!.min_lap, lapRange!.max_lap),
+    enabled: !!gp && !!driver && !!lapRange,
+    ...STATIC,
+  })
+}
+
+/**
+ * The lap snapshot for one (gp, driver, lap) — lets the LapReadout preview any
+ * lap the decision cursor lands on without running the orchestrator. Cached per
+ * lap, so walking the cursor is free after the first visit.
+ */
+export function useLapState(
+  gp: string | undefined,
+  driver: string | undefined,
+  lap: number | undefined,
+) {
+  return useQuery({
+    queryKey:
+      gp && driver && lap != null
+        ? queryKeys.strategy.lapState(gp, driver, lap)
+        : ['strategy', 'lap-state', 'idle'],
+    queryFn: (): Promise<LapState> => fetchLapState(gp!, driver!, lap!),
+    enabled: !!gp && !!driver && lap != null,
     ...STATIC,
   })
 }
