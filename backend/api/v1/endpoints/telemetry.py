@@ -10,14 +10,22 @@ from backend.services.telemetry.telemetry_service import (
     get_lap_times,
     get_telemetry_data_from_db,
 )
+from backend.services.telemetry.session_cache import prewarm_session
 from backend.utils.laps_cache import get_laps_df
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 
 router = APIRouter(prefix="/telemetry", tags=["telemetry"])
 
+# NOTE (perf): these handlers are plain ``def`` (NOT ``async def``) on purpose.
+# They call synchronous, CPU/IO-blocking FastF1 code; a ``def`` handler runs in
+# Starlette's threadpool, so several telemetry requests fired by one selection
+# (lap-times + N lap-telemetry + circuit-domination) run concurrently instead of
+# serializing on the event loop — and a slow FastF1 parse no longer freezes the
+# whole server. See session_cache.py for the parse-once half of the fix.
+
 
 @router.get("/data")
-async def get_telemetry_data(
+def get_telemetry_data(
     year: int = Query(...),
     gp: str = Query(...),
     session: str = Query(...),
@@ -28,8 +36,26 @@ async def get_telemetry_data(
     return data
 
 
+@router.post("/prewarm", status_code=202)
+def prewarm(
+    background_tasks: BackgroundTasks,
+    year: int = Query(...),
+    gp: str = Query(...),
+    session: str = Query(...),
+):
+    """Warm the FastF1 session cache for (year, gp, session) in the background.
+
+    The frontend calls this when the user picks a session, so the ~2-15s parse
+    starts while they choose drivers — by the time lap-times/telemetry fire, the
+    session is already loaded and the charts fall in instead of hanging.
+    Returns 202 immediately; the load runs after the response is sent.
+    """
+    background_tasks.add_task(prewarm_session, year, gp, session)
+    return {"status": "prewarming", "year": year, "gp": gp, "session": session}
+
+
 @router.get("/gps")
-async def get_gps(year: int = Query(..., description="Year of the season (e.g., 2024)")):
+def get_gps(year: int = Query(..., description="Year of the season (e.g., 2024)")):
     """
     Get available Grand Prix events for a specific year.
     """
@@ -38,7 +64,7 @@ async def get_gps(year: int = Query(..., description="Year of the season (e.g., 
 
 
 @router.get("/sessions")
-async def get_sessions(
+def get_sessions(
     year: int = Query(..., description="Year of the season"),
     gp: str = Query(..., description="Grand Prix name")
 ):
@@ -50,7 +76,7 @@ async def get_sessions(
 
 
 @router.get("/drivers")
-async def get_drivers(
+def get_drivers(
     year: int = Query(..., description="Year of the season"),
     gp: str = Query(..., description="Grand Prix name"),
     session: str = Query(..., description="Session type (FP1, FP2, FP3, SQ, Q, S, R)")
@@ -77,7 +103,7 @@ async def get_drivers(
         "asks to FORECAST a future race lap."
     ),
 )
-async def get_laps(
+def get_laps(
     year: int = Query(..., description="Season year (2023, 2024 or 2025)."),
     gp: str = Query(..., description="Grand Prix name (city/circuit form preferred, country names also accepted)."),
     session: str = Query(
@@ -108,7 +134,7 @@ async def get_laps(
         "compare_drivers instead."
     ),
 )
-async def get_lap_telemetry_endpoint(
+def get_lap_telemetry_endpoint(
     year: int = Query(..., description="Season year (2023, 2024 or 2025)."),
     gp: str = Query(..., description="Grand Prix name (city/circuit form preferred)."),
     session: str = Query(

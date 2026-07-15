@@ -1,5 +1,17 @@
 import logging
+import sys
 from contextlib import asynccontextmanager
+
+# Force UTF-8 on this process's streams. Several services print non-ASCII
+# glyphs (e.g. telemetry_service's "✓"/"⚠"/"❌"); on a Windows cp1252 console
+# those `print(...)` calls raise UnicodeEncodeError, and because they sit inside
+# broad try/except blocks the crash is swallowed and the endpoint silently
+# returns empty data (the whole telemetry Dashboard shows "no data"). The
+# hasattr guard keeps this safe under a captured stdout (e.g. pytest).
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8")
 
 from backend.api.v1.endpoints import circuit_domination, comparison, telemetry, chat, voice, strategy
 from backend.core.config import FRONTEND_URL, mcp_enabled

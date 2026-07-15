@@ -19,7 +19,7 @@ export default function App() {
   return (
     <main className="mx-auto flex min-h-dvh max-w-5xl flex-col gap-10 p-8 md:p-16">
       <header className="flex flex-col gap-2">
-        <span className="font-body text-xs font-semibold uppercase tracking-[0.18em] text-purple-300">
+        <span className="font-body text-xs font-semibold uppercase tracking-widest text-purple-300">
           Migration epic #25
         </span>
         <h1 className="font-display text-5xl font-bold tracking-tight text-balance md:text-6xl">
@@ -46,7 +46,12 @@ export default function App() {
           {TYRES.map(([label, bg]) => (
             <span
               key={label}
-              className={cn('rounded-full px-3 py-1 font-mono text-xs font-semibold text-bg-0', bg)}
+              // border-hairline (B3): keeps HARD's near-white chip visible
+              // against a white card once the light theme lands.
+              className={cn(
+                'rounded-full border border-hairline px-3 py-1 font-mono text-xs font-semibold text-bg-0',
+                bg,
+              )}
             >
               {label}
             </span>
@@ -55,7 +60,7 @@ export default function App() {
       </section>
 
       <section className="flex max-w-sm flex-col gap-2 rounded-2xl border border-purple-600/40 bg-bg-3 p-6 shadow-[var(--shadow-glow)]">
-        <span className="font-body text-xs font-semibold uppercase tracking-[0.18em] text-purple-300">
+        <span className="font-body text-xs font-semibold uppercase tracking-widest text-purple-300">
           Recommendation
         </span>
         <span className="font-display text-3xl font-bold text-balance">PIT, undercut</span>
