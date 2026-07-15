@@ -42,7 +42,7 @@ edge-tts==7.2.3
 nest-asyncio==1.6.0
 pydub==0.25.1
 soundfile==0.14.0
-aiofiles==23.2.1
+aiofiles==25.1.0
 ffmpeg-python==0.2.0
 
 # Chat Query Routing Dependencies
