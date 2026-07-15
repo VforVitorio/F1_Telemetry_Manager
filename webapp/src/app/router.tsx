@@ -1,24 +1,26 @@
 import { createRootRoute, createRoute, createRouter } from '@tanstack/react-router'
-import App from '@/App'
 import { Header } from './Header'
 import { Shell } from './Shell'
+import { HomePage } from '@/features/home/HomePage'
+import { ThemePreview } from '@/features/dev/ThemePreview'
 import { DashboardPage } from '@/features/dashboard/DashboardPage'
 import { validateDashboardSearch } from '@/features/dashboard/search'
 
 // Route tree wiring (#33). Root renders the app shell (acrylic rail + routed
 // content plane, see Shell.tsx); the shell's <Outlet/> renders whichever leaf
-// route matched below. '/' keeps rendering the temporary theme-preview App
-// (#32) until the real Home lands; the rest are "coming soon" placeholders
-// until their features ship (one sprint at a time). Each `createRoute` call
-// keeps its `path` a literal string at the call site (not threaded through a
-// prop/array) so TanStack Router's typed route tree infers the exact path
-// union — that's what makes <Link to="..."> in Rail.tsx type-checked.
+// route matched below. '/' is the real Home (the Pit Wall launcher hub); the
+// old theme-preview palette moved to the dev-only '/dev/theme' (not in the
+// rail). The feature-less tabs are "coming soon" placeholders until their
+// features ship (one sprint at a time). Each `createRoute` call keeps its
+// `path` a literal string at the call site (not threaded through a prop/array)
+// so TanStack Router's typed route tree infers the exact path union — that's
+// what makes <Link to="..."> in Rail.tsx type-checked.
 const rootRoute = createRootRoute({ component: () => <Shell /> })
 
 const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/',
-  component: App,
+  component: HomePage,
 })
 
 /** Shared body for routes without a feature yet. */
@@ -40,10 +42,22 @@ const dashboardRoute = createRoute({
   component: DashboardPage,
 })
 
+// Strategy shares the Dashboard's selection shape so the Home launcher's
+// "Open in Strategy" can carry year/gp/session/drivers forward (wired up in
+// #35), exactly like /comparison below.
 const strategyRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/strategy',
+  validateSearch: validateDashboardSearch,
   component: () => <ComingSoon title="Strategy" />,
+})
+
+// Dev-only theme QA surface (not in the rail); the palette the migration used
+// before the real Home landed.
+const devThemeRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/dev/theme',
+  component: ThemePreview,
 })
 
 const raceRoute = createRoute({
@@ -81,6 +95,7 @@ const routeTree = rootRoute.addChildren([
   labRoute,
   comparisonRoute,
   chatRoute,
+  devThemeRoute,
 ])
 
 export const router = createRouter({ routeTree })
