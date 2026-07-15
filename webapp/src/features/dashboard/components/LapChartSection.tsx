@@ -79,7 +79,11 @@ export function LapChartSection({ search }: LapChartSectionProps) {
    *  telemetry grid it feeds is below the fold. */
   function handleLapClick(driver: string, lap: number) {
     if (selectedLapsPerDriver[driver] === lap) {
-      toast({ title: `${driver} lap ${lap}`, description: 'Already showing this lap.', tone: 'info' })
+      toast({
+        title: `${driver} lap ${lap}`,
+        description: 'Already showing this lap.',
+        tone: 'info',
+      })
       return
     }
     setLap(driver, lap)

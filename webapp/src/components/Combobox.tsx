@@ -65,7 +65,12 @@ function XIcon({ className }: { className?: string }) {
  *  session) — distinguishes "working" from "disabled/unavailable". */
 function SpinnerIcon({ className }: { className?: string }) {
   return (
-    <svg viewBox="0 0 16 16" fill="none" className={cn('animate-spin', className)} aria-hidden="true">
+    <svg
+      viewBox="0 0 16 16"
+      fill="none"
+      className={cn('animate-spin', className)}
+      aria-hidden="true"
+    >
       <circle
         cx="8"
         cy="8"
