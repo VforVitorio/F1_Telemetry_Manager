@@ -16,8 +16,8 @@
 import { useCallback, useMemo, useRef } from 'react'
 import ReactECharts from 'echarts-for-react'
 import type { ECharts, EChartsOption } from 'echarts'
-import { registerF1Theme } from '@/charts/registerEcharts'
-import { echartsTheme, F1_THEME, tireColors } from '@/charts/echartsTheme'
+import { registerF1Theme, useChartTheme } from '@/charts/registerEcharts'
+import { buildEchartsTheme, F1_LIGHT_THEME, tireColors } from '@/charts/echartsTheme'
 import type { LapTime } from '@/lib/api/telemetry'
 import { getDriverColor, getDriverTextColor } from '../lib/drivers'
 import { compoundLabel, compoundVariant } from '../lib/compounds'
@@ -28,12 +28,15 @@ import { formatLapTime, formatLapTimeAxis } from '../lib/lapTime'
 // in componentDidMount, which can fire before an effect-time registration).
 registerF1Theme()
 
-// Reuse the shared theme's axis-label color/font for axis NAMES ("Lap
-// Number", "Lap Time") so they read consistently with the tick labels
-// without duplicating the theme's magic color values here.
-const AXIS_NAME_STYLE = {
-  color: echartsTheme.valueAxis.axisLabel.color,
-  fontFamily: echartsTheme.valueAxis.axisLabel.fontFamily,
+/** Axis NAME style ("Lap Number", "Lap Time"), reusing the mode-aware theme's
+ *  axis-label color/font so the names read consistently with the tick labels
+ *  in both light and dark, without duplicating the theme's color values here. */
+function buildAxisNameStyle(mode: 'dark' | 'light') {
+  const theme = buildEchartsTheme(mode)
+  return {
+    color: theme.valueAxis.axisLabel.color,
+    fontFamily: theme.valueAxis.axisLabel.fontFamily,
+  }
 }
 
 /** One plotted point: `[lapNumber, lapTime]`, with `compound` carried
@@ -184,6 +187,7 @@ function formatLapTooltip(year: number | undefined) {
 function buildLapChartOption(
   seriesList: DriverSeriesOption[],
   year: number | undefined,
+  axisNameStyle: { color: string; fontFamily: string },
 ): EChartsOption {
   return {
     tooltip: { trigger: 'item', formatter: formatLapTooltip(year) },
@@ -200,7 +204,7 @@ function buildLapChartOption(
       name: 'Lap Number',
       nameLocation: 'middle',
       nameGap: 26,
-      nameTextStyle: AXIS_NAME_STYLE,
+      nameTextStyle: axisNameStyle,
       scale: true,
     },
     yAxis: {
@@ -208,7 +212,7 @@ function buildLapChartOption(
       name: 'Lap Time',
       nameLocation: 'middle',
       nameGap: 48,
-      nameTextStyle: AXIS_NAME_STYLE,
+      nameTextStyle: axisNameStyle,
       axisLabel: { formatter: formatLapTimeAxis },
       // Autorange around the lap times (~78-95 s) instead of forcing a 0:00
       // baseline, which would squash every line into the top of the plot.
@@ -367,6 +371,7 @@ export interface LapChartProps {
 /** Lap-time chart: one coloured-by-driver line per selected driver, with
  *  click-to-load (nearest-point picking) and a compound-aware tooltip. */
 export function LapChart({ laps, drivers, year, onLapClick, selectedLaps }: LapChartProps) {
+  const chartTheme = useChartTheme()
   const { option, pickerSeries } = useMemo(() => {
     const byDriver = groupByDriver(laps)
     const seriesList = drivers
@@ -379,11 +384,12 @@ export function LapChart({ laps, drivers, year, onLapClick, selectedLaps }: LapC
           selectedLaps[driver],
         ),
       )
+    const mode = chartTheme === F1_LIGHT_THEME ? 'light' : 'dark'
     return {
-      option: buildLapChartOption(seriesList, year),
+      option: buildLapChartOption(seriesList, year, buildAxisNameStyle(mode)),
       pickerSeries: seriesList.map((series) => ({ driver: series.name, points: series.data })),
     }
-  }, [laps, drivers, year, selectedLaps])
+  }, [laps, drivers, year, selectedLaps, chartTheme])
 
   // Latest-ref mirror: the zrender click handler is registered once (see
   // `handleChartReady` below) and reads through this ref on every click, so
@@ -398,7 +404,8 @@ export function LapChart({ laps, drivers, year, onLapClick, selectedLaps }: LapC
   return (
     <div role="img" aria-label="Lap times by lap, per driver">
       <ReactECharts
-        theme={F1_THEME}
+        theme={chartTheme}
+        key={chartTheme}
         option={option}
         style={{ height: 400 }}
         notMerge
