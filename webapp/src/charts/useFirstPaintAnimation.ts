@@ -1,29 +1,44 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { EChartsOption } from 'echarts'
 
+// A multi-driver session's telemetry resolves as separate `useQueries` (VER
+// lands, then LEC), and the lap chart's selected-lap rings land a tick after
+// its lines — so a chart's option changes several times in quick succession as
+// the data settles. With `notMerge` each `setOption` cancels and restarts the
+// entrance animation, so the paint either flickers twice or (when the last
+// update lands mid-sweep) snaps to the end without ever visibly playing.
+//
+// The debounce window: long enough to swallow the gap between two telemetry
+// queries resolving off one warm session, short enough to be imperceptible.
+const SETTLE_MS = 120
+
 /**
- * Gate an ECharts option so its entrance paint animation plays only on the
- * FIRST render that actually has series, and never again for that mount.
+ * Make an ECharts chart paint its entrance animation exactly once. It coalesces
+ * the settling burst of option changes into a SINGLE applied option (so there's
+ * only one `setOption`, which can't be cancelled by a follow-up), then locks
+ * animation off so later interactions — driver toggles, lap clicks — update
+ * instantly without replaying the sweep.
  *
- * Why: the dashboard charts render with `notMerge`, which re-runs the full
- * entrance sweep on EVERY `setOption`. A multi-driver session's telemetry
- * arrives as separate `useQueries` resolutions (VER lands, then LEC), so
- * `byDriver` updates once per driver — without this the chart would replay its
- * paint animation two or three times as each driver's data lands. This animates
- * the first data paint, then returns the same option with `animation: false` on
- * every later update.
- *
- * Remounts (a `key` change on theme / maximize) create a fresh instance, so the
- * ref resets and those transitions re-animate on purpose.
+ * A `key`-driven remount (theme / maximize change) creates a fresh instance, so
+ * the ref resets and those transitions re-animate on purpose.
  */
 export function useFirstPaintAnimation(option: EChartsOption): EChartsOption {
-  const hasSeries = Array.isArray(option.series) && option.series.length > 0
-  const paintedRef = useRef(false)
-  const animate = hasSeries && !paintedRef.current
+  const [settledOption, setSettledOption] = useState(option)
+  const hasPaintedRef = useRef(false)
 
+  // Apply the option only once it has stopped changing for SETTLE_MS.
   useEffect(() => {
-    if (animate) paintedRef.current = true
+    const timer = setTimeout(() => setSettledOption(option), SETTLE_MS)
+    return () => clearTimeout(timer)
+  }, [option])
+
+  const hasSeries = Array.isArray(settledOption.series) && settledOption.series.length > 0
+  const animate = hasSeries && !hasPaintedRef.current
+  useEffect(() => {
+    if (animate) hasPaintedRef.current = true
   }, [animate])
 
-  return animate ? option : { ...option, animation: false }
+  // When animating, pass the option through so ECharts' default entrance
+  // animation runs; afterwards, force it off so updates apply instantly.
+  return animate ? settledOption : { ...settledOption, animation: false }
 }
