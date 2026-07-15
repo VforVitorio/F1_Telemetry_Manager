@@ -23,10 +23,12 @@ const YEAR_OPTIONS: ComboboxOption[] = [2025, 2024, 2023].map((year) => ({
   label: String(year),
 }))
 
-const EYEBROW_CLASSNAME = 'text-xs font-medium uppercase tracking-widest text-fg-3'
+const EYEBROW_CLASSNAME = 'text-center text-xs font-medium uppercase tracking-widest text-fg-3'
 
-/** A labelled selector cell: the small uppercase eyebrow above its control,
- *  matching `StatCard`'s eyebrow styling so the toolbar reads as one system. */
+/** A labelled selector cell: the small uppercase eyebrow centered over its
+ *  control, matching `StatCard`'s eyebrow styling so the toolbar reads as one
+ *  system. Centered (not left) so each label sits over the middle of its wide
+ *  field instead of orphaned in the top-left corner of it. */
 function SelectorField({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex flex-col gap-1.5">
