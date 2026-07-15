@@ -76,7 +76,8 @@ export function SelectorsToolbar({ value, onChange }: SelectorsToolbarProps) {
           value={value.gp}
           onChange={(gp) => onChange({ gp })}
           placeholder="Select GP"
-          disabled={value.year == null || gpsQuery.isLoading}
+          disabled={value.year == null}
+          loading={gpsQuery.isLoading}
         />
       </SelectorField>
 
@@ -87,7 +88,8 @@ export function SelectorsToolbar({ value, onChange }: SelectorsToolbarProps) {
           value={value.session}
           onChange={(session) => onChange({ session })}
           placeholder="Select session"
-          disabled={!value.gp || sessionsQuery.isLoading}
+          disabled={!value.gp}
+          loading={sessionsQuery.isLoading}
         />
       </SelectorField>
 
@@ -97,8 +99,15 @@ export function SelectorsToolbar({ value, onChange }: SelectorsToolbarProps) {
           options={driverOptions}
           value={value.drivers}
           onChange={(drivers) => onChange({ drivers })}
-          placeholder="Select drivers (max 3)"
-          disabled={!value.session || driversQuery.isLoading}
+          placeholder={
+            driversQuery.isLoading
+              ? 'Loading drivers…'
+              : driversQuery.isError
+                ? "Couldn't load drivers — reselect the session"
+                : 'Select drivers (max 3)'
+          }
+          disabled={!value.session}
+          loading={driversQuery.isLoading}
           max={MAX_DRIVERS}
           getOptionAccent={(code) => getDriverColor(code, value.year)}
         />

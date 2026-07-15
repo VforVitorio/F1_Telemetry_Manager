@@ -1,5 +1,5 @@
 // Shared ECharts line chart for the TELEMETRY grid (issue #34, §6.1). One
-// component (`ChannelChart`) covers 6 of the 7 channels via `ChannelConfig`
+// component (`ChannelChart`) covers 7 of the 8 channels via `ChannelConfig`
 // (channels.ts); Delta is cross-driver — it needs a reference lap to diff
 // every other driver against, not a single telemetry array — so it gets its
 // own `DeltaChart` below. Both share `SyncedLineChart`, the thin ECharts
@@ -44,7 +44,9 @@ const NO_LEGEND_GRID_TOP = 16
 
 // Every telemetry ECharts instance joins this group so `echarts.connect`
 // moves every chart's crosshair together when one is scrubbed. That's a
-// meaningful sync, not just a visual one: x is distance on all 7 charts.
+// meaningful sync, not just a visual one: x is distance on all 8 charts —
+// and, since dataZoom lives in `baseOption` below, a zoom/pan on one
+// propagates group-wide too.
 const CROSSHAIR_GROUP = 'telemetry-crosshair'
 
 interface LegendEntry {
@@ -82,12 +84,15 @@ function buildTooltipFormatter(year: number | undefined) {
 }
 
 /**
- * Shared option scaffolding (tooltip/legend/grid/x-axis) every telemetry
- * chart reuses; callers only supply the y-axis and series. Legend entries
- * carry each driver's readable team colour so the driver name shows
+ * Shared option scaffolding (tooltip/legend/grid/x-axis/zoom) every
+ * telemetry chart reuses; callers only supply the y-axis and series. Legend
+ * entries carry each driver's readable team colour so the driver name shows
  * in-colour instead of plain white; with only one driver loaded the legend
  * is dropped entirely (nothing to disambiguate) and the freed strip goes
- * back to the plot via `grid.top`.
+ * back to the plot via `grid.top`. Also wires drag-pan/zoom (`dataZoom`) and
+ * a Plotly-style box-zoom + reset (`toolbox`) — see the inline comments on
+ * each for why the specific settings, and `CROSSHAIR_GROUP` above for how
+ * a zoom on one chart propagates to the rest.
  */
 function baseOption(
   legendEntries: LegendEntry[],
@@ -140,6 +145,33 @@ function baseOption(
       splitLine: { show: false },
     },
     yAxis: yAxisStyled,
+    // Drag-pan + Shift+wheel zoom, inline (no visible slider). Plain wheel
+    // stays page scroll on purpose — 7-8 tall charts stacked in a column
+    // make unconditional wheel-capture a scroll trap. `filterMode: 'none'`
+    // keeps each chart's own y range stable while panning, so 8 charts
+    // synced on the same x don't rescale-jitter against each other.
+    dataZoom: [
+      {
+        type: 'inside',
+        xAxisIndex: 0,
+        filterMode: 'none',
+        zoomOnMouseWheel: 'shift',
+        moveOnMouseMove: true,
+        moveOnMouseWheel: false,
+      },
+    ],
+    // Toolbox box-zoom (x-only, via `yAxisIndex: 'none'`) is the
+    // click-drag-a-box gesture that matches the Streamlit/Plotly original;
+    // `restore` resets it. Both actions propagate through `CROSSHAIR_GROUP`
+    // (echarts.connect), so zooming one chart zooms every synced chart.
+    toolbox: {
+      right: 8,
+      top: 0,
+      feature: {
+        dataZoom: { yAxisIndex: 'none', filterMode: 'none' },
+        restore: {},
+      },
+    },
   }
 }
 
@@ -241,10 +273,10 @@ export interface ChannelChartProps {
   channel: ChannelConfig
 }
 
-/** Renders one telemetry channel (speed/throttle/brake/rpm/gear/drs) as an
- *  ECharts line per loaded driver, x = distance in meters. DRS renders as a
- *  shorter, filled state band instead of the standard line height (see
- *  `channel.band` in channels.ts). Memoized: 6 of these mount per grid, and
+/** Renders one telemetry channel (speed/throttle/brake/rpm/gear/accel/drs)
+ *  as an ECharts line per loaded driver, x = distance in meters. DRS renders
+ *  as a shorter, filled state band instead of the standard line height (see
+ *  `channel.band` in channels.ts). Memoized: 7 of these mount per grid, and
  *  most re-renders (layout toggle, an unrelated driver's data settling)
  *  don't change this channel's own `byDriver`/`drivers`/`year`. */
 export const ChannelChart = memo(function ChannelChart({
@@ -258,13 +290,19 @@ export const ChannelChart = memo(function ChannelChart({
     () => buildChannelOption(byDriver, drivers, year, channel),
     [byDriver, drivers, year, channel],
   )
-  return (
+  const chart = (
     <SyncedLineChart
       option={option}
       ariaLabel={`${title} telemetry chart`}
       height={channel.band ? BAND_CHART_HEIGHT : CHART_HEIGHT}
     />
   )
+  if (!channel.band) return chart
+  // The DRS band is a fixed 180px chart inside a grid-stretched card shell
+  // (its row-mate is the full-height Accel line chart) — without this
+  // wrapper it hugs the card's top edge instead of sitting centered in the
+  // extra space the taller row-mate creates.
+  return <div className="flex h-full flex-col justify-center">{chart}</div>
 })
 
 // ---- Delta: cross-driver, needs its own data prep --------------------------
