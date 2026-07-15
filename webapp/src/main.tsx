@@ -5,9 +5,10 @@ import '@fontsource-variable/jetbrains-mono'
 import './index.css'
 import { Providers } from './app/providers'
 
-// No <StrictMode>: its intentional dev-only double-invoke of effects double-
-// MOUNTS every component, which makes echarts-for-react init + play its
-// entrance animation twice on first paint (prod, with a single mount, is fine).
-// Dropping it lets the chart paint animation run exactly once in dev too —
-// matching production behaviour.
+// No <StrictMode>. The chart double-paint is actually fixed by
+// `charts/useFirstPaintAnimation` (a multi-driver session's telemetry lands per
+// driver, and `notMerge` replayed the sweep on each arrival — the hook animates
+// only the first data paint). StrictMode's dev-only double-mount was a red
+// herring, but it's left off as belt-and-suspenders so no dev remount can
+// re-trigger the entrance animation on top of the hook.
 createRoot(document.getElementById('root')!).render(<Providers />)
