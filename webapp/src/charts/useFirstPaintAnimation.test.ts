@@ -4,7 +4,6 @@ import type { EChartsOption } from 'echarts'
 import { useFirstPaintAnimation } from './useFirstPaintAnimation'
 
 const noSeries: EChartsOption = { series: [] }
-const oneSeries: EChartsOption = { series: [{ type: 'line', data: [] }] }
 const twoSeries: EChartsOption = {
   series: [
     { type: 'line', data: [] },
@@ -12,40 +11,31 @@ const twoSeries: EChartsOption = {
   ],
 }
 
-// A bit longer than the hook's internal SETTLE_MS debounce window.
-const PAST_SETTLE = 160
+const PAST_SETTLE = 160 // > the hook's internal debounce window
 
 describe('useFirstPaintAnimation', () => {
   beforeEach(() => vi.useFakeTimers())
   afterEach(() => vi.useRealTimers())
 
-  it('coalesces the settling churn and animates the paint exactly once', () => {
+  it('leaves the entrance animation on and makes every update instant', () => {
     const { result, rerender } = renderHook((o: EChartsOption) => useFirstPaintAnimation(o), {
       initialProps: noSeries,
     })
-    // nothing to paint yet
-    expect(result.current.animation).toBe(false)
+    // The entrance is NEVER disabled (no `animation:false` — that was the bug);
+    // updates are instant so a follow-up setOption can't re-sweep or snap.
+    expect(result.current.animation).toBeUndefined()
+    expect(result.current.animationDurationUpdate).toBe(0)
 
-    // data lands in a burst (VER, then LEC) inside the settle window — the
-    // applied option must NOT change per arrival (that's what would cancel the
-    // animation); it stays the initial empty option until the burst settles.
-    rerender(oneSeries)
+    // A burst of option changes is coalesced: not applied until it settles.
+    rerender({ series: [{ type: 'line', data: [] }] })
     rerender(twoSeries)
     expect(result.current.series).toHaveLength(0)
 
     act(() => {
       vi.advanceTimersByTime(PAST_SETTLE)
     })
-    // one settled apply, with both series and the entrance animation left on
-    // (undefined → ECharts default true).
     expect(result.current.series).toHaveLength(2)
-    expect(result.current.animation).toBeUndefined()
-
-    // a later interaction settles without replaying the sweep.
-    rerender(oneSeries)
-    act(() => {
-      vi.advanceTimersByTime(PAST_SETTLE)
-    })
-    expect(result.current.animation).toBe(false)
+    expect(result.current.animation).toBeUndefined() // entrance still enabled
+    expect(result.current.animationDurationUpdate).toBe(0)
   })
 })

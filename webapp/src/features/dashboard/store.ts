@@ -34,20 +34,26 @@ interface DashboardState {
 
 export const useDashboardStore = create<DashboardState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       selectedLapsPerDriver: {},
       setLap: (driver, lap) =>
         set((s) => ({ selectedLapsPerDriver: { ...s.selectedLapsPerDriver, [driver]: lap } })),
       setFastestLaps: (laps) => set({ selectedLapsPerDriver: laps }),
-      pruneLaps: (drivers) =>
-        set((s) => {
-          const allowed = new Set(drivers)
-          const next: Record<string, number> = {}
-          for (const [driver, lap] of Object.entries(s.selectedLapsPerDriver)) {
-            if (allowed.has(driver)) next[driver] = lap
-          }
-          return { selectedLapsPerDriver: next }
-        }),
+      pruneLaps: (drivers) => {
+        // No-op guard: this fires on every selection change (a DashboardPage
+        // effect), but usually nothing needs pruning. Bail BEFORE `set` when
+        // every loaded driver is still allowed — a fresh map identity here
+        // notifies all subscribers, re-rendering every chart and resetting the
+        // paint debounce mid-sweep (see design-specs/chart-animation-selection-bugs.md).
+        const current = get().selectedLapsPerDriver
+        const allowed = new Set(drivers)
+        if (Object.keys(current).every((driver) => allowed.has(driver))) return
+        const next: Record<string, number> = {}
+        for (const [driver, lap] of Object.entries(current)) {
+          if (allowed.has(driver)) next[driver] = lap
+        }
+        set({ selectedLapsPerDriver: next })
+      },
       clearLaps: () => set({ selectedLapsPerDriver: {} }),
 
       showOutliers: false,
