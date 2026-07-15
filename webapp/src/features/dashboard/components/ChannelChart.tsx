@@ -24,7 +24,7 @@ import { useFirstPaintAnimation } from '@/charts/useFirstPaintAnimation'
 import { F1_LIGHT_THEME } from '@/charts/echartsTheme'
 import { ChartMaximizedContext } from '@/components/ChartCard'
 import type { LapTelemetry } from '@/lib/api/telemetry'
-import { getDriverColor, getDriverTextColor } from '../lib/drivers'
+import { getDriverColor, getDriverTextColor } from '@/lib/drivers'
 import type { ChannelConfig } from './channels'
 import { TelemetryLoader } from './TelemetryLoader'
 

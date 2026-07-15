@@ -5,7 +5,14 @@ import { Pill } from './Pill'
 describe('Pill', () => {
   it('applies the matching tire color for each compound', () => {
     render(<Pill compound="SOFT">S</Pill>)
-    expect(screen.getByText('S')).toHaveClass('bg-tire-soft', 'text-fg-inv')
+    // Compound pills use fixed dark ink (--tire-ink) + a hairline border so the
+    // light tyre colours stay WCAG-legible in BOTH themes (not theme-flipping
+    // text-fg-inv, which went white-on-light in the light theme).
+    expect(screen.getByText('S')).toHaveClass(
+      'bg-tire-soft',
+      'text-[color:var(--tire-ink)]',
+      'border',
+    )
   })
 
   it('falls back to tone styling when no compound is set', () => {
