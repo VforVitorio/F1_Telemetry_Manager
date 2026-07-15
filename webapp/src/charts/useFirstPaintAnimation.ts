@@ -1,30 +1,34 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { EChartsOption } from 'echarts'
 
 // A multi-driver session's telemetry resolves as separate `useQueries` (VER
 // lands, then LEC), and the lap chart's selected-lap rings land a tick after
 // its lines — so a chart's option changes several times in quick succession as
-// the data settles. With `notMerge` each `setOption` cancels and restarts the
-// entrance animation, so the paint either flickers twice or (when the last
-// update lands mid-sweep) snaps to the end without ever visibly playing.
-//
-// The debounce window: long enough to swallow the gap between two telemetry
-// queries resolving off one warm session, short enough to be imperceptible.
+// the data settles. The debounce coalesces that burst into ONE applied option,
+// so the entrance sweep isn't restarted per arrival. The window is long enough
+// to swallow the gap between two queries resolving off one warm session, short
+// enough to be imperceptible.
 const SETTLE_MS = 120
 
 /**
- * Make an ECharts chart paint its entrance animation exactly once. It coalesces
- * the settling burst of option changes into a SINGLE applied option (so there's
- * only one `setOption`, which can't be cancelled by a follow-up), then locks
- * animation off so later interactions — driver toggles, lap clicks — update
- * instantly without replaying the sweep.
+ * Gate an ECharts option so the chart paints its entrance animation once, and
+ * every later update applies instantly.
  *
- * A `key`-driven remount (theme / maximize change) creates a fresh instance, so
- * the ref resets and those transitions re-animate on purpose.
+ * ECharts plays the left-to-right entrance sweep only for a NEW series view
+ * (first mount, or a newly added driver); a `notMerge` `setOption` on an
+ * EXISTING same-name series is an update, governed by `animationDurationUpdate`.
+ * So instead of a "have I painted yet" flag (which — because echarts-for-react
+ * inits asynchronously — flipped before the real chart existed and then forced
+ * `animation:false`, snapping the in-flight sweep, see
+ * design-specs/chart-animation-selection-bugs.md), we set `animationDurationUpdate:
+ * 0`: entrances animate, updates are instant, and there is no animate→frozen
+ * render transition left to cancel a running sweep.
+ *
+ * Requires the caller-side churn fixes (a stable option identity) so no spurious
+ * `setOption` fires mid-sweep — see the same spec.
  */
 export function useFirstPaintAnimation(option: EChartsOption): EChartsOption {
   const [settledOption, setSettledOption] = useState(option)
-  const hasPaintedRef = useRef(false)
 
   // Apply the option only once it has stopped changing for SETTLE_MS.
   useEffect(() => {
@@ -32,13 +36,7 @@ export function useFirstPaintAnimation(option: EChartsOption): EChartsOption {
     return () => clearTimeout(timer)
   }, [option])
 
-  const hasSeries = Array.isArray(settledOption.series) && settledOption.series.length > 0
-  const animate = hasSeries && !hasPaintedRef.current
-  useEffect(() => {
-    if (animate) hasPaintedRef.current = true
-  }, [animate])
-
-  // When animating, pass the option through so ECharts' default entrance
-  // animation runs; afterwards, force it off so updates apply instantly.
-  return animate ? settledOption : { ...settledOption, animation: false }
+  // Keep referential stability while `settledOption` is unchanged so the deep-
+  // equal prop check in echarts-for-react doesn't fire a redundant `setOption`.
+  return useMemo(() => ({ ...settledOption, animationDurationUpdate: 0 }), [settledOption])
 }
