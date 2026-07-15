@@ -10,47 +10,52 @@ authors = [
 
 requires-python = ">=3.11"
 
+# Runtime deps use ">=" lower bounds (not exact "==") so uv can resolve a
+# coherent set compatible with fastmcp 3.2.0 and pin the exact versions in
+# uv.lock. The previous all-"==" manifest was desynced from the working env
+# and unresolvable (issue #99). Floors are the last-known-good versions;
+# fastmcp==3.2.0 stays pinned as the deliberate anchor.
 dependencies = [
-    "fastapi==0.109.0",
-    "python-multipart==0.0.9",
-    "uvicorn==0.50.0",
-    "pydantic==2.5.0",
-    "pydantic[email]==2.5.0",
-    "python-jose[cryptography]==3.3.0",
-    "passlib[bcrypt]==1.7.4",
-    "bcrypt==4.0.1",
-    "realtime==2.0.5",
-    "python-dotenv==1.0.0",
-    "fastf1==3.4.0",
-    "numpy==2.4.6",
-    "pandas==2.2.0",
+    "fastapi>=0.109.0",
+    "python-multipart>=0.0.9",
+    "uvicorn>=0.30.0",
+    "pydantic>=2.5.0",
+    "pydantic[email]>=2.5.0",
+    "python-jose[cryptography]>=3.3.0",
+    "passlib[bcrypt]>=1.7.4",
+    "bcrypt==4.0.1",  # pinned: passlib 1.7.4 breaks with bcrypt>=4.1; does not block resolution
+    "realtime>=2.0.5",
+    "python-dotenv>=1.0.0",
+    "fastf1>=3.4.0",
+    "numpy>=1.26.4",
+    "pandas>=2.2.0",
 
     # Voice Chat (STT uses transformers, not openai-whisper — see #28)
-    "edge-tts==7.2.3",
-    "nest-asyncio==1.6.0",
-    "pydub==0.25.1",
-    "soundfile==0.14.0",
-    "aiofiles==23.2.1",
-    "ffmpeg-python==0.2.0",
+    "edge-tts>=7.2.3",
+    "nest-asyncio>=1.6.0",
+    "pydub>=0.25.1",
+    "soundfile>=0.14.0",
+    "aiofiles>=23.2.1",
+    "ffmpeg-python>=0.2.0",
 
     # Chat Query Routing
-    "requests==2.31.0",
-    "plotly==5.18.0",
-    "httpx==0.26.0",
+    "requests>=2.31.0",
+    "plotly>=5.18.0",
+    "httpx>=0.26.0",
 
     # MCP (Model Context Protocol) server — kept in sync with requirements.txt (#29)
     "fastmcp==3.2.0",
     "streamlit>=1.37.0",
     "streamlit-shadcn-ui>=0.1.0",
     "streamlit-lottie>=0.0.5",
-    "kaleido==0.2.1",
+    "kaleido==0.2.1",  # pinned: kaleido 1.x changed the API; does not block resolution
     "hydralit_components",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "pytest==8.4.2",
-    "pytest-asyncio==0.23.2",
+    "pytest>=8.4.2",
+    "pytest-asyncio>=0.23.2",
     "pytest-cov>=4.0.0",
     "httpx>=0.24.0"
 ]
