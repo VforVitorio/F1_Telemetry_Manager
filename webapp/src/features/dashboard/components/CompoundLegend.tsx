@@ -2,17 +2,22 @@
 // `frontend/components/dashboard/lap_graph.py::_render_tyre_compound_legend`.
 //
 // One Pill per compound actually used, in SOFT→MEDIUM→HARD→INTER→WET order,
-// each annotated with per-driver lap counts. Counts always come from the
-// FULL (unfiltered) lap times — the outlier/invalid toggles only affect the
-// chart, not "how many laps did each driver run on this tyre". Renders as a
-// single inline row (round-2 fix #3) — it lives in the Lap Chart card's
-// footer now, not as its own titled block, so the pills self-label and don't
-// need a `SectionHeader` above them.
+// each followed by per-driver lap counts. Counts always come from the FULL
+// (unfiltered) lap times — the outlier/invalid toggles only affect the chart,
+// not "how many laps did each driver run on this tyre". Renders as a single
+// inline row inside the Lap Chart card footer (round-2 #3), so the pills
+// self-label and don't need a `SectionHeader` above them.
+//
+// This is the RIGHT cluster of the timing-strip footer: its one accent is the
+// compound hue (on the pills); driver codes stay neutral (fg-3) — identity for
+// ≤3 drivers is unambiguous from the code text alone, and dropping team colour
+// here halves the strip's colour count and removes the worst light-theme
+// text-contrast offenders. The count is the mono, tabular, one-step-stronger
+// (fg-2) element — it's the datum.
 
 import { Pill } from '@/components/Pill'
 import type { LapTime } from '@/lib/api/telemetry'
 import { COMPOUND_ORDER, compoundLabel, compoundVariant } from '../lib/compounds'
-import { getDriverTextColor } from '../lib/drivers'
 
 /** compound (lowercase) -> driver -> lap count. Mirrors the Streamlit source,
  *  which excludes the 'unknown' compound from the legend entirely. */
@@ -55,14 +60,12 @@ export interface CompoundLegendProps {
   /** FULL (unfiltered) lap times. */
   lapTimes: LapTime[]
   drivers: string[]
-  /** Season year — team colours changed lineups across seasons (`getDriverTextColor`). */
-  year?: number
 }
 
-/** Inline compound-Pill row, each pill followed by its per-driver lap counts
- *  on the same line — e.g. `[Medium] VER 53 · LEC 9`. Renders nothing when no
+/** Inline compound-Pill row, each pill followed by its per-driver lap counts on
+ *  the same baseline — e.g. `[Medium] VER 53 · LEC 9`. Renders nothing when no
  *  laps are loaded yet (matches the Streamlit early-return). */
-export function CompoundLegend({ lapTimes, drivers, year }: CompoundLegendProps) {
+export function CompoundLegend({ lapTimes, drivers }: CompoundLegendProps) {
   const counts = countLapsByCompound(lapTimes)
   const compounds = orderedCompounds(counts)
 
@@ -72,31 +75,28 @@ export function CompoundLegend({ lapTimes, drivers, year }: CompoundLegendProps)
     <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
       {compounds.map((compound) => {
         const variant = compoundVariant(compound)
+        const label = compoundLabel(compound)
         const driverCounts = driversWithCounts(counts.get(compound) ?? new Map(), drivers)
+        const title = `${label}: ${driverCounts.map((d) => `${d.driver} ${d.count} laps`).join(', ')}`
         return (
-          <div key={compound} className="flex items-center gap-1.5">
+          <div key={compound} className="flex items-center gap-1.5" title={title}>
             {variant ? (
-              // Permanent hairline border (B3): HARD is a near-white chip
-              // that vanishes on a white card in the light theme; the border
-              // is near-invisible in dark and load-bearing in light.
+              // Permanent hairline border (B3): HARD is a near-white chip that
+              // vanishes on a white card in the light theme; the border is
+              // near-invisible in dark and load-bearing in light.
               <Pill compound={variant} className="border border-hairline">
-                {compoundLabel(compound)}
+                {label}
               </Pill>
             ) : (
-              <Pill tone="neutral">{compoundLabel(compound)}</Pill>
+              <Pill tone="neutral">{label}</Pill>
             )}
             {driverCounts.length > 0 ? (
-              <span className="text-xs text-fg-3">
+              <span className="font-mono text-fg-3">
                 {driverCounts.map(({ driver, count }, index) => (
                   <span key={driver}>
-                    {index > 0 ? ' · ' : ''}
-                    <span
-                      className="font-mono tabular-nums"
-                      style={{ color: getDriverTextColor(driver, year) }}
-                    >
-                      {driver}
-                    </span>{' '}
-                    {count}
+                    {index > 0 ? <span className="text-fg-4"> · </span> : ''}
+                    {driver} <span className="tabular-nums text-fg-2">{count}</span>
+                    <span className="sr-only"> laps</span>
                   </span>
                 ))}
               </span>

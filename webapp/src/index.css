@@ -69,6 +69,46 @@
   --tracking-widest: var(--tracking-widest);
 }
 
+/* View Transition circular theme reveal (ThemeToggle.tsx). Kill the browser's
+   default cross-fade so only the JS-driven clip-path circle animates — the
+   old frame sits still underneath while the new one wipes over it from the
+   toggle button's position (`--theme-x`/`--theme-y`, set by ThemeToggle). */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+::view-transition-old(root) {
+  z-index: 1;
+}
+::view-transition-new(root) {
+  z-index: 2;
+}
+
+/* Subtle premium touch: the incoming frame starts a hair out of focus and
+   sharpens as the circle reveal completes, instead of snapping in crisp.
+   Duration is hardcoded to match ThemeToggle's `VIEW_TRANSITION_DURATION_MS`
+   (480ms) — keep the two in sync if either changes. Placed BEFORE the
+   reduced-motion override below so that override still wins when it applies. */
+@keyframes theme-reveal-focus {
+  from {
+    filter: blur(2px);
+  }
+  to {
+    filter: blur(0);
+  }
+}
+::view-transition-new(root) {
+  animation: theme-reveal-focus 480ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation: none;
+  }
+}
+
 @layer base {
   html {
     color-scheme: dark;
