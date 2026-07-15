@@ -57,6 +57,16 @@
   --font-display: var(--font-display);
   --font-body: var(--font-body);
   --font-mono: var(--font-mono);
+
+  /* Brand letter-spacing (tokens.css). Without this map, every `tracking-*`
+     utility silently falls back to Tailwind's defaults (widest 0.1em, wide
+     0.025em) instead of the brand scale — the eyebrow tracking (0.18em) is the
+     one that reads wrong. Keeps `tracking-*` theme-swappable like the colors. */
+  --tracking-tightest: var(--tracking-tightest);
+  --tracking-tighter: var(--tracking-tighter);
+  --tracking-tight: var(--tracking-tight);
+  --tracking-wide: var(--tracking-wide);
+  --tracking-widest: var(--tracking-widest);
 }
 
 @layer base {

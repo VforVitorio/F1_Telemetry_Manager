@@ -18,7 +18,7 @@ export function Header({ title, children }: HeaderProps) {
       style={{ zIndex: Z.header }}
       className="sticky top-0 flex h-14 items-center justify-between border-b border-divider bg-bg-1/80 px-6 backdrop-blur-md"
     >
-      <h1 className="font-display text-lg text-fg-1">{title}</h1>
+      <h1 className="font-display text-lg font-semibold tracking-tight text-fg-1">{title}</h1>
       {children && <div className="flex items-center gap-2">{children}</div>}
     </header>
   )
