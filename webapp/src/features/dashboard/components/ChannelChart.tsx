@@ -117,11 +117,9 @@ function baseOption(
     ...(yAxis as object),
   }
   return {
-    // No entrance/update animation on the telemetry traces. A timing-screen
-    // reads as an instrument, not a motion piece — and, practically, replaying
-    // the sweep on every driver toggle / data-settle (and twice under React
-    // StrictMode's dev double-mount) reads as a stutter, not polish.
-    animation: false,
+    // Entrance paint animation on (ECharts default). The old double-paint was
+    // React StrictMode double-mounting the chart in dev, not the animation
+    // itself — that's dropped in main.tsx, so this now plays exactly once.
     tooltip: {
       trigger: 'axis',
       axisPointer: { type: 'line' },
