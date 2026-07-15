@@ -72,6 +72,38 @@ export function validateDashboardSearch(raw: Record<string, unknown>): RawDashbo
   }
 }
 
+/**
+ * Apply a single-key selection patch with the cascading reset of dependent
+ * levels — the shared selector logic behind both the Dashboard's URL and the
+ * Home launcher's local state. Changing an upstream level (year → GP →
+ * session → drivers) clears everything below it; re-picking the SAME upstream
+ * value is a no-op and returns the ORIGINAL object unchanged (referential
+ * equality), so callers can `if (next === search) return` to skip a redundant
+ * navigate/prewarm. Pure — no navigation, no side effects; the caller wires
+ * those.
+ */
+export function applySelectionPatch(
+  search: DashboardSearch,
+  patch: Partial<DashboardSearch>,
+): DashboardSearch {
+  if ('year' in patch && patch.year === search.year) return search
+  if ('gp' in patch && patch.gp === search.gp) return search
+  if ('session' in patch && patch.session === search.session) return search
+
+  const next: DashboardSearch = { ...search, ...patch }
+  if ('year' in patch) {
+    next.gp = undefined
+    next.session = undefined
+    next.drivers = []
+  } else if ('gp' in patch) {
+    next.session = undefined
+    next.drivers = []
+  } else if ('session' in patch) {
+    next.drivers = []
+  }
+  return next
+}
+
 /** URL shape → component shape. */
 export function fromRaw(raw: RawDashboardSearch): DashboardSearch {
   return {

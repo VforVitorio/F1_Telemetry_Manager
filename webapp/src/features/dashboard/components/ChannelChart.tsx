@@ -20,6 +20,7 @@ import type {
 } from 'echarts'
 import * as echarts from 'echarts'
 import { registerF1Theme, useChartTheme } from '@/charts/registerEcharts'
+import { useFirstPaintAnimation } from '@/charts/useFirstPaintAnimation'
 import { F1_LIGHT_THEME } from '@/charts/echartsTheme'
 import { ChartMaximizedContext } from '@/components/ChartCard'
 import type { LapTelemetry } from '@/lib/api/telemetry'
@@ -117,11 +118,9 @@ function baseOption(
     ...(yAxis as object),
   }
   return {
-    // No entrance/update animation on the telemetry traces. A timing-screen
-    // reads as an instrument, not a motion piece — and, practically, replaying
-    // the sweep on every driver toggle / data-settle (and twice under React
-    // StrictMode's dev double-mount) reads as a stutter, not polish.
-    animation: false,
+    // Entrance paint animation on (ECharts default). The old double-paint was
+    // React StrictMode double-mounting the chart in dev, not the animation
+    // itself — that's dropped in main.tsx, so this now plays exactly once.
     tooltip: {
       trigger: 'axis',
       axisPointer: { type: 'line' },
@@ -268,12 +267,16 @@ function SyncedLineChart({
   // on window resize, not on this container change, so a stale canvas would
   // mis-place the hover crosshair otherwise.
   const maximized = useContext(ChartMaximizedContext)
+  // Animate the paint once, on the first render with data — a 2-3 driver
+  // session's telemetry lands per driver, and `notMerge` would otherwise replay
+  // the sweep on each arrival.
+  const paintedOption = useFirstPaintAnimation(option)
   return (
     <div role="img" aria-label={ariaLabel} className={maximized ? 'h-full' : undefined}>
       <ReactECharts
         theme={chartTheme}
         key={`${chartTheme}-${maximized}`}
-        option={option}
+        option={paintedOption}
         style={{ height: maximized ? '100%' : height }}
         notMerge
         onChartReady={(instance) => {

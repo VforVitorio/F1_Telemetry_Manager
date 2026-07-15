@@ -8,7 +8,7 @@
 // `search`; the lap chart writes loaded laps to the store, the telemetry grid
 // and circuit map read them.
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { Link, getRouteApi } from '@tanstack/react-router'
 import { ArrowRightLeft, Gauge, TriangleAlert } from 'lucide-react'
 import { Header } from '@/app/Header'
@@ -22,14 +22,31 @@ import { TelemetryGrid } from './components/TelemetryGrid'
 import { useDashboardStore } from './store'
 import { useLapTimes, prewarmTelemetry } from './queries'
 import { fastestLapPerDriver } from './lib/fastestLap'
-import { fromRaw, toRaw, type DashboardSearch } from './search'
+import { applySelectionPatch, fromRaw, toRaw, MAX_DRIVERS, type DashboardSearch } from './search'
 
 const routeApi = getRouteApi('/dashboard')
 
 export function DashboardPage() {
   const raw = routeApi.useSearch()
   const navigate = routeApi.useNavigate()
-  const search = fromRaw(raw)
+  // Memoize: `fromRaw` builds a fresh `drivers` array each call, and an unstable
+  // `search`/`drivers` reference defeats the telemetry charts' `memo`, rebuilds
+  // their option every render and resets the paint debounce mid-sweep. `raw` is
+  // referentially stable from TanStack Router across unrelated renders, so this
+  // only recomputes when the URL actually changes.
+  const search = useMemo(() => fromRaw(raw), [raw])
+
+  // Synchronous accumulator for the driver selection. URL navigations are async
+  // and do NOT compose across a rapid burst of picks (each sees the same
+  // pre-burst `prev`), so a fast multi-select would drop drivers. We track the
+  // intended selection in a ref that toggles synchronously per click and always
+  // navigate with the FULL accumulated set — the last navigate wins with the
+  // complete list. The effect re-seeds it whenever the URL settles (external
+  // nav, cascade reset). (design-specs/chart-animation-selection-bugs.md B-1.)
+  const driversRef = useRef(search.drivers)
+  useEffect(() => {
+    driversRef.current = search.drivers
+  }, [search.drivers])
 
   const pruneLaps = useDashboardStore((s) => s.pruneLaps)
   const clearLaps = useDashboardStore((s) => s.clearLaps)
@@ -75,10 +92,9 @@ export function DashboardPage() {
 
   /** Patch the URL selection, applying the cascading reset of dependent levels. */
   const handleChange = (patch: Partial<DashboardSearch>) => {
-    // Re-picking the SAME value must not wipe the downstream selection.
-    if ('year' in patch && patch.year === search.year) return
-    if ('gp' in patch && patch.gp === search.gp) return
-    if ('session' in patch && patch.session === search.session) return
+    // Re-picking the SAME upstream value is a no-op (applySelectionPatch returns
+    // its input) — skip the prewarm; the navigate below still no-ops structurally.
+    if (applySelectionPatch(search, patch) === search) return
 
     // Warm the session cache the moment a session is chosen — the parse runs
     // while the user picks drivers, so the charts don't hang afterwards.
@@ -86,18 +102,36 @@ export function DashboardPage() {
       prewarmTelemetry(search.year, search.gp, patch.session)
     }
 
-    const next: DashboardSearch = { ...search, ...patch }
-    if ('year' in patch) {
-      next.gp = undefined
-      next.session = undefined
-      next.drivers = []
-    } else if ('gp' in patch) {
-      next.session = undefined
-      next.drivers = []
-    } else if ('session' in patch) {
-      next.drivers = []
+    // Drivers change via the multiselect (which stays open for rapid picks):
+    // its `onChange` ships a WHOLE array computed from the render-captured
+    // selection, so composing that array over the committed URL would still
+    // overwrite a just-added driver. Instead derive the single TOGGLED driver
+    // from the same-render selection→patch delta, then apply that toggle over
+    // the COMMITTED URL — so a burst accumulates instead of overwriting.
+    // (design-specs/chart-animation-selection-bugs.md B-1.)
+    if ('drivers' in patch && patch.drivers) {
+      // The single toggled driver = the same-render delta between the current
+      // selection and the array the multiselect shipped (both use the same,
+      // possibly-stale, value — so the delta is correct regardless of staleness).
+      const before = new Set(search.drivers)
+      const after = new Set(patch.drivers)
+      const toggled =
+        [...after].find((d) => !before.has(d)) ?? [...before].find((d) => !after.has(d))
+      if (!toggled) return
+      // Toggle it into the SYNCHRONOUS accumulator and navigate with the full
+      // set, so a rapid burst can't overwrite an earlier pick from a stale base.
+      const current = driversRef.current
+      const nextDrivers = current.includes(toggled)
+        ? current.filter((d) => d !== toggled)
+        : [...current, toggled].slice(0, MAX_DRIVERS)
+      driversRef.current = nextDrivers
+      void navigate({ search: (prevRaw) => toRaw({ ...fromRaw(prevRaw), drivers: nextDrivers }) })
+      return
     }
-    void navigate({ search: toRaw(next) })
+
+    // Cascading selectors (year / GP / session): compose the patch over the
+    // COMMITTED-latest URL, not the render-captured `search`.
+    void navigate({ search: (prevRaw) => toRaw(applySelectionPatch(fromRaw(prevRaw), patch)) })
   }
 
   const hasDrivers = search.drivers.length > 0
