@@ -17,6 +17,7 @@ import { useCallback, useContext, useMemo, useRef } from 'react'
 import ReactECharts from 'echarts-for-react'
 import type { ECharts, EChartsOption } from 'echarts'
 import { registerF1Theme, useChartTheme } from '@/charts/registerEcharts'
+import { useFirstPaintAnimation } from '@/charts/useFirstPaintAnimation'
 import { buildEchartsTheme, F1_LIGHT_THEME, tireColors } from '@/charts/echartsTheme'
 import { ChartMaximizedContext } from '@/components/ChartCard'
 import type { LapTime } from '@/lib/api/telemetry'
@@ -399,6 +400,11 @@ export function LapChart({ laps, drivers, year, onLapClick, selectedLaps }: LapC
     }
   }, [laps, drivers, year, selectedLaps, chartTheme])
 
+  // Animate the paint once, on the first render with data — the lap chart also
+  // rebuilds when the auto-loaded fastest laps land (a second render right
+  // after the lap times), so `notMerge` would otherwise redraw the lines twice.
+  const paintedOption = useFirstPaintAnimation(option)
+
   // Latest-ref mirror: the zrender click handler is registered once (see
   // `handleChartReady` below) and reads through this ref on every click, so
   // it always sees the current laps/onLapClick without re-binding.
@@ -418,7 +424,7 @@ export function LapChart({ laps, drivers, year, onLapClick, selectedLaps }: LapC
       <ReactECharts
         theme={chartTheme}
         key={`${chartTheme}-${maximized}`}
-        option={option}
+        option={paintedOption}
         style={{ height: maximized ? '100%' : 400 }}
         notMerge
         onChartReady={handleChartReady}

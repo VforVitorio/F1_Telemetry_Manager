@@ -20,6 +20,7 @@ import type {
 } from 'echarts'
 import * as echarts from 'echarts'
 import { registerF1Theme, useChartTheme } from '@/charts/registerEcharts'
+import { useFirstPaintAnimation } from '@/charts/useFirstPaintAnimation'
 import { F1_LIGHT_THEME } from '@/charts/echartsTheme'
 import { ChartMaximizedContext } from '@/components/ChartCard'
 import type { LapTelemetry } from '@/lib/api/telemetry'
@@ -266,12 +267,16 @@ function SyncedLineChart({
   // on window resize, not on this container change, so a stale canvas would
   // mis-place the hover crosshair otherwise.
   const maximized = useContext(ChartMaximizedContext)
+  // Animate the paint once, on the first render with data — a 2-3 driver
+  // session's telemetry lands per driver, and `notMerge` would otherwise replay
+  // the sweep on each arrival.
+  const paintedOption = useFirstPaintAnimation(option)
   return (
     <div role="img" aria-label={ariaLabel} className={maximized ? 'h-full' : undefined}>
       <ReactECharts
         theme={chartTheme}
         key={`${chartTheme}-${maximized}`}
-        option={option}
+        option={paintedOption}
         style={{ height: maximized ? '100%' : height }}
         notMerge
         onChartReady={(instance) => {
