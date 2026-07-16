@@ -1,19 +1,21 @@
 """Lap-by-lap race simulation generator for the SSE backend endpoint.
 
-This module mirrors the decision loop of ``scripts/run_simulation_cli.py`` but
-expresses it as a ``Generator[dict]`` so the backend can stream ``start``,
-``lap``, ``error`` and ``summary`` events to any SSE consumer (``curl``,
-Arcade, future dashboards). The CLI is the TFG's PMV and is left untouched
-on purpose — any primitive it relies on is either imported from the shared
-``src.agents`` / ``src.simulation`` packages or duplicated here with a
-pair-commit reminder.
+This module expresses the lap decision loop as a ``Generator[dict]`` so the backend
+can stream ``start``, ``lap``, ``error`` and ``summary`` events to any SSE consumer
+(``curl``, Arcade, future dashboards).
 
-Duplicated blocks reference the original CLI line ranges so a human keeping
-both copies in sync has a visible breadcrumb:
+**It no longer carries its own copy of the decision logic.** ``_run_no_llm_path``
+delegates to the shared engine (``src.strategy.inference.engine.run_lap``, ``no-llm``
+profile) and only adapts the result into the dict shape the SSE event builder expects.
 
-- ``_run_no_llm_path`` \u2194 ``scripts/run_simulation_cli.py`` L1383-L1551
-- guard-rail block \u2194 ``scripts/run_simulation_cli.py`` L1504-L1535
-  (implemented in the neighbouring ``guard_rails`` module)
+It used to be a hand-synced duplicate of the CLI's ``_run_no_llm`` body, alongside a
+``guard_rails`` module duplicating the CLI's guard-rail block, both carrying "keep
+these in sync by hand" breadcrumbs. They drifted, exactly as #166 proved they would:
+the copy unpacked two values from a three-value helper (so every routed lap raised,
+and N28/N30 were paid for and then discarded), it dropped the ``sc_currently_active``
+routing argument, and its fallback stubs invented readings when a provider was
+unreachable. Deleting the copy is what makes this surface inherit engine fixes
+instead of missing every one of them.
 """
 
 from __future__ import annotations
@@ -41,14 +43,12 @@ _REPO_ROOT = get_repo_root()
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
+from backend.utils.race_state_builder import build_race_state  # noqa: E402
 from src.agents.strategy_orchestrator import (  # noqa: E402
     RaceState,
     run_strategy_orchestrator_from_state,
 )
 from src.simulation.replay_engine import RaceReplayEngine  # noqa: E402
-
-from backend.services.simulation.guard_rails import apply_guard_rails  # noqa: E402
-from backend.utils.race_state_builder import build_race_state  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -285,160 +285,61 @@ def _local_build_race_state(
     )
 
 
-def _is_llm_unavailable(exc: Exception) -> bool:
-    """Detect the "LLM backend is down" family of errors.
-
-    Mirrors the CLI helper of the same name: matches OpenAI/LM-Studio
-    connection errors, timeouts and langchain wrappers so that ``_run_no_llm``
-    can substitute deterministic stubs instead of letting the whole lap blow
-    up. Covers both ``openai.APIConnectionError`` and the more generic
-    ``ConnectionError`` raised by aiohttp when LM Studio is not running.
-    """
-    name = type(exc).__name__
-    msg = str(exc).lower()
-    if name in {"APIConnectionError", "APITimeoutError", "ConnectionError"}:
-        return True
-    if "connection" in msg and ("refused" in msg or "error" in msg or "reset" in msg):
-        return True
-    if "timeout" in msg or "unreachable" in msg:
-        return True
-    return False
-
-
 def _run_no_llm_path(
     race_state: RaceState,
     lap_state: dict[str, Any],
     laps_df: pd.DataFrame,
 ) -> dict[str, Any]:
-    """ML-only decision path \u2014 duplicate of ``_run_no_llm`` at CLI L1383-L1551.
+    """ML-only decision path — a thin adapter over the shared engine.
 
-    The private orchestrator helpers (``_decide_agents_to_call``,
-    ``_run_conditional_agents``, ``_run_mc_simulation``) are imported by the
-    CLI too, so reusing them here preserves parity without coupling to the
-    CLI module. Each sub-agent call is wrapped in ``_safe_call`` so that
-    when LM Studio / OpenAI is unreachable we substitute deterministic stubs
-    (pace/tire/situation/radio) rather than abort the whole lap. The pit
-    agent degrades to ``None`` by the same mechanism.
+    This used to be a hand-maintained copy of the CLI's ``_run_no_llm`` body, and it
+    had drifted in three ways that all silently degraded the stream:
+
+    * It unpacked two values from ``_run_conditional_agents``, which returns three. The
+      ValueError fired on EVERY routed lap and was swallowed by a bare ``except``, so
+      N28 and N30 ran (paying for LLM and Qdrant calls) and their results were thrown
+      away. On a path whose whole point is not to use an LLM.
+    * It called ``_decide_agents_to_call`` without ``sc_currently_active``, so the SC
+      routing added for the Qatar fix never reached this surface.
+    * Its ``_safe_call`` stubs substituted invented readings (a 90.0 s lap, a 20-lap
+      cliff) when the provider was unreachable and presented them as a decision. The
+      engine's no-LLM profile builds no LLM clients at all, so there is nothing to
+      degrade from and nothing to invent.
+
+    Delegating means ``/simulate`` finally inherits the engine's fixes instead of
+    skipping every one of them: the per-GP scoping, the SC coherence rail, the pit
+    sentinels, the fuel baseline. The dict shape is kept because the SSE event builder
+    branches on it; only the body is gone.
+
+    Returns the same keys as before, so ``_result_to_decision`` is untouched.
     """
-    from src.agents.pace_agent import PaceOutput, run_pace_agent_from_state
-    from src.agents.race_situation_agent import (
-        RaceSituationOutput,
-        run_race_situation_agent_from_state,
-    )
-    from src.agents.radio_agent import RadioOutput, run_radio_agent_from_state
-    from src.agents.strategy_orchestrator import (
-        _decide_agents_to_call,
-        _run_conditional_agents,
-        _run_mc_simulation,
-    )
-    from src.agents.tire_agent import TireOutput, run_tire_agent_from_state
+    from src.strategy.inference.engine import run_lap
 
-    def _safe_call(fn, *args, stub):
-        try:
-            return fn(*args)
-        except Exception as exc:
-            if _is_llm_unavailable(exc):
-                return stub
-            raise
-
-    pace_stub = PaceOutput(
-        lap_time_pred=90.0,
-        delta_vs_prev=0.0,
-        delta_vs_median=0.0,
-        ci_p10=88.0,
-        ci_p90=92.0,
-        reasoning="[stub \u2014 LLM unreachable]",
+    rec, agent_outputs, _timings = run_lap(
+        race_state, laps_df, lap_state, profile="no-llm", return_agent_outputs=True
     )
-    tire_stub = TireOutput(
-        compound=race_state.compound,
-        current_tyre_life=race_state.tyre_life,
-        deg_rate=0.05,
-        laps_to_cliff_p10=20.0,
-        laps_to_cliff_p50=25.0,
-        laps_to_cliff_p90=30.0,
-        gp_name="",
-        reasoning="[stub \u2014 LLM unreachable]",
-    )
-    sit_stub = RaceSituationOutput(
-        overtake_prob=0.1,
-        sc_prob_3lap=0.05,
-        reasoning="[stub \u2014 LLM unreachable]",
-    )
-    radio_stub = RadioOutput(
-        radio_events=[],
-        rcm_events=[],
-        alerts=[],
-        reasoning="[stub \u2014 LLM unreachable]",
-        corrections=[],
-    )
-
-    pace_out = _safe_call(run_pace_agent_from_state, lap_state, stub=pace_stub)
-    tire_out = _safe_call(run_tire_agent_from_state, lap_state, laps_df, stub=tire_stub)
-    sit_out = _safe_call(run_race_situation_agent_from_state, lap_state, laps_df, stub=sit_stub)
-
-    radio_msgs = list(race_state.radio_msgs)
-    rcm_events = list(race_state.rcm_events)
-    radio_out = _safe_call(
-        run_radio_agent_from_state,
-        {**lap_state, "lap": race_state.lap, "radio_msgs": radio_msgs, "rcm_events": rcm_events},
-        laps_df,
-        stub=radio_stub,
-    )
-
-    alerts = list(radio_out.alerts) if radio_out else []
-    active = _decide_agents_to_call(
-        tire_out.warning_level if tire_out else "OK",
-        sit_out.sc_prob_3lap if sit_out else 0.0,
-        alerts,
-    )
-
-    try:
-        pit_out, rag_text = _run_conditional_agents(
-            active, lap_state, tire_out, sit_out, race_state, laps_df
-        )
-    except Exception as exc:
-        logger.warning("Conditional agents failed on lap %s: %s", race_state.lap, exc)
-        pit_out, rag_text = None, ""
-    rag_text = rag_text or ""
-
-    mc = _run_mc_simulation(
-        pace_out,
-        tire_out,
-        sit_out,
-        pit_out,
-        alpha=race_state.risk_tolerance,
-    )
-    best = max(mc, key=lambda k: mc[k]["score"])
-
-    cliff_p10 = getattr(tire_out, "laps_to_cliff_p10", None)
-    cliff_p10 = float(cliff_p10) if cliff_p10 is not None else 99.0
-    best, guardrail_reason = apply_guard_rails(
-        action=best,
-        lap=race_state.lap,
-        total_laps=race_state.total_laps,
-        compound=race_state.compound,
-        tyre_life=race_state.tyre_life,
-        cliff_p10=cliff_p10,
-    )
-
-    reasoning = "[no-llm mode \u2014 LLM synthesis skipped]"
-    if guardrail_reason:
-        reasoning = f"[no-llm mode] {guardrail_reason}"
+    outputs = agent_outputs or {}
 
     return {
-        "action": best,
-        "reasoning": reasoning,
-        "confidence": 0.0,
-        "scenario_scores": {k: round(float(v["score"]), 3) for k, v in mc.items()},
-        "regulation_context": "",
-        "guardrail_reason": guardrail_reason,
-        "_pit_out": pit_out,
-        "_tire_out": tire_out,
-        "_sit_out": sit_out,
-        "_pace_out": pace_out,
-        "_radio_out": radio_out,
-        "_rag_text": rag_text,
-        "_active_agents": set(active),
+        "action": rec.action,
+        "reasoning": rec.reasoning,
+        "confidence": rec.confidence,
+        # The engine hands back the raw MC dict ({scenario: {"score": ..., ...}}), the
+        # same shape the old body flattened here. _coerce_scenario_scores downstream
+        # accepts either, but flatten anyway to keep the emitted contract unchanged.
+        "scenario_scores": {
+            k: round(float(v["score"] if isinstance(v, dict) else v), 3)
+            for k, v in (rec.scenario_scores or {}).items()
+        },
+        "regulation_context": rec.regulation_context or "",
+        "guardrail_reason": outputs.get("guardrail_reason"),
+        "_pit_out": outputs.get("pit_out"),
+        "_tire_out": outputs.get("tire_out"),
+        "_sit_out": outputs.get("situation_out"),
+        "_pace_out": outputs.get("pace_out"),
+        "_radio_out": outputs.get("radio_out"),
+        "_rag_text": outputs.get("rag") or "",
+        "_active_agents": set(outputs.get("active") or []),
     }
 
 
