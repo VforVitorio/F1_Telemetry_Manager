@@ -73,7 +73,7 @@ def _raw_race_dir(year: int, gp_name: str):
 
 
 def _augment_from_raw(df: pd.DataFrame, year: int) -> pd.DataFrame:
-    """Restore `Time_s` / `TrackStatus` / `PitInTime` onto the featured frame.
+    """Restore `Time_s` / `TrackStatus` onto the featured frame.
 
     --- WHERE TO CHANGE IF THE ARTEFACT CHANGES ---
     This runs at LOAD time on purpose, not as a rewrite of the parquet. The featured
@@ -119,7 +119,7 @@ def _augment_from_raw(df: pd.DataFrame, year: int) -> pd.DataFrame:
     augmented = df.merge(pd.concat(frames, ignore_index=True), on=_JOIN_KEYS, how="left")
     restored = augmented["Time_s"].notna().sum()
     logger.info(
-        "Restored Time_s/TrackStatus/PitInTime onto %d/%d laps of %d from the raw "
+        "Restored Time_s/TrackStatus onto %d/%d laps of %d from the raw "
         "parquets (#447)", restored, len(augmented), year,
     )
     return augmented
