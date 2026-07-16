@@ -104,6 +104,16 @@ export function StrategyPage() {
   const cursorLap = search.lap ?? effectiveWindow?.[1]
   const canRun = !!search.gp && !!search.driver && !!effectiveWindow && cursorLap != null
 
+  // Green-flag laps that actually have telemetry: the featured parquet drops
+  // Safety-Car / out / pit laps (per driver), so the decision cursor can land on
+  // a lap with no data. We don't BLOCK selecting such a lap (like the arcade
+  // replay, you can still go there) — we just can't run the models on it, and
+  // say so. `pace-range` returns exactly the laps that have a row.
+  const availableLaps = useMemo(
+    () => new Set((paceRangeQuery.data ?? []).map((p) => p.lap)),
+    [paceRangeQuery.data],
+  )
+
   const running = recommend.isPending
   const hasRun = !!activeRun
   const runLap = activeRun ? analysedLap(activeRun.config) : undefined
@@ -119,6 +129,15 @@ export function StrategyPage() {
     hasRun && cursorLap === runLap ? activeRun.lapState : cursorLapStateQuery.data
   const isPreview = cursorLap !== runLap
 
+  // A lap has no telemetry when its lap-state 404s (fast — a metadata call) or
+  // it's absent from the pace-range set: the featured parquet drops Safety-Car /
+  // pit / out laps (per driver). We DON'T block selecting it (like the arcade
+  // replay, you can still go there); we just say the models can't run there.
+  const cursorNoTelemetry =
+    cursorLap != null &&
+    (cursorLapStateQuery.isError || (availableLaps.size > 0 && !availableLaps.has(cursorLap)))
+  const cursorHasData = !cursorNoTelemetry
+
   /** Apply a single-key scenario patch (cascade + navigate), like Dashboard. */
   const handleChange = (patch: Partial<StrategySearch>) => {
     if (applyStrategyPatch(search, patch) === search) return
@@ -133,6 +152,9 @@ export function StrategyPage() {
 
   const handleRun = () => {
     if (!canRun || !effectiveWindow || cursorLap == null) return
+    // No telemetry on this lap (Safety Car / pit / out lap) — the no-data notice
+    // already explains it, so a click just no-ops instead of firing a doomed run.
+    if (!cursorHasData) return
     const controller = new AbortController()
     abortRef.current = controller
     const runSearch: StrategySearch = { ...search, laps: effectiveWindow, lap: cursorLap }
@@ -236,6 +258,7 @@ export function StrategyPage() {
         ) : (
           <div className="flex flex-col gap-6">
             {isStale ? <StaleNotice onRerun={handleRun} /> : null}
+            {!cursorHasData && cursorLap != null ? <NoTelemetryNotice lap={cursorLap} /> : null}
 
             {/* HERO — deliberation while running, else the brief / error / prompt. */}
             {running ? (
@@ -257,6 +280,11 @@ export function StrategyPage() {
             <div className="flex flex-col gap-3">
               {readoutLapState ? (
                 <LapReadout lapState={readoutLapState} rival={search.rival} isPreview={isPreview} />
+              ) : !cursorHasData && cursorLap != null ? (
+                <p className="font-mono text-sm text-fg-4">
+                  <span className="text-warning">No telemetry</span> · lap {cursorLap} (Safety Car /
+                  pit / out lap)
+                </p>
               ) : null}
               <RaceTrace
                 points={paceRangeQuery.data ?? []}
@@ -342,8 +370,27 @@ function StaleNotice({ onRerun }: { onRerun: () => void }) {
   )
 }
 
+/** No-telemetry disclaimer — the cursor lap was dropped from the featured
+ *  dataset (Safety Car / pit / out lap), so the models can't run there. NOT an
+ *  error: selection is never blocked, we just say what's going on. */
+function NoTelemetryNotice({ lap }: { lap: number }) {
+  return (
+    <div
+      role="status"
+      className="flex flex-wrap items-center gap-3 rounded-2xl border border-hairline bg-warning/8 px-4 py-3 text-sm text-fg-2"
+    >
+      <TriangleAlert className="size-4 shrink-0 text-warning" aria-hidden="true" />
+      <span>
+        No telemetry for lap {lap} — a Safety Car, pit or out lap that the featured dataset drops,
+        so the pit-wall models can&apos;t run here. Pick a green-flag lap on the trace to run.
+      </span>
+    </div>
+  )
+}
+
 /** Orchestrator failure — tailored copy by status; config preserved so Retry
- *  re-fires the same scenario. Hairline + tint, no side-stripe. */
+ *  re-fires the same scenario. A 404 is the no-telemetry case (a Safety-Car /
+ *  pit lap), shown as a softer warning rather than a hard error. */
 function StrategyErrorBanner({
   error,
   onRetry,
@@ -351,24 +398,35 @@ function StrategyErrorBanner({
   error: StrategyApiError | null
   onRetry: () => void
 }) {
+  const isNoData = error?.status === 404
   const isRateLimited = error?.isRateLimited ?? false
-  const message = isRateLimited
-    ? 'Rate limit reached (5 runs per minute). Wait a moment, then retry.'
-    : (error?.message ?? 'The orchestrator could not complete this run.')
+  const message = isNoData
+    ? 'This lap has no telemetry (a Safety Car, pit or out lap the dataset drops), so the models cannot run. Pick a green-flag lap.'
+    : isRateLimited
+      ? 'Rate limit reached (5 runs per minute). Wait a moment, then retry.'
+      : (error?.message ?? 'The orchestrator could not complete this run.')
   return (
     <div
-      role="alert"
-      className="flex flex-col gap-3 rounded-2xl border border-hairline bg-danger/8 px-5 py-4"
+      role={isNoData ? 'status' : 'alert'}
+      className={cn(
+        'flex flex-col gap-3 rounded-2xl border border-hairline px-5 py-4',
+        isNoData ? 'bg-warning/8' : 'bg-danger/8',
+      )}
     >
       <div className="flex items-center gap-3 text-sm text-fg-1">
-        <TriangleAlert className="size-5 shrink-0 text-danger" aria-hidden="true" />
-        <span className="font-medium">Run failed</span>
+        <TriangleAlert
+          className={cn('size-5 shrink-0', isNoData ? 'text-warning' : 'text-danger')}
+          aria-hidden="true"
+        />
+        <span className="font-medium">{isNoData ? 'No telemetry for this lap' : 'Run failed'}</span>
       </div>
       <p className="text-sm text-fg-2">{message}</p>
-      <Button size="sm" variant="primary" className="self-start" onClick={onRetry}>
-        <RotateCcw className="size-4" aria-hidden="true" />
-        Retry
-      </Button>
+      {!isNoData ? (
+        <Button size="sm" variant="primary" className="self-start" onClick={onRetry}>
+          <RotateCcw className="size-4" aria-hidden="true" />
+          Retry
+        </Button>
+      ) : null}
     </div>
   )
 }

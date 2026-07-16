@@ -26,6 +26,8 @@ export const queryKeys = {
       ['strategy', 'lap-state', gp, driver, lap] as const,
     paceRange: (gp: string, driver: string, start: number, end: number) =>
       ['strategy', 'pace-range', gp, driver, start, end] as const,
+    tireRange: (gp: string, driver: string, start: number, end: number) =>
+      ['strategy', 'tire-range', gp, driver, start, end] as const,
     agent: (agent: string, gp: string, driver: string, lap: number) =>
       ['strategy', 'agent', agent, gp, driver, lap] as const,
   },
