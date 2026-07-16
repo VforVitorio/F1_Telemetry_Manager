@@ -428,11 +428,24 @@ def get_lap_state(
         "gap_ahead_s": round(gap_ahead_s, 3),
     }
 
-    # Rivals: all other drivers at the same lap, with real gaps
-    rivals_df = lap_snapshot[lap_snapshot["Driver"] != driver]
+    # Rivals: every other driver still CLASSIFIED on this lap, with real gaps.
+    #
+    # The null-Position filter is load-bearing, and it fixes two bugs at once
+    # (#428, #430). A crashed or retired car keeps a row on the lap it went out but
+    # its Position is NaN. Feeding that through `_safe` coerced it to 0, and 0 is a
+    # real, searchable key: the pit and situation agents look for the car ahead with
+    # `position == driver_pos - 1`, which for the RACE LEADER is exactly 0. So the
+    # leader's "car ahead" became, by arithmetic, whichever car had just crashed —
+    # the single most absurd car to undercut. Dropping position-less cars here means
+    # they are neither targeted nor counted, and no sentinel can collide with a real
+    # position. This is what `RaceStateManager` already does (it preserves NaN as
+    # None and retired cars fall out naturally); the API path just has to match it.
+    rivals_df = lap_snapshot[
+        (lap_snapshot["Driver"] != driver) & (lap_snapshot["Position"].notna())
+    ]
     rivals = []
     for _, rr in rivals_df.iterrows():
-        rival_pos = int(_safe(rr.get("Position", 0)))
+        rival_pos = int(rr["Position"])
         rival_gap = 0.0
         if rival_pos > 1:
             ahead = lap_snapshot[lap_snapshot["Position"] == rival_pos - 1]
