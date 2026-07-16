@@ -43,12 +43,11 @@ _REPO_ROOT = get_repo_root()
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
+from backend.utils.laps_cache import get_laps_df  # noqa: E402
 from backend.utils.race_state_builder import build_race_state  # noqa: E402
-from src.agents.strategy_orchestrator import (  # noqa: E402
-    RaceState,
-    run_strategy_orchestrator_from_state,
-)
+from src.agents.strategy_orchestrator import RaceState  # noqa: E402
 from src.simulation.replay_engine import RaceReplayEngine  # noqa: E402
+from src.strategy.inference.engine import run_lap  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -201,25 +200,27 @@ def _data_root() -> Path:
     return get_data_root()
 
 
-_laps_df_cache: dict[int, pd.DataFrame] = {}
-
-
 def _load_laps_df(year: int) -> pd.DataFrame:
-    """Load (and memoise) the featured laps parquet for ``year``.
+    """Load the featured laps frame for ``year``, augmented and memoised.
 
-    Kept as a small module-local cache (with raise-on-missing semantics the
-    simulator relies on) rather than importing ``backend.utils.laps_cache``.
+    Routes through ``backend.utils.laps_cache``, which memoises per year AND restores
+    ``Time_s`` / ``TrackStatus`` from the raw per-race parquet (#447). This used to be
+    a module-local ``read_parquet`` cache kept deliberately separate from that loader,
+    which meant every #447-style repair reached the API and skipped ``/simulate``:
+    without ``Time_s``, N11's overtake gap silently degrades to a lap-time delta (#465).
+
+    ``get_laps_df`` returns ``None`` when the parquet is missing; the simulator wants a
+    hard failure with a message that says what to run, and it is also driven outside
+    HTTP (MCP tools, smoke tests), so ``require_laps_df``'s ``HTTPException`` is the
+    wrong shape here. Hence the local raise rather than the local cache.
     """
-    if year in _laps_df_cache:
-        return _laps_df_cache[year]
-    path = _data_root() / "processed" / f"laps_featured_{year}.parquet"
-    if not path.exists():
+    df = get_laps_df(year)
+    if df is None:
+        path = _data_root() / "processed" / f"laps_featured_{year}.parquet"
         raise FileNotFoundError(
             f"Featured laps parquet not found: {path}. "
             "Run the build pipeline or populate data/processed/."
         )
-    df = pd.read_parquet(path)
-    _laps_df_cache[year] = df
     return df
 
 
@@ -673,7 +674,17 @@ def simulate_race(config: SimConfig) -> Generator[dict[str, Any], None, None]:
             if config.no_llm:
                 result = _run_no_llm_path(race_state, lap_state, laps_df)
             else:
-                result = run_strategy_orchestrator_from_state(race_state, laps_df, lap_state)
+                # Route through the shared engine rather than calling the orchestrator
+                # directly. `rich` reproduces `run_strategy_orchestrator_from_state`
+                # byte for byte (parity-tested), so the returned StrategyRecommendation
+                # is unchanged and `_parse_lap_decision` needs no branch of its own --
+                # but the lap now gets `_scope_laps_to_gp` applied. `no_llm` defaults to
+                # False, so this is the DEFAULT path: until now it was the only surface
+                # still handing agents the whole season, letting the Zandvoort grid
+                # decide a race at Lusail (#463; #440 fixed only the no-LLM half).
+                result, _agent_outputs, _timings = run_lap(
+                    race_state, laps_df, lap_state, profile="rich"
+                )
 
             lap_time_s = lap_state.get("driver", {}).get("lap_time_s")
             decision = _parse_lap_decision(result, race_state, lap_state, lap_time_s)
