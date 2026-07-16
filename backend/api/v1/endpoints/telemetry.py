@@ -1,7 +1,9 @@
+import logging
 from typing import Optional
 
 import numpy as np
 import pandas as pd
+from backend.services.telemetry.session_cache import prewarm_session
 from backend.services.telemetry.telemetry_service import (
     get_available_drivers,
     get_available_gps,
@@ -10,9 +12,10 @@ from backend.services.telemetry.telemetry_service import (
     get_lap_times,
     get_telemetry_data_from_db,
 )
-from backend.services.telemetry.session_cache import prewarm_session
 from backend.utils.laps_cache import get_laps_df
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/telemetry", tags=["telemetry"])
 
@@ -167,15 +170,39 @@ def get_lap_telemetry_endpoint(
 
 
 def _compute_gaps(df: pd.DataFrame) -> pd.DataFrame:
-    """Compute GapToCarAhead / GapToCarBehind from cumulative lap times.
+    """Compute GapToCarAhead / GapToCarBehind from session elapsed time.
 
-    For each lap, drivers are sorted by Position.  The cumulative sum of
-    LapTime_s per driver approximates session elapsed time (the real Time
-    column is dropped in N04).  The difference between adjacent positions
-    gives the inter-car gap in seconds.
+    For each lap, drivers are sorted by Position and the difference between adjacent
+    positions gives the inter-car gap in seconds.
+
+    Reads `Time_s`, the session elapsed time. This used to cumsum `LapTime_s` per driver
+    and its docstring justified that with "the real Time column is dropped in N04" — true
+    when written, false since the loader restores it from the raw parquets (#447).
+
+    The sum is not an approximation, it is wrong: the featured frame drops each driver's
+    SC, pit and out laps, so a per-driver cumsum is short by exactly the laps that driver
+    lost, and every driver loses a different set. Measured on Lusail 2024 across 656
+    position-adjacent pairs: mean gap **69.583 s** against a truth of **3.290 s**, 63.7%
+    of pairs wrong by more than a second, worst case TSU on lap 56 shipped as **402.282 s**
+    where the real gap was **2.966 s**.
+
+    This is the same fault #437 fixed in `/lap-state`, in a second endpoint that was never
+    switched over — the fifth instance of "a datum was restored and one consumer kept
+    reconstructing it".
+
+    Falls back to the old sum, loudly, if `Time_s` is absent: that means the raw
+    augmentation failed, and the caller should know the gaps are degraded rather than
+    trust them.
     """
     df = df.sort_values(["Driver", "LapNumber"])
-    df["_cum_time"] = df.groupby("Driver")["LapTime_s"].cumsum()
+    if "Time_s" in df.columns:
+        df["_cum_time"] = df["Time_s"]
+    else:
+        logger.warning(
+            "Time_s absent from the laps frame: falling back to cumulative LapTime_s "
+            "sums, which understate gaps wherever laps were dropped (#447)"
+        )
+        df["_cum_time"] = df.groupby("Driver")["LapTime_s"].cumsum()
 
     parts = []
     for _, lap_df in df.groupby("LapNumber"):
