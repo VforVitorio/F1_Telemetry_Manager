@@ -415,6 +415,9 @@ def get_lap_state(
         "compound_id": int(_safe(r.get("CompoundID", 0))),
         "tyre_life": int(_safe(r.get("TyreLife", 0))),
         "stint": int(_safe(r.get("Stint", 1))),
+        "stint_baseline_tyre_life": _stint_baseline_tyre_life(
+            gp_df, driver, r.get("Stint"),
+        ),
         "fresh_tyre": bool(r.get("FreshTyre", False)),
         "speed_i1": float(_safe(r.get("SpeedI1", 0))),
         "speed_i2": float(_safe(r.get("SpeedI2", 0))),
@@ -574,6 +577,32 @@ def predict_pace_range(request: PaceRangeRequest):
     return {"predictions": results, "count": len(results)}
 
 
+def _stint_baseline_tyre_life(gp_df, driver: str, stint) -> Optional[int]:
+    """TyreLife at the first lap of `driver`'s `stint`, or None if unresolvable.
+
+    N06 trains `FuelEffect` as `(TyreLife - min(TyreLife of the stint)) * 0.055`, but
+    `run_pace_agent_from_state` receives only the lap_state — it has no laps frame to
+    take a minimum from. So the baseline has to travel INSIDE the lap_state, and the
+    producers (which do hold the frame) are the ones that can compute it (#446).
+
+    Returns None rather than a guess when the stint or its TyreLife is unresolvable; the
+    agent then emits NaN plus a warning, which XGBoost handles natively (the training
+    parquet itself carries 2% null FuelEffect) and which nobody can mistake for a reading.
+
+    Caveat worth knowing: on the FEATURED frame the stint's opening laps are often the
+    out-laps that N04's IsAccurate filter drops, so the minimum can sit 1-2 laps late and
+    understate FuelEffect by <= ~0.11 s. Bounded, conservative, and 40x smaller than the
+    bug it replaces. The raw-parquet fallback path sees the full stint and is exact.
+    """
+    if stint is None or pd.isna(stint):
+        return None
+    rows = gp_df[(gp_df["Driver"] == driver) & (gp_df["Stint"] == stint)]
+    tyre_life = rows["TyreLife"].dropna() if "TyreLife" in rows.columns else None
+    if tyre_life is None or tyre_life.empty:
+        return None
+    return int(tyre_life.min())
+
+
 def _build_lap_state_from_row(row, gp_df, gp: str, year: int, total_laps: int) -> dict:
     """Build the canonical lap_state dict from a single parquet row."""
     def _s(val, default=0):
@@ -597,6 +626,9 @@ def _build_lap_state_from_row(row, gp_df, gp: str, year: int, total_laps: int) -
             "compound_id": int(_s(row.get("CompoundID", 0))),
             "tyre_life": int(_s(row.get("TyreLife", 0))),
             "stint": int(_s(row.get("Stint", 1))),
+            "stint_baseline_tyre_life": _stint_baseline_tyre_life(
+                gp_df, str(row.get("Driver", "")), row.get("Stint"),
+            ),
             "fresh_tyre": bool(row.get("FreshTyre", False)),
             "speed_i1": float(_s(row.get("SpeedI1", 0))),
             "speed_i2": float(_s(row.get("SpeedI2", 0))),
