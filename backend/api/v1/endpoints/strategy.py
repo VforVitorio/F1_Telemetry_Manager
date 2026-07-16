@@ -531,6 +531,117 @@ def _build_lap_state_from_row(row, gp_df, gp: str, year: int, total_laps: int) -
 
 
 # ---------------------------------------------------------------------------
+# /tire-range — TCN degradation across a lap range (Tyres agent-tab chart)
+# ---------------------------------------------------------------------------
+
+
+@router.post("/tire-range", dependencies=[Depends(rate_limit("tire-range", capacity=5, per_minute=10))])
+def predict_tire_range(
+    request: PaceRangeRequest,
+    laps_df: pd.DataFrame = Depends(_require_laps_df),
+):
+    """Run the TireDegTCN across a lap range for the Tyres agent-tab chart.
+
+    Returns, per lap in the window, the ACTUAL cumulative fuel-adjusted degradation
+    (the parquet's `FuelAdjustedDegAbsolute`, i.e. the TCN's own training target)
+    and the model's PREDICTED value (a deterministic forward pass over the stint up
+    to that lap). Laps the featured parquet dropped (Safety Car / out laps) are
+    simply absent from the series, so the lines break there rather than erroring.
+
+    The tire agent is set up once (its `laps_df`/`session_meta`), then only the
+    cheap deterministic predict path runs per lap — no per-lap MC Dropout.
+    """
+    import torch
+
+    from src.agents.tire_agent import _compound_name_to_id, _get_default_tire_agent
+
+    df = get_laps_df(request.year)
+    if df is None:
+        raise HTTPException(503, detail=f"No parquet for {request.year}")
+    gp_df = df[df["GP_Name"] == request.gp]
+    if gp_df.empty:
+        raise HTTPException(404, detail=f"GP '{request.gp}' not found")
+    drv_df = gp_df[gp_df["Driver"] == request.driver].sort_values("LapNumber")
+    if drv_df.empty:
+        raise HTTPException(404, detail=f"Driver '{request.driver}' not found")
+    drv_df = drv_df[
+        (drv_df["LapNumber"] >= request.lap_start) & (drv_df["LapNumber"] <= request.lap_end)
+    ]
+
+    total_laps = int(gp_df["LapNumber"].max())
+    agent = _get_default_tire_agent()
+
+    # Set the agent up ONCE, directly (NO run_from_state → no LLM): fill laps_df +
+    # session_meta exactly as run_from_state's setup does, then only the cheap
+    # deterministic TCN forward runs per lap. Running the full agent per lap would
+    # invoke the LLM (slow) and leaves the model in MC-train mode, which corrupts
+    # the eval-mode prediction scale — the manual setup keeps the forward clean.
+    team = str(drv_df.iloc[0].get("Team", "")) if not drv_df.empty else ""
+    agent.laps_df = laps_df.copy()
+    lt_col = "LapTime_s" if "LapTime_s" in laps_df.columns else "LapTime"
+    lap_times = pd.to_numeric(laps_df[lt_col], errors="coerce").dropna()
+    if "TrackStatus" in laps_df.columns:
+        clean_mask = laps_df["TrackStatus"].astype(str) == "1"
+        clean_times = lap_times[clean_mask] if clean_mask.sum() > 0 else lap_times
+    else:
+        clean_times = lap_times
+    agent.session_meta = {
+        "fastest_lap_s": float(clean_times.min()) if len(clean_times) > 0 else 90.0,
+        "cluster_mean_lap_s": float(clean_times.mean()) if len(clean_times) > 0 else 90.0,
+        "total_laps": total_laps,
+        "cluster_id": agent.cfg.circuit_cluster_map.get(request.gp, 0),
+        "team_id": agent.cfg.team_id_map.get(team, 4),
+        "year": request.year,
+        "AirTemp": 28.0,
+        "TrackTemp": 38.0,
+        "Humidity": 50.0,
+        "Rainfall": 0.0,
+    }
+
+    results = []
+    for _, row in drv_df.iterrows():
+        lap = int(row["LapNumber"])
+        compound = str(row.get("Compound", ""))
+        tyre_life = int(row["TyreLife"]) if not pd.isna(row.get("TyreLife")) else 0
+        actual = (
+            float(row["FuelAdjustedDegAbsolute"])
+            if "FuelAdjustedDegAbsolute" in row.index
+            and not pd.isna(row.get("FuelAdjustedDegAbsolute"))
+            else None
+        )
+
+        pred = None
+        try:
+            compound_id = (
+                compound
+                if compound.startswith("C")
+                else _compound_name_to_id(compound, request.gp, request.year)
+            )
+            stint = agent._get_driver_stint(request.driver, tyre_life)
+            if stint is not None and compound_id in agent.bundles:
+                tensor = agent._build_stint_tensor(stint, compound_id, agent.session_meta)
+                model = agent.bundles[compound_id]["model"]
+                with torch.no_grad():
+                    model.eval()
+                    pred = float(model(tensor).item())
+        except Exception as exc:  # noqa: BLE001 — a bad lap just leaves a gap, never a 500
+            logger.debug("tire-range: skipping lap %s (%s)", lap, exc)
+            pred = None
+
+        results.append(
+            {
+                "lap": lap,
+                "actual": actual,
+                "pred": pred,
+                "compound": compound,
+                "tyre_life": tyre_life,
+            }
+        )
+
+    return {"predictions": results, "count": len(results)}
+
+
+# ---------------------------------------------------------------------------
 # /tire — N26 TireDegTCN + MC Dropout cliff estimation
 # ---------------------------------------------------------------------------
 

@@ -354,3 +354,33 @@ export async function fetchPaceRange(
   const data = await postJson<{ predictions?: PaceRangePoint[] }>('pace-range', body)
   return data.predictions ?? []
 }
+
+/** One lap on the tyre-degradation trajectory (POST /tire-range): the ACTUAL
+ *  fuel-adjusted degradation (the TCN's training target) and the model's
+ *  PREDICTED value per lap. `actual`/`pred` are null for laps the model can't
+ *  score. Laps dropped from the featured parquet (Safety Car / out laps) are
+ *  simply absent, so the lines break there. */
+export interface TireRangePoint {
+  lap: number
+  actual: number | null
+  pred: number | null
+  compound: string
+  tyre_life: number
+}
+
+/**
+ * Actual vs TCN-predicted tyre degradation across a lap window — the Tyres
+ * agent-tab chart. Pure ML (no LLM); fetch the driver's full window once and
+ * slice client-side, like `fetchPaceRange`.
+ */
+export async function fetchTireRange(
+  gp: string,
+  driver: string,
+  lapStart: number,
+  lapEnd: number,
+  year = YEAR,
+): Promise<TireRangePoint[]> {
+  const body = { year, gp, driver, lap_start: lapStart, lap_end: lapEnd }
+  const data = await postJson<{ predictions?: TireRangePoint[] }>('tire-range', body)
+  return data.predictions ?? []
+}

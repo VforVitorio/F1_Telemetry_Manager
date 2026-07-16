@@ -22,7 +22,9 @@
 // crashing.
 
 import { useState, type ReactNode } from 'react'
-import type { LapState } from '@/lib/api/strategy'
+import { useQuery } from '@tanstack/react-query'
+import { fetchPaceRange, fetchTireRange, type LapState } from '@/lib/api/strategy'
+import { queryKeys } from '@/lib/queryKeys'
 import { useAgent } from '../queries'
 import { Card } from '@/components/Card'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/Tabs'
@@ -31,6 +33,14 @@ import { ConfidenceDial } from '@/components/ConfidenceDial'
 import { CompoundPill } from '@/components/CompoundPill'
 import { Pill } from '@/components/Pill'
 import { Skeleton } from '@/components/Skeleton'
+import { AgentModelChart, type AgentModelPoint } from './AgentModelChart'
+
+// Historical/deterministic data: cache forever, one retry so a downed backend
+// fails fast instead of a multi-minute exponential backoff on slow calls.
+// Mirrors `STATIC` in `../queries.ts` — kept local here since these two range
+// fetches are read directly by PaceTab/TyresTab rather than through a shared
+// query hook (see those tabs' own comments for why).
+const STATIC_RANGE_QUERY = { staleTime: Infinity, gcTime: Infinity, retry: 1 } as const
 
 // ── Formatting helpers ───────────────────────────────────────────────────
 
@@ -267,20 +277,50 @@ interface AgentTabPanelProps {
   enabled: boolean
 }
 
-/** Pace evidence: predicted lap time plus both deltas as StatCards, and the
- *  agent's reasoning. The confidence interval now lives on the full-width
- *  Race Trace chart (with real lap-by-lap context), so this tab stays lean
- *  instead of repeating a tiny duplicate range bar. */
+/** Pace evidence: an actual-vs-XGBoost-estimate chart across the whole
+ *  session, predicted lap time plus both deltas as StatCards, and the
+ *  agent's reasoning. The confidence interval lives on the full-width Race
+ *  Trace chart elsewhere on the page (with real lap-by-lap context), so this
+ *  tab's own chart stays a lean diagnostic view rather than repeating it. */
 function PaceTab({ lapState, enabled }: AgentTabPanelProps) {
   const query = useAgent('pace', lapState, enabled)
+
+  // A second, independent fetch alongside `useAgent('pace', ...)`: the agent
+  // call scores only the CURRENT lap, but the chart wants the model's
+  // behaviour across every lap the driver has run. Both are pure ML (no LLM),
+  // so this is cheap and — like `usePaceRange` in `../queries.ts` — cached
+  // forever per (gp, driver, range). Called unconditionally, same rule-of-
+  // hooks reasoning as `useAgent` itself (see the module docstring).
+  const gp = lapState.session_meta.gp_name
+  const driver = lapState.driver.driver
+  const totalLaps = lapState.session_meta.total_laps
+  const rangeQuery = useQuery({
+    queryKey: queryKeys.strategy.paceRange(gp, driver, 1, totalLaps),
+    queryFn: () => fetchPaceRange(gp, driver, 1, totalLaps),
+    enabled,
+    ...STATIC_RANGE_QUERY,
+  })
 
   if (query.isError) return <AgentUnavailable />
   if (!query.data) return enabled ? <AgentTabSkeleton cards={3} /> : <AgentIdle />
 
   const pace = query.data
+  const points: AgentModelPoint[] = (rangeQuery.data ?? []).map((point) => ({
+    lap: point.lap,
+    actual: point.actual,
+    pred: point.pred,
+  }))
 
   return (
     <div className="flex flex-col gap-4">
+      <AgentModelChart
+        points={points}
+        actualLabel="Actual lap time"
+        predLabel="XGBoost estimate"
+        yUnit="s"
+        cursorLap={lapState.lap_number}
+        loading={rangeQuery.isLoading}
+      />
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <StatCard eyebrow="Lap time" value={fmt(pace.lap_time_pred, 3, 's')} />
         <StatCard
@@ -307,19 +347,48 @@ function PaceTab({ lapState, enabled }: AgentTabPanelProps) {
   )
 }
 
-/** Tyre evidence: compound + warning-level pills, tyre-life/degradation
+/** Tyre evidence: an actual-vs-TCN-estimate degradation chart across the
+ *  whole session, compound + warning-level pills, tyre-life/degradation
  *  StatCards, and a laps-to-cliff P10/P50/P90 mini bar chart. */
 function TyresTab({ lapState, enabled }: AgentTabPanelProps) {
   const query = useAgent('tire', lapState, enabled)
+
+  // Same "second independent fetch" reasoning as PaceTab's `rangeQuery`: the
+  // agent call scores only the CURRENT lap, this chart wants the TCN's
+  // behaviour across every lap. Called unconditionally, before the early
+  // returns below (rules of hooks).
+  const gp = lapState.session_meta.gp_name
+  const driver = lapState.driver.driver
+  const totalLaps = lapState.session_meta.total_laps
+  const rangeQuery = useQuery({
+    queryKey: queryKeys.strategy.tireRange(gp, driver, 1, totalLaps),
+    queryFn: () => fetchTireRange(gp, driver, 1, totalLaps),
+    enabled,
+    ...STATIC_RANGE_QUERY,
+  })
 
   if (query.isError) return <AgentUnavailable />
   if (!query.data) return enabled ? <AgentTabSkeleton cards={2} /> : <AgentIdle />
 
   const tire = query.data
   const warning = levelConfig(TIRE_WARNING_CONFIG, tire.warning_level)
+  const points: AgentModelPoint[] = (rangeQuery.data ?? []).map((point) => ({
+    lap: point.lap,
+    actual: point.actual,
+    pred: point.pred,
+  }))
 
   return (
     <div className="flex flex-col gap-4">
+      <AgentModelChart
+        points={points}
+        actualLabel="Fuel-adjusted degradation"
+        predLabel="TCN estimate"
+        yUnit="s"
+        cursorLap={lapState.lap_number}
+        hidePred
+        loading={rangeQuery.isLoading}
+      />
       <div className="flex flex-wrap items-center gap-2">
         {tire.compound ? <CompoundPill compound={tire.compound} /> : null}
         <Pill tone={warning.tone}>{warning.label}</Pill>
