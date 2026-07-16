@@ -49,13 +49,6 @@ const CI_BAND_ALPHA = 0.1
 const STINT_AREA_ALPHA = 0.11
 const ACCENT = '#6c5ce7'
 
-// Paints above the stint bands (z=1) and the CI/pace-line layers (z=4-15) but
-// below the spotlight veil (z=20) and the cursor/pit markers (z=30) — see
-// `buildMissingRangesSeries`. The veil still needs to dim a "no data" band
-// like everything else when it falls outside the window, and the cursor must
-// stay legible if it ever lands inside a gap.
-const NO_DATA_BAND_Z = 10
-
 // Per-action pin colors (run flags) — mirrors the same 5-value enum used
 // throughout the Strategy tab (StintTimeline's pit tick, DecisionBanner).
 const ACTION_COLORS: Record<StrategyAction, string> = {
@@ -75,31 +68,18 @@ interface TracePalette {
   veil: string
   mutedLine: string
   mutedLabel: string
-  /** Fill for the "no data" gap band — deliberately fainter than the veil
-   *  (see `buildMissingRangesSeries`): it marks an intentional exclusion
-   *  (Safety Car / pit / out lap dropped from the featured dataset), not a
-   *  problem, so it should read as a whisper, not a warning. */
-  noDataFill: string
-  /** Matches `--fg-4` (tokens.css) — the same "hairline label" tone used for
-   *  disabled/tertiary text elsewhere in the app, reused here so the "no
-   *  data" caption sits at the same visual weight as any other quiet label. */
-  noDataLabel: string
 }
 
 const DARK_TRACE_PALETTE: TracePalette = {
   veil: 'rgba(8,8,12,0.55)',
   mutedLine: 'rgba(255,255,255,0.4)',
   mutedLabel: 'rgba(255,255,255,0.65)',
-  noDataFill: 'rgba(255,255,255,0.05)',
-  noDataLabel: 'rgba(255,255,255,0.42)',
 }
 
 const LIGHT_TRACE_PALETTE: TracePalette = {
   veil: 'rgba(245,245,247,0.6)',
   mutedLine: 'rgba(20,18,31,0.4)',
   mutedLabel: 'rgba(20,18,31,0.65)',
-  noDataFill: 'rgba(20,18,31,0.05)',
-  noDataLabel: 'rgba(20,18,31,0.42)',
 }
 
 const RUN_PIN_SIZE = 20
@@ -186,49 +166,6 @@ function groupStints(points: PaceRangePoint[]): StintBand[] {
   }
 
   return bands
-}
-
-interface MissingRange {
-  fromLap: number
-  toLap: number
-}
-
-/**
- * Contiguous runs of laps inside `windowRange` that have NO matching point in
- * `points`. The featured dataset drops Safety-Car / pit / out laps before it
- * ever reaches this chart, so a gap here isn't missing telemetry — it's an
- * intentional exclusion. Without this, a viewer just sees the actual/pred
- * lines break and has no way to tell "the model skipped this" apart from
- * "the data pipeline lost something"; `buildMissingRangesSeries` turns each
- * range into a faint labeled band so the gap explains itself.
- *
- * Only laps strictly inside the evidence window are considered — outside it
- * the spotlight veil already communicates "not what we're looking at", and
- * doubling up would just add noise.
- */
-function findMissingRanges(
-  points: PaceRangePoint[],
-  windowRange: [number, number],
-): MissingRange[] {
-  const present = new Set(points.map((point) => point.lap))
-  const [windowStart, windowEnd] = windowRange
-  const firstLap = Math.ceil(windowStart)
-  const lastLap = Math.floor(windowEnd)
-
-  const ranges: MissingRange[] = []
-  let runStart: number | null = null
-
-  for (let lap = firstLap; lap <= lastLap; lap += 1) {
-    if (present.has(lap)) {
-      if (runStart != null) ranges.push({ fromLap: runStart, toLap: lap - 1 })
-      runStart = null
-      continue
-    }
-    if (runStart == null) runStart = lap
-  }
-  if (runStart != null) ranges.push({ fromLap: runStart, toLap: lastLap })
-
-  return ranges
 }
 
 /** `ci_p90 - ci_p10` for the stacked-area delta series, or `null` when either
@@ -362,59 +299,6 @@ function buildStintBandsSeries(stints: StintBand[]): LineSeriesOption {
     tooltip: { show: false },
     z: 1,
     markArea: { silent: true, data: buildStintMarkAreaEntries(stints) },
-  }
-}
-
-/** One `markArea` rectangle per missing range, widened by half a lap on each
- *  side (`fromLap - 0.5` / `toLap + 0.5`) so the band visually straddles the
- *  gap between the last real point before it and the first one after —
- *  matching how `groupStints`' bands straddle a whole lap rather than sitting
- *  between two x-axis ticks. */
-function buildMissingRangeMarkAreaEntries(
-  ranges: MissingRange[],
-  fillColor: string,
-  labelColor: string,
-): MarkAreaEntry[] {
-  return ranges.map((range): MarkAreaEntry => [
-    {
-      xAxis: range.fromLap - 0.5,
-      itemStyle: { color: fillColor },
-      label: {
-        show: true,
-        formatter: 'no data',
-        position: 'insideTop' as const,
-        fontFamily: MONO,
-        fontSize: 10,
-        color: labelColor,
-      },
-    },
-    { xAxis: range.toLap + 0.5 },
-  ])
-}
-
-/**
- * A ghost series (mirrors `buildStintBandsSeries`) whose only job is to host
- * "no data" bands over laps missing from `points` inside the evidence
- * window — see `findMissingRanges` for why a gap here is an intentional
- * exclusion rather than a data problem. Renders nothing when the window has
- * no gaps (a clean stint has no `markArea` at all, not an empty one).
- */
-function buildMissingRangesSeries(
-  points: PaceRangePoint[],
-  windowRange: [number, number],
-  palette: TracePalette,
-): LineSeriesOption {
-  const ranges = findMissingRanges(points, windowRange)
-  const data = buildMissingRangeMarkAreaEntries(ranges, palette.noDataFill, palette.noDataLabel)
-  return {
-    name: 'no-data-gaps',
-    type: 'line',
-    data: [],
-    silent: true,
-    symbol: 'none',
-    tooltip: { show: false },
-    z: NO_DATA_BAND_Z,
-    ...(data.length ? { markArea: { silent: true, data } } : {}),
   }
 }
 
@@ -615,9 +499,8 @@ function buildRunTooltipFormatter(runs: RaceTraceRun[]) {
 
 /**
  * Composes the full chart option. Series are layered back-to-front by `z`:
- * stint bands (1) -> CI band (4-5) -> "no data" gap bands (10, see
- * `buildMissingRangesSeries`) -> pred/actual lines (14-15) -> spotlight veil
- * (20) -> cursor/pit/stint-end markers (30) -> run pins (40) — each later
+ * stint bands (1) -> CI band (4-5) -> pred/actual lines (14-15) -> spotlight
+ * veil (20) -> cursor/pit/stint-end markers (30) -> run pins (40) — each later
  * layer paints over the earlier ones, which is what lets the veil genuinely
  * DIM the trace outside the window while the decision markers stay crisp
  * regardless of where they land.
@@ -645,7 +528,6 @@ function buildTraceOption(
     ciBase,
     ciBandDelta,
     buildStintBandsSeries(stints),
-    buildMissingRangesSeries(points, windowRange, palette),
     buildSpotlightSeries(domain, windowRange, palette.veil),
     buildMarkersSeries(cursorLap, pitLapTarget, expectedStintEnd, points, palette),
   ]
