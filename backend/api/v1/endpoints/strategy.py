@@ -17,15 +17,15 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
-from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
 
 # ---------------------------------------------------------------------------
 # Repo-root injection — `src/agents/` must be importable from here
 # ---------------------------------------------------------------------------
 from backend.core.paths import get_data_root, get_repo_root
 from backend.core.rate_limit import rate_limit
+from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, Field
 
 _REPO_ROOT = get_repo_root()
 if str(_REPO_ROOT) not in sys.path:
@@ -384,13 +384,7 @@ def get_lap_state(
         except AttributeError:
             return val
 
-    # Compute cumulative lap times per driver up to this lap for real gaps
-    laps_up_to = gp_df[gp_df["LapNumber"] <= lap].copy()
-    cum_times = (
-        laps_up_to.sort_values(["Driver", "LapNumber"])
-        .groupby("Driver")["LapTime_s"]
-        .sum()
-    )
+    cum_times = _elapsed_times_at_lap(gp_df, lap)
     driver_cum = cum_times.get(driver, 0.0)
 
     # Build position-sorted list for gap computation at this lap
@@ -575,6 +569,33 @@ def predict_pace_range(request: PaceRangeRequest):
             })
 
     return {"predictions": results, "count": len(results)}
+
+
+def _elapsed_times_at_lap(gp_df, lap: int):
+    """Session elapsed time per driver at the end of ``lap``, for gap computation.
+
+    Reads ``Time_s`` (elapsed since session start), which is what FastF1 itself uses
+    for gaps and what `RaceStateManager._compute_session_times` settled on. NOT a
+    cumulative sum of ``LapTime_s``: the featured parquet drops each driver's SC, pit
+    and out laps, so drivers lose different amounts of time from the sum and the
+    resulting "gap" is meaningless. Measured at Lusail 2025 lap 20, the sum put NOR
+    80.868 s behind PIA where the real gap was 3.578 s, and TSU was off by 173.7 s
+    (#437). Elapsed time has no such hole: it is a reading, not a reconstruction.
+
+    Falls back to the old sum, loudly, if ``Time_s`` is absent. The loader restores it
+    from the raw per-race parquet (#447), so absence means that restoration failed and
+    the caller should know the gaps are degraded rather than silently trust them.
+    """
+    if "Time_s" not in gp_df.columns:
+        logger.warning(
+            "Time_s absent from the laps frame: falling back to cumulative LapTime_s "
+            "sums, which understate gaps wherever laps were dropped (#437/#447)"
+        )
+        laps_up_to = gp_df[gp_df["LapNumber"] <= lap]
+        return laps_up_to.sort_values(["Driver", "LapNumber"]).groupby("Driver")["LapTime_s"].sum()
+
+    at_lap = gp_df[gp_df["LapNumber"] == lap]
+    return at_lap.set_index("Driver")["Time_s"].dropna()
 
 
 def _stint_baseline_tyre_life(gp_df, driver: str, stint) -> Optional[int]:
