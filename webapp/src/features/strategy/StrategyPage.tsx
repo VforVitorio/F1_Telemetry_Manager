@@ -317,9 +317,9 @@ function ReadyHero({ cursorLap }: { cursorLap: number | undefined }) {
     <Card className="flex flex-col gap-1 px-6 py-5">
       <p className="font-display text-lg text-fg-1">Ready to run</p>
       <p className="text-sm text-fg-3">
-        The trace below shows the pace across your window. Drag the cursor (or click) to set the
-        decision point{cursorLap != null ? ` (now lap ${cursorLap})` : ''}, then run the pit wall
-        from the bar above.
+        The trace below shows the pace across your window. Hover it to move the cursor and click to
+        set the decision point{cursorLap != null ? ` (now lap ${cursorLap})` : ''}, then run the pit
+        wall from the bar above.
       </p>
     </Card>
   )
@@ -369,7 +369,7 @@ function RerunBar({
           Scenario changed since this run — the brief is from the previous one.
         </span>
       ) : (
-        <span>Drag the cursor on the trace to pick a lap, then re-run there.</span>
+        <span>Hover the trace to move the cursor, click a lap, then re-run there.</span>
       )}
       <Button size="sm" className="ml-auto" onClick={onRerun} disabled={running || lap == null}>
         <RotateCcw className="size-4" aria-hidden="true" />

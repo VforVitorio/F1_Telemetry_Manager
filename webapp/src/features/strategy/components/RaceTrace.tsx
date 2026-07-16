@@ -4,10 +4,10 @@
 // orchestrator actually reasoned over is a bright "spotlight" laid on top of
 // the full trace, everything outside it is veiled. That framing is the point
 // of the redesign — a strategist can see the shape of the whole race while
-// staying oriented on which slice of it produced the current recommendation,
-// and can drag the cursor like a video-editor scrubber (or click, or arrow-key)
-// anywhere inside the window to move the decision cursor without losing that
-// context; where the drag stops is the lap the re-run below the chart analyses.
+// staying oriented on which slice of it produced the current recommendation.
+// The decision cursor follows the pointer like a video-editor timeline: hover
+// anywhere inside the window and it tracks the mouse live, click to commit that
+// lap (arrow keys still nudge it); the committed lap is what the re-run analyses.
 //
 // ECharts wiring mirrors ScenarioScoresChart.tsx: `registerF1Theme()` once at
 // module load, `useChartTheme()` + `key={chartTheme}` to remount on a
@@ -568,14 +568,14 @@ interface ZrPointerEvent {
 /** What the zrender pointer handlers read on every event. Mirrored into a ref
  *  (see `RaceTrace`) because the handlers are bound once in `onChartReady`, so
  *  they must read fresh props through a ref rather than close over stale ones.
- *  `setDragLap` feeds the live scrub preview: the handlers write the lap under
- *  the pointer while dragging and clear it (null) on release / leave. */
+ *  `setHoverLap` feeds the live hover preview: the handlers write the lap under
+ *  the pointer as it moves and clear it (null) when it leaves the plot. */
 interface TraceInteractionRef {
   runPoints: RunPoint[]
   windowRange: [number, number]
   onSelectLap: (lap: number) => void
   onSelectRun?: (id: string) => void
-  setDragLap: (lap: number | null) => void
+  setHoverLap: (lap: number | null) => void
 }
 
 /** Nearest run-flag pin to a click, in pixel space (mirrors LapChart's
@@ -615,69 +615,49 @@ function lapFromPixel(chart: ECharts, x: number, y: number): number {
 }
 
 /**
- * Registers the video-editor-style scrubber directly on zrender, once per chart
- * instance (called from `onChartReady`, which — unlike `onEvents` — only fires on
- * mount, so this never double-binds across the option rebuilds `notMerge`
- * triggers on every cursor move). Pointer model:
- *  - press inside the plot begins a scrub — the cursor jumps to that lap and
- *    follows the pointer on `mousemove` via `setDragLap` (live preview only, no
- *    navigation yet, so dragging never spams the URL);
- *  - release (`mouseup`) or leaving the chart (`globalout`) commits the lap once
- *    via `onSelectLap` and clears the preview;
- *  - a press that lands on a run pin selects that run instead of scrubbing.
- * A plain click is just a zero-distance scrub (press + release on one lap), so
- * clicking to pick a lap keeps working. `containPixel` rejects presses outside
- * the plot area.
+ * Registers a hover-scrubber directly on zrender, once per chart instance
+ * (called from `onChartReady`, which — unlike `onEvents` — only fires on mount,
+ * so this never double-binds across the option rebuilds `notMerge` triggers on
+ * every cursor move). Pointer model, tuned to feel like a video-editor timeline:
+ *  - moving the pointer over the plot moves the cursor LIVE via `setHoverLap`
+ *    (a preview only, no navigation, so hovering never spams the URL);
+ *  - a click commits the hovered lap once via `onSelectLap`;
+ *  - leaving the chart (`globalout`) drops the preview back to the committed lap;
+ *  - a click on a run pin selects that run instead of moving the cursor.
+ * `containPixel` keeps the hover inside the plot area (over the axes it clears),
+ * so no press-and-drag is needed — just move and click.
  */
 function bindTraceInteractions(
   chart: ECharts,
   interactionRef: { current: TraceInteractionRef },
 ): void {
   const zr = chart.getZr()
-  let scrubbing = false
-  let scrubLap: number | null = null
-  let pendingPinId: string | null = null
+
+  const inPlot = (event: ZrPointerEvent): boolean =>
+    chart.containPixel({ gridIndex: 0 }, [event.offsetX, event.offsetY])
 
   const lapAt = (event: ZrPointerEvent): number => {
     const { windowRange } = interactionRef.current
     return clampLap(Math.round(lapFromPixel(chart, event.offsetX, event.offsetY)), windowRange)
   }
 
-  zr.on('mousedown', (event: ZrPointerEvent) => {
-    const { runPoints } = interactionRef.current
+  zr.on('mousemove', (event: ZrPointerEvent) => {
+    interactionRef.current.setHoverLap(inPlot(event) ? lapAt(event) : null)
+  })
+
+  zr.on('globalout', () => {
+    interactionRef.current.setHoverLap(null)
+  })
+
+  zr.on('click', (event: ZrPointerEvent) => {
+    const { runPoints, onSelectLap, onSelectRun } = interactionRef.current
     const hitRun = findNearestRunPin(chart, runPoints, event.offsetX, event.offsetY)
     if (hitRun) {
-      pendingPinId = hitRun.id // a pin press selects the run, not a scrub
+      onSelectRun?.(hitRun.id)
       return
     }
-    if (!chart.containPixel({ gridIndex: 0 }, [event.offsetX, event.offsetY])) return
-    scrubbing = true
-    scrubLap = lapAt(event)
-    interactionRef.current.setDragLap(scrubLap)
-  })
-
-  zr.on('mousemove', (event: ZrPointerEvent) => {
-    if (!scrubbing) return
-    scrubLap = lapAt(event)
-    interactionRef.current.setDragLap(scrubLap)
-  })
-
-  const commit = (): void => {
-    const { onSelectLap, onSelectRun, setDragLap } = interactionRef.current
-    if (pendingPinId != null) {
-      onSelectRun?.(pendingPinId)
-    } else if (scrubbing && scrubLap != null) {
-      onSelectLap(scrubLap)
-    }
-    scrubbing = false
-    scrubLap = null
-    pendingPinId = null
-    setDragLap(null)
-  }
-
-  zr.on('mouseup', commit)
-  zr.on('globalout', () => {
-    if (scrubbing || pendingPinId != null) commit()
+    if (!inPlot(event)) return
+    onSelectLap(lapAt(event))
   })
 }
 
@@ -747,10 +727,10 @@ export function RaceTrace({
   const chartTheme = useChartTheme()
   const palette = chartTheme === F1_LIGHT_THEME ? LIGHT_TRACE_PALETTE : DARK_TRACE_PALETTE
 
-  // While scrubbing, the cursor follows the pointer live off this local override
-  // (committed to the URL only on release); at rest it tracks the `cursorLap` prop.
-  const [dragLap, setDragLap] = useState<number | null>(null)
-  const renderLap = dragLap ?? cursorLap
+  // While the pointer is over the trace the cursor follows it live off this local
+  // preview (committed to the URL only on click); at rest it tracks `cursorLap`.
+  const [hoverLap, setHoverLap] = useState<number | null>(null)
+  const renderLap = hoverLap ?? cursorLap
 
   const option = useMemo(
     () =>
@@ -775,9 +755,9 @@ export function RaceTrace({
     windowRange,
     onSelectLap,
     onSelectRun,
-    setDragLap,
+    setHoverLap,
   })
-  interactionRef.current = { runPoints, windowRange, onSelectLap, onSelectRun, setDragLap }
+  interactionRef.current = { runPoints, windowRange, onSelectLap, onSelectRun, setHoverLap }
 
   const handleChartReady = useCallback((chart: ECharts) => {
     bindTraceInteractions(chart, interactionRef)
