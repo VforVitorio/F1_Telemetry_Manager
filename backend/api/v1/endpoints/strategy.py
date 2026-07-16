@@ -322,6 +322,14 @@ def _get_race_laps_df(year: int, gp: str) -> Optional[pd.DataFrame]:
 
     df = pd.read_parquet(path)
     df["LapTime_s"] = pd.to_timedelta(df["LapTime"]).dt.total_seconds()
+    # Session elapsed time, and it is load-bearing: this raw frame exists to serve the
+    # SC / pit / out laps the featured parquet drops, and those are exactly the laps a
+    # cumulative LapTime_s sum gets wrong. Without Time_s here, _elapsed_times_at_lap
+    # falls back to that sum and any driver with an earlier NaN lap has it silently
+    # skipped: at Lusail lap 20 OCO reads as 126.751 s AHEAD of the leader when the
+    # truth is 33.950 s BEHIND, because OCO's lap 9 has no LapTime. #447 restores this
+    # column onto the FEATURED frame; the fallback frame needs its own line (#437).
+    df["Time_s"] = pd.to_timedelta(df["Time"]).dt.total_seconds()
     for src_col, dst_col in (
         ("Sector1Time", "Sector1_s"),
         ("Sector2Time", "Sector2_s"),
