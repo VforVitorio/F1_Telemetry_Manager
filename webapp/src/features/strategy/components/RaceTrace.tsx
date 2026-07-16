@@ -5,8 +5,9 @@
 // the full trace, everything outside it is veiled. That framing is the point
 // of the redesign — a strategist can see the shape of the whole race while
 // staying oriented on which slice of it produced the current recommendation,
-// and can click (or arrow-key) anywhere inside the window to move the
-// decision cursor without losing that context.
+// and can drag the cursor like a video-editor scrubber (or click, or arrow-key)
+// anywhere inside the window to move the decision cursor without losing that
+// context; where the drag stops is the lap the re-run below the chart analyses.
 //
 // ECharts wiring mirrors ScenarioScoresChart.tsx: `registerF1Theme()` once at
 // module load, `useChartTheme()` + `key={chartTheme}` to remount on a
@@ -15,7 +16,7 @@
 // instantly — see that hook's own docstring and the note on
 // `buildTraceOption` below for why this matters here specifically.
 
-import { useCallback, useMemo, useRef, type KeyboardEvent } from 'react'
+import { useCallback, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import ReactECharts from 'echarts-for-react'
 import type {
   ECharts,
@@ -86,9 +87,6 @@ const RUN_PIN_SIZE = 20
 const RUN_PIN_SIZE_ACTIVE = 26
 const RUN_PIN_HIT_RADIUS_PX = 16
 const PIT_MARKER_PIXEL_OFFSET: [number, number] = [0, -14]
-// A real drag (pan/box-zoom) must not also register as a lap pick — mirrors
-// LapChart's `DRAG_CLICK_GUARD_PX`.
-const DRAG_CLICK_GUARD_PX = 4
 
 const RUNS_SERIES_NAME = 'runs'
 const EMPTY_OPTION: EChartsOption = { series: [] }
@@ -567,14 +565,17 @@ interface ZrPointerEvent {
   offsetY: number
 }
 
-/** What the zrender click handler reads on every click. Mirrored into a ref
- *  (see `RaceTrace`) because the handler is bound once in `onChartReady`, so
- *  it must read fresh props through a ref rather than close over stale ones. */
+/** What the zrender pointer handlers read on every event. Mirrored into a ref
+ *  (see `RaceTrace`) because the handlers are bound once in `onChartReady`, so
+ *  they must read fresh props through a ref rather than close over stale ones.
+ *  `setDragLap` feeds the live scrub preview: the handlers write the lap under
+ *  the pointer while dragging and clear it (null) on release / leave. */
 interface TraceInteractionRef {
   runPoints: RunPoint[]
   windowRange: [number, number]
   onSelectLap: (lap: number) => void
   onSelectRun?: (id: string) => void
+  setDragLap: (lap: number | null) => void
 }
 
 /** Nearest run-flag pin to a click, in pixel space (mirrors LapChart's
@@ -614,43 +615,69 @@ function lapFromPixel(chart: ECharts, x: number, y: number): number {
 }
 
 /**
- * Registers the click picker directly on zrender, once per chart instance
- * (called from `onChartReady`, which — unlike `onEvents` — only fires on
+ * Registers the video-editor-style scrubber directly on zrender, once per chart
+ * instance (called from `onChartReady`, which — unlike `onEvents` — only fires on
  * mount, so this never double-binds across the option rebuilds `notMerge`
- * triggers on every cursor move). Two guards, mirroring LapChart: (1) a real
- * mousedown->click drag is ignored via the pixel-delta check, so panning
- * never fires a phantom lap pick; (2) `containPixel` rejects clicks outside
- * the plot area. A hit on a run pin resolves to `onSelectRun`; everything
- * else resolves to the nearest lap via `onSelectLap`.
+ * triggers on every cursor move). Pointer model:
+ *  - press inside the plot begins a scrub — the cursor jumps to that lap and
+ *    follows the pointer on `mousemove` via `setDragLap` (live preview only, no
+ *    navigation yet, so dragging never spams the URL);
+ *  - release (`mouseup`) or leaving the chart (`globalout`) commits the lap once
+ *    via `onSelectLap` and clears the preview;
+ *  - a press that lands on a run pin selects that run instead of scrubbing.
+ * A plain click is just a zero-distance scrub (press + release on one lap), so
+ * clicking to pick a lap keeps working. `containPixel` rejects presses outside
+ * the plot area.
  */
 function bindTraceInteractions(
   chart: ECharts,
   interactionRef: { current: TraceInteractionRef },
 ): void {
   const zr = chart.getZr()
-  let downPoint: { x: number; y: number } | null = null
+  let scrubbing = false
+  let scrubLap: number | null = null
+  let pendingPinId: string | null = null
+
+  const lapAt = (event: ZrPointerEvent): number => {
+    const { windowRange } = interactionRef.current
+    return clampLap(Math.round(lapFromPixel(chart, event.offsetX, event.offsetY)), windowRange)
+  }
 
   zr.on('mousedown', (event: ZrPointerEvent) => {
-    downPoint = { x: event.offsetX, y: event.offsetY }
-  })
-
-  zr.on('click', (event: ZrPointerEvent) => {
-    const dragged =
-      downPoint != null &&
-      Math.hypot(event.offsetX - downPoint.x, event.offsetY - downPoint.y) >= DRAG_CLICK_GUARD_PX
-    downPoint = null
-    if (dragged) return
-    if (!chart.containPixel({ gridIndex: 0 }, [event.offsetX, event.offsetY])) return
-
-    const { runPoints, windowRange, onSelectLap, onSelectRun } = interactionRef.current
+    const { runPoints } = interactionRef.current
     const hitRun = findNearestRunPin(chart, runPoints, event.offsetX, event.offsetY)
-    if (hitRun && onSelectRun) {
-      onSelectRun(hitRun.id)
+    if (hitRun) {
+      pendingPinId = hitRun.id // a pin press selects the run, not a scrub
       return
     }
+    if (!chart.containPixel({ gridIndex: 0 }, [event.offsetX, event.offsetY])) return
+    scrubbing = true
+    scrubLap = lapAt(event)
+    interactionRef.current.setDragLap(scrubLap)
+  })
 
-    const lap = lapFromPixel(chart, event.offsetX, event.offsetY)
-    onSelectLap(clampLap(Math.round(lap), windowRange))
+  zr.on('mousemove', (event: ZrPointerEvent) => {
+    if (!scrubbing) return
+    scrubLap = lapAt(event)
+    interactionRef.current.setDragLap(scrubLap)
+  })
+
+  const commit = (): void => {
+    const { onSelectLap, onSelectRun, setDragLap } = interactionRef.current
+    if (pendingPinId != null) {
+      onSelectRun?.(pendingPinId)
+    } else if (scrubbing && scrubLap != null) {
+      onSelectLap(scrubLap)
+    }
+    scrubbing = false
+    scrubLap = null
+    pendingPinId = null
+    setDragLap(null)
+  }
+
+  zr.on('mouseup', commit)
+  zr.on('globalout', () => {
+    if (scrubbing || pendingPinId != null) commit()
   })
 }
 
@@ -720,20 +747,25 @@ export function RaceTrace({
   const chartTheme = useChartTheme()
   const palette = chartTheme === F1_LIGHT_THEME ? LIGHT_TRACE_PALETTE : DARK_TRACE_PALETTE
 
+  // While scrubbing, the cursor follows the pointer live off this local override
+  // (committed to the URL only on release); at rest it tracks the `cursorLap` prop.
+  const [dragLap, setDragLap] = useState<number | null>(null)
+  const renderLap = dragLap ?? cursorLap
+
   const option = useMemo(
     () =>
       points.length > 0
         ? buildTraceOption(
             points,
             windowRange,
-            cursorLap,
+            renderLap,
             pitLapTarget,
             expectedStintEnd,
             runs,
             palette,
           )
         : null,
-    [points, windowRange, cursorLap, pitLapTarget, expectedStintEnd, runs, palette],
+    [points, windowRange, renderLap, pitLapTarget, expectedStintEnd, runs, palette],
   )
   const paintedOption = useFirstPaintAnimation(option ?? EMPTY_OPTION)
 
@@ -743,8 +775,9 @@ export function RaceTrace({
     windowRange,
     onSelectLap,
     onSelectRun,
+    setDragLap,
   })
-  interactionRef.current = { runPoints, windowRange, onSelectLap, onSelectRun }
+  interactionRef.current = { runPoints, windowRange, onSelectLap, onSelectRun, setDragLap }
 
   const handleChartReady = useCallback((chart: ECharts) => {
     bindTraceInteractions(chart, interactionRef)
@@ -787,8 +820,8 @@ export function RaceTrace({
         aria-label="Race trace decision cursor"
         aria-valuemin={windowRange[0]}
         aria-valuemax={windowRange[1]}
-        aria-valuenow={cursorLap}
-        aria-valuetext={`Lap ${cursorLap}`}
+        aria-valuenow={renderLap}
+        aria-valuetext={`Lap ${renderLap}`}
         onKeyDown={handleKeyDown}
         className="rounded-lg outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 focus-visible:ring-offset-2 focus-visible:ring-offset-bg-0"
       >

@@ -247,7 +247,6 @@ export function StrategyPage() {
           <IdleEmpty search={search} hasGps={(gpsQuery.data?.length ?? 0) > 0} />
         ) : (
           <div className="flex flex-col gap-6">
-            {isStale ? <StaleNotice onRerun={handleRun} /> : null}
             {!cursorHasData && cursorLap != null ? <NoTelemetryNotice lap={cursorLap} /> : null}
 
             {/* HERO — deliberation while running, else the brief / error / prompt. */}
@@ -287,6 +286,9 @@ export function StrategyPage() {
                 onSelectRun={handleSelectRun}
                 loading={paceRangeQuery.isLoading}
               />
+              {hasRun && cursorHasData ? (
+                <RerunBar lap={cursorLap} onRerun={handleRun} running={running} stale={isStale} />
+              ) : null}
             </div>
 
             {/* EVIDENCE — playbook/risks + agent breakdown (dimmed during a re-run). */}
@@ -315,9 +317,9 @@ function ReadyHero({ cursorLap }: { cursorLap: number | undefined }) {
     <Card className="flex flex-col gap-1 px-6 py-5">
       <p className="font-display text-lg text-fg-1">Ready to run</p>
       <p className="text-sm text-fg-3">
-        The trace below shows the pace across your window. Click a lap to set the decision point
-        {cursorLap != null ? ` (now lap ${cursorLap})` : ''}, then run the pit wall from the bar
-        above.
+        The trace below shows the pace across your window. Drag the cursor (or click) to set the
+        decision point{cursorLap != null ? ` (now lap ${cursorLap})` : ''}, then run the pit wall
+        from the bar above.
       </p>
     </Card>
   )
@@ -341,20 +343,37 @@ function IdleEmpty({ search, hasGps }: { search: StrategySearch; hasGps: boolean
   )
 }
 
-/** Scenario-changed notice — hairline + tint, no side-stripe (de-slop). */
-function StaleNotice({ onRerun }: { onRerun: () => void }) {
+/** The single re-run affordance, sat directly under the trace so it pairs with
+ *  the scrubber: drag the cursor to a lap, then re-run there. Folds in the
+ *  "scenario changed" hint (this was the separate StaleNotice) so there is
+ *  exactly one re-run on the page, not one here and one in the collapsed bar. */
+function RerunBar({
+  lap,
+  onRerun,
+  running,
+  stale,
+}: {
+  lap: number | undefined
+  onRerun: () => void
+  running: boolean
+  stale: boolean
+}) {
   return (
     <div
       role="status"
-      className="flex flex-wrap items-center gap-3 rounded-2xl border border-hairline bg-warning/8 px-4 py-3 text-sm text-fg-2"
+      className="flex flex-wrap items-center gap-3 rounded-2xl border border-hairline bg-bg-1 px-4 py-3 text-sm text-fg-3"
     >
-      <TriangleAlert className="size-4 shrink-0 text-warning" aria-hidden="true" />
-      <span>
-        The scenario has changed since this run — the brief below is from the previous one.
-      </span>
-      <Button size="sm" variant="ghost" className="ml-auto" onClick={onRerun}>
+      {stale ? (
+        <span className="flex items-center gap-2 text-fg-2">
+          <TriangleAlert className="size-4 shrink-0 text-warning" aria-hidden="true" />
+          Scenario changed since this run — the brief is from the previous one.
+        </span>
+      ) : (
+        <span>Drag the cursor on the trace to pick a lap, then re-run there.</span>
+      )}
+      <Button size="sm" className="ml-auto" onClick={onRerun} disabled={running || lap == null}>
         <RotateCcw className="size-4" aria-hidden="true" />
-        Re-run
+        {lap != null ? `Re-run at lap ${lap}` : 'Re-run'}
       </Button>
     </div>
   )
