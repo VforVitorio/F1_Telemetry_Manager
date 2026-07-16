@@ -862,6 +862,74 @@ def query_rag(request: RagRequest):
 
 
 # ---------------------------------------------------------------------------
+# Safety-Car context — RCM events for the analysed lap
+# ---------------------------------------------------------------------------
+# The orchestrator only recommends PIT_NOW under a Safety Car when the
+# SAFETY_CAR_DEPLOYED race-control message reaches the Race Situation agent (N27),
+# which then flips sc_currently_active -> forces sc_prob_3lap=1.0 -> routes the pit
+# + RAG agents (RCMContextResolver, thesis 6.3). A "SAFETY CAR DEPLOYED" message is
+# a one-shot row at the deploy lap, so a single-lap run several laps into the
+# neutralisation would miss it. This mirrors the arcade/CLI exactly: replay every
+# lap's RCM window in order through a stateful RaceControlStateTracker and re-assert
+# (inject a synthetic event) on laps that carry no fresh message. RCM only — no
+# Whisper / radio transcription (disable_transcription keeps it out of the request
+# path; radio_msgs, which feed only N29, stay empty as before).
+
+_RADIO_RUNNER_CACHE: Dict[tuple, Any] = {}
+
+
+def _get_radio_runner(year: int, gp: str, laps_df: pd.DataFrame):
+    """A transcription-disabled RadioPipelineRunner for (year, gp), or None.
+
+    Cached per (year, gp). `disable_transcription` keeps Whisper out of the
+    request path — only the pre-parsed rcm.parquet is needed for the SC override.
+    A missing corpus degrades to None (no RCM), never an error.
+    """
+    key = (year, gp)
+    if key in _RADIO_RUNNER_CACHE:
+        return _RADIO_RUNNER_CACHE[key]
+    runner = None
+    try:
+        from src.nlp.radio_runner import RadioPipelineRunner
+
+        runner = RadioPipelineRunner(
+            year=year,
+            gp_name=gp,
+            laps_df=laps_df,
+            data_root=get_data_root(),
+            disable_transcription=True,
+        )
+    except Exception as exc:  # noqa: BLE001 - corpus is optional; degrade to no RCM
+        logger.warning("Radio/RCM corpus unavailable for %s %d: %s", gp, year, exc)
+    _RADIO_RUNNER_CACHE[key] = runner
+    return runner
+
+
+def _rcm_events_for_lap(year: int, gp: str, laps_df: pd.DataFrame, lap: int) -> List[Dict[str, Any]]:
+    """RCM events active at *lap*, replaying the stateful SC tracker from lap 1.
+
+    Returns the lap's own RCM rows plus a synthetic SAFETY CAR DEPLOYED when a
+    neutralisation is still in force but this lap carried no fresh message
+    (mirrors ``src/arcade/strategy.py``). Empty list when the corpus is missing.
+    """
+    runner = _get_radio_runner(year, gp, laps_df)
+    if runner is None:
+        return []
+    from src.nlp.rcm_state import RaceControlStateTracker
+
+    tracker = RaceControlStateTracker()
+    rcm_at_lap: List[Dict[str, Any]] = []
+    for n in range(1, lap + 1):
+        _radios, rcm = runner.radios_for_lap(n)
+        tracker.ingest(n, rcm)
+        if n == lap:
+            rcm_at_lap = list(rcm)
+    if tracker.should_inject(lap):
+        rcm_at_lap.append(tracker.synthetic_event())
+    return rcm_at_lap
+
+
+# ---------------------------------------------------------------------------
 # /recommend — N31 full orchestrator (all sub-agents + MC simulation + LLM)
 # ---------------------------------------------------------------------------
 
@@ -877,13 +945,23 @@ def recommend_strategy(
 
         from src.agents.strategy_orchestrator import run_strategy_orchestrator_from_state
 
+        # Safety-Car override: when the caller didn't supply RCM events, load them
+        # for this lap so an active Safety Car reaches N27 (arcade parity — without
+        # this the orchestrator never sees the neutralisation and stays out).
+        rcm_events = request.rcm_events
+        if rcm_events is None:
+            gp = request.gp_name or request.lap_state.get("session_meta", {}).get("gp_name", "")
+            lap = int(request.lap_state.get("lap_number", 0) or 0)
+            if gp and lap:
+                rcm_events = _rcm_events_for_lap(request.year, gp, laps_df, lap)
+
         race_state = build_race_state(
             request.lap_state,
             gap_ahead_s=request.gap_ahead_s,
             pace_delta_s=request.pace_delta_s,
             risk_tolerance=request.risk_tolerance,
             radio_msgs=request.radio_msgs,
-            rcm_events=request.rcm_events,
+            rcm_events=rcm_events,
         )
 
         result = run_strategy_orchestrator_from_state(

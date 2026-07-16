@@ -14,7 +14,7 @@
 //    below get the vertical space instead of the full form staying open.
 
 import type { ReactNode } from 'react'
-import { Pencil, Play, RotateCcw } from 'lucide-react'
+import { Pencil, Play } from 'lucide-react'
 import type { StrategySearch } from '../search'
 import { STRATEGY_YEAR } from '../search'
 import type { LapRange } from '@/lib/api/strategy'
@@ -217,13 +217,12 @@ function ExpandedForm({
 
 interface CollapsedSummaryProps {
   search: StrategySearch
-  onRun: () => void
-  running: boolean
   onEdit: () => void
 }
 
-/** Compact post-run summary: the scenario as a pill row, plus Edit/Re-run. */
-function CollapsedSummary({ search, onRun, running, onEdit }: CollapsedSummaryProps) {
+/** Compact post-run summary: the scenario as a pill row, plus Edit. Re-run lives
+ *  under the trace now (see StrategyPage's RerunBar), so it is not repeated here. */
+function CollapsedSummary({ search, onEdit }: CollapsedSummaryProps) {
   return (
     <div className="flex flex-wrap items-center gap-2 rounded-xl border border-hairline bg-bg-3 p-3">
       {search.gp && <Pill tone="neutral">{search.gp}</Pill>}
@@ -249,10 +248,6 @@ function CollapsedSummary({ search, onRun, running, onEdit }: CollapsedSummaryPr
         <Button variant="ghost" size="sm" onClick={onEdit}>
           <Pencil className="size-4" aria-hidden="true" />
           Edit scenario
-        </Button>
-        <Button variant="ghost" size="sm" onClick={onRun} disabled={running}>
-          <RotateCcw className="size-4" aria-hidden="true" />
-          Re-run
         </Button>
       </div>
     </div>
@@ -298,7 +293,7 @@ export function ScenarioBar({
   onEdit,
 }: ScenarioBarProps) {
   if (collapsed) {
-    return <CollapsedSummary search={search} onRun={onRun} running={running} onEdit={onEdit} />
+    return <CollapsedSummary search={search} onEdit={onEdit} />
   }
 
   return (
