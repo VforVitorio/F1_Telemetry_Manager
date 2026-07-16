@@ -104,16 +104,6 @@ export function StrategyPage() {
   const cursorLap = search.lap ?? effectiveWindow?.[1]
   const canRun = !!search.gp && !!search.driver && !!effectiveWindow && cursorLap != null
 
-  // Green-flag laps that actually have telemetry: the featured parquet drops
-  // Safety-Car / out / pit laps (per driver), so the decision cursor can land on
-  // a lap with no data. We don't BLOCK selecting such a lap (like the arcade
-  // replay, you can still go there) — we just can't run the models on it, and
-  // say so. `pace-range` returns exactly the laps that have a row.
-  const availableLaps = useMemo(
-    () => new Set((paceRangeQuery.data ?? []).map((p) => p.lap)),
-    [paceRangeQuery.data],
-  )
-
   const running = recommend.isPending
   const hasRun = !!activeRun
   const runLap = activeRun ? analysedLap(activeRun.config) : undefined
@@ -129,13 +119,12 @@ export function StrategyPage() {
     hasRun && cursorLap === runLap ? activeRun.lapState : cursorLapStateQuery.data
   const isPreview = cursorLap !== runLap
 
-  // A lap has no telemetry when its lap-state 404s (fast — a metadata call) or
-  // it's absent from the pace-range set: the featured parquet drops Safety-Car /
-  // pit / out laps (per driver). We DON'T block selecting it (like the arcade
-  // replay, you can still go there); we just say the models can't run there.
-  const cursorNoTelemetry =
-    cursorLap != null &&
-    (cursorLapStateQuery.isError || (availableLaps.size > 0 && !availableLaps.has(cursorLap)))
+  // A lap is un-runnable ONLY when its lap-state 404s — a genuinely absent lap
+  // (DNF, out of range). Safety-Car / pit / out laps are dropped from the
+  // FEATURED parquet (so they gap the pace trace), but /lap-state falls back to
+  // the raw per-race parquet, so they DO return a state and ARE runnable, just
+  // like the arcade replay. Run-ability keys on lap-state alone, not pace-range.
+  const cursorNoTelemetry = cursorLap != null && cursorLapStateQuery.isError
   const cursorHasData = !cursorNoTelemetry
 
   /** Apply a single-key scenario patch (cascade + navigate), like Dashboard. */
@@ -152,8 +141,9 @@ export function StrategyPage() {
 
   const handleRun = () => {
     if (!canRun || !effectiveWindow || cursorLap == null) return
-    // No telemetry on this lap (Safety Car / pit / out lap) — the no-data notice
-    // already explains it, so a click just no-ops instead of firing a doomed run.
+    // Only a genuinely absent lap (lap-state 404 — DNF / out of range) blocks a
+    // run; the no-data notice explains it, so a click no-ops instead of firing a
+    // doomed request. Safety-Car / pit / out laps resolve via the raw fallback.
     if (!cursorHasData) return
     const controller = new AbortController()
     abortRef.current = controller
@@ -282,8 +272,8 @@ export function StrategyPage() {
                 <LapReadout lapState={readoutLapState} rival={search.rival} isPreview={isPreview} />
               ) : !cursorHasData && cursorLap != null ? (
                 <p className="font-mono text-sm text-fg-4">
-                  <span className="text-warning">No telemetry</span> · lap {cursorLap} (Safety Car /
-                  pit / out lap)
+                  <span className="text-warning">No data</span> · lap {cursorLap} (driver did not
+                  complete this lap)
                 </p>
               ) : null}
               <RaceTrace
@@ -370,9 +360,11 @@ function StaleNotice({ onRerun }: { onRerun: () => void }) {
   )
 }
 
-/** No-telemetry disclaimer — the cursor lap was dropped from the featured
- *  dataset (Safety Car / pit / out lap), so the models can't run there. NOT an
- *  error: selection is never blocked, we just say what's going on. */
+/** No-data disclaimer — the cursor lap is absent from BOTH the featured and the
+ *  raw per-race dataset: the driver has no recorded lap there (a retirement, or a
+ *  lap outside the race range), so there is nothing to run. NOT an error:
+ *  selection is never blocked, we just say what's going on. (Safety-Car / pit /
+ *  out laps DO resolve via the raw fallback, so they never reach here.) */
 function NoTelemetryNotice({ lap }: { lap: number }) {
   return (
     <div
@@ -381,16 +373,16 @@ function NoTelemetryNotice({ lap }: { lap: number }) {
     >
       <TriangleAlert className="size-4 shrink-0 text-warning" aria-hidden="true" />
       <span>
-        No telemetry for lap {lap} — a Safety Car, pit or out lap that the featured dataset drops,
-        so the pit-wall models can&apos;t run here. Pick a green-flag lap on the trace to run.
+        No data for lap {lap} — this driver has no recorded lap here (a retirement, or a lap outside
+        the race). Pick another lap on the trace to run.
       </span>
     </div>
   )
 }
 
 /** Orchestrator failure — tailored copy by status; config preserved so Retry
- *  re-fires the same scenario. A 404 is the no-telemetry case (a Safety-Car /
- *  pit lap), shown as a softer warning rather than a hard error. */
+ *  re-fires the same scenario. A 404 is the no-data case (a lap the driver never
+ *  completed), shown as a softer warning rather than a hard error. */
 function StrategyErrorBanner({
   error,
   onRetry,
@@ -401,7 +393,7 @@ function StrategyErrorBanner({
   const isNoData = error?.status === 404
   const isRateLimited = error?.isRateLimited ?? false
   const message = isNoData
-    ? 'This lap has no telemetry (a Safety Car, pit or out lap the dataset drops), so the models cannot run. Pick a green-flag lap.'
+    ? 'This lap has no recorded data for the driver (a retirement, or a lap outside the race), so the models cannot run. Pick another lap.'
     : isRateLimited
       ? 'Rate limit reached (5 runs per minute). Wait a moment, then retry.'
       : (error?.message ?? 'The orchestrator could not complete this run.')

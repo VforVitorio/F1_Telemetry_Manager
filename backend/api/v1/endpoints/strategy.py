@@ -266,6 +266,75 @@ def lap_range(gp: str, driver: str, year: int = 2025):
     }
 
 
+# ---------------------------------------------------------------------------
+# Raw per-race fallback — Safety Car / pit / out laps
+# ---------------------------------------------------------------------------
+# The featured parquet (get_laps_df) drops Safety-Car / pit / out laps PER
+# DRIVER because the ML models were not trained on them. The arcade replay,
+# by contrast, reads the RAW per-race parquet (data/raw/<year>/<location>/
+# laps.parquet), which keeps EVERY lap, so it can run strategy on any lap. To
+# reach arcade parity, /lap-state falls back to this raw source when the
+# featured parquet is missing the requested lap. The raw parquet already
+# carries every column the lap_state builder reads except the pre-converted
+# second columns, so we derive LapTime_s / Sector*_s and tag GP_Name, then feed
+# it through the SAME builder — the returned lap_state is byte-identical in
+# shape to the featured path.
+
+_RACE_LAPS_CACHE: Dict[tuple, Optional[pd.DataFrame]] = {}
+
+
+def _resolve_race_dir(year: int, gp: str) -> Path:
+    """Map a featured GP_Name to its data/raw/<year>/<location> folder.
+
+    Mirrors the arcade's resolver: GP_TO_LOCATION covers the country->circuit
+    aliases (Qatar->Lusail, Miami->Miami_Gardens); the underscore variant covers
+    the FastF1 space-vs-underscore mismatch (Las Vegas->Las_Vegas). Falls back to
+    the primary candidate so the caller's "not found" message stays clean.
+    """
+    from src.arcade.config import GP_TO_LOCATION
+
+    base = _REPO_ROOT / "data" / "raw" / str(year)
+    folder = GP_TO_LOCATION.get(gp, gp)
+    candidate = base / folder
+    if candidate.exists():
+        return candidate
+    return base / folder.replace(" ", "_")
+
+
+def _get_race_laps_df(year: int, gp: str) -> Optional[pd.DataFrame]:
+    """Load the RAW per-race laps parquet, normalised to the featured schema.
+
+    Returns None when the race folder or parquet is absent. Cached per
+    (year, gp) since the file never changes within a process. The derived
+    *_s columns and GP_Name tag are exactly the fields the featured parquet
+    pre-computes, so a raw row is interchangeable with a featured row in the
+    lap_state builder.
+    """
+    key = (year, gp)
+    if key in _RACE_LAPS_CACHE:
+        return _RACE_LAPS_CACHE[key]
+
+    path = _resolve_race_dir(year, gp) / "laps.parquet"
+    if not path.exists():
+        logger.warning("Raw race parquet not found: %s", path)
+        _RACE_LAPS_CACHE[key] = None
+        return None
+
+    df = pd.read_parquet(path)
+    df["LapTime_s"] = pd.to_timedelta(df["LapTime"]).dt.total_seconds()
+    for src_col, dst_col in (
+        ("Sector1Time", "Sector1_s"),
+        ("Sector2Time", "Sector2_s"),
+        ("Sector3Time", "Sector3_s"),
+    ):
+        df[dst_col] = pd.to_timedelta(df[src_col]).dt.total_seconds()
+    df["GP_Name"] = gp
+
+    _RACE_LAPS_CACHE[key] = df
+    logger.info("Loaded raw race laps %s %d: %d rows", gp, year, len(df))
+    return df
+
+
 @router.get("/lap-state")
 def get_lap_state(
     gp: str,
@@ -273,23 +342,35 @@ def get_lap_state(
     lap: int,
     year: int = 2025,
 ):
-    """Build the canonical lap_state dict from the featured parquet.
+    """Build the canonical lap_state dict for one (gp, driver, lap).
 
-    Returns the same structure that RaceStateManager.get_lap_state() produces
-    so it can be passed directly to any agent endpoint.
+    Reads the featured parquet first; when that lap was dropped from it
+    (Safety Car / pit / out lap), falls back to the raw per-race parquet so any
+    lap is runnable, exactly like the arcade replay. The returned structure
+    matches RaceStateManager.get_lap_state() either way, so it can be passed
+    directly to any agent endpoint.
     """
     from fastapi import HTTPException as _HTTPExc
 
+    def _lap_row(frame: Optional[pd.DataFrame]):
+        """The driver's row for this lap in *frame*, or None when unavailable."""
+        if frame is None:
+            return None
+        return frame[(frame["Driver"] == driver) & (frame["LapNumber"] == lap)]
+
     df = get_laps_df(year)
-    if df is None:
-        raise _HTTPExc(503, detail=f"No parquet for {year}")
+    gp_df = df[df["GP_Name"] == gp] if df is not None else None
+    row = _lap_row(gp_df)
 
-    gp_df = df[df["GP_Name"] == gp]
-    if gp_df.empty:
-        raise _HTTPExc(404, detail=f"GP '{gp}' not found")
+    if row is None or row.empty:
+        full = _get_race_laps_df(year, gp)
+        if full is not None:
+            gp_df = full
+            row = _lap_row(gp_df)
 
-    row = gp_df[(gp_df["Driver"] == driver) & (gp_df["LapNumber"] == lap)]
-    if row.empty:
+    if gp_df is None:
+        raise _HTTPExc(503, detail=f"No data source for {gp} {year}")
+    if row is None or row.empty:
         raise _HTTPExc(404, detail=f"No data for {driver} lap {lap} at {gp}")
 
     r = row.iloc[0]
