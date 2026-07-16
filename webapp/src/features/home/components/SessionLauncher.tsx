@@ -91,14 +91,24 @@ export function SessionLauncher({ value, onChange }: SessionLauncherProps) {
         )}
 
         {ready ? (
-          <Link to="/strategy" search={toRaw(value)}>
+          // Strategy is live (#35). Map the launcher selection onto the Strategy
+          // scenario shape: GP carries over, the first two picked drivers become
+          // the driver + optional rival for the pit-wall duel.
+          <Link
+            to="/strategy"
+            search={{
+              ...(value.gp ? { gp: value.gp } : {}),
+              ...(value.drivers[0] ? { driver: value.drivers[0] } : {}),
+              ...(value.drivers[1] ? { rival: value.drivers[1] } : {}),
+            }}
+          >
             <Button variant="ghost">
-              <ActionContent icon={Crosshair} label="Strategy" soon />
+              <ActionContent icon={Crosshair} label="Strategy" />
             </Button>
           </Link>
         ) : (
           <Button variant="ghost" disabled>
-            <ActionContent icon={Crosshair} label="Strategy" soon />
+            <ActionContent icon={Crosshair} label="Strategy" />
           </Button>
         )}
 

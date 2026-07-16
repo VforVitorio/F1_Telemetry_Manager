@@ -10,7 +10,7 @@
 // is non-empty.
 
 import type { LapTime } from '@/lib/api/telemetry'
-import { getDriverColor } from '../lib/drivers'
+import { getDriverColor } from '@/lib/drivers'
 import { CompoundLegend } from './CompoundLegend'
 
 const EYEBROW_CLASSNAME = 'font-medium uppercase tracking-widest text-fg-3'

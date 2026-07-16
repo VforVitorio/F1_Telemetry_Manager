@@ -59,6 +59,8 @@
   --tire-hard: #e6e6e6; /* white */
   --tire-inter: #2dd47a; /* green */
   --tire-wet: #2d8fff; /* blue */
+  --tire-ink: #0c0d14; /* fixed dark text for compound pills — tyre colours are
+    identity, not themeable, so this never flips in light theme (see below) */
 
   /* ---------- DIVIDERS / SURFACES ---------- */
   --divider: rgba(255, 255, 255, 0.1);

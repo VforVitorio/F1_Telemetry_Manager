@@ -2,10 +2,11 @@ import { forwardRef, type HTMLAttributes } from 'react'
 import { cn } from '@/lib/cn'
 
 // Small rounded label for statuses, sentiment, intent flags and entity chips
-// (`tone`), or an F1 tire compound (`compound`). Tire hues are light/saturated
-// (see tokens.css), so compound chips always use dark (`fg-inv`) text for
-// contrast instead of the tinted-text treatment tone pills use. When both are
-// passed, `compound` wins — it is the more specific signal.
+// (`tone`), or an F1 tire compound (`compound`). Tire hues are a fixed brand
+// identity (not themeable, see tokens.css), so compound chips always use the
+// non-themeable `--tire-ink` dark text for contrast instead of the tinted-text
+// treatment tone pills use. When both are passed, `compound` wins — it is the
+// more specific signal.
 
 type Tone = 'neutral' | 'purple' | 'success' | 'warning' | 'danger' | 'info'
 type Compound = 'SOFT' | 'MEDIUM' | 'HARD' | 'INTERMEDIATE' | 'WET'
@@ -20,11 +21,11 @@ const TONE_STYLES: Record<Tone, string> = {
 }
 
 const COMPOUND_STYLES: Record<Compound, string> = {
-  SOFT: 'bg-tire-soft text-fg-inv',
-  MEDIUM: 'bg-tire-medium text-fg-inv',
-  HARD: 'bg-tire-hard text-fg-inv',
-  INTERMEDIATE: 'bg-tire-inter text-fg-inv',
-  WET: 'bg-tire-wet text-fg-inv',
+  SOFT: 'bg-tire-soft text-[color:var(--tire-ink)] border border-hairline',
+  MEDIUM: 'bg-tire-medium text-[color:var(--tire-ink)] border border-hairline',
+  HARD: 'bg-tire-hard text-[color:var(--tire-ink)] border border-hairline',
+  INTERMEDIATE: 'bg-tire-inter text-[color:var(--tire-ink)] border border-hairline',
+  WET: 'bg-tire-wet text-[color:var(--tire-ink)] border border-hairline',
 }
 
 export interface PillProps extends HTMLAttributes<HTMLSpanElement> {

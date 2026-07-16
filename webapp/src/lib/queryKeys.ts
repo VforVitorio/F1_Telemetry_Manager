@@ -18,4 +18,17 @@ export const queryKeys = {
     health: () => ['chat', 'health'] as const,
     models: () => ['chat', 'models'] as const,
   },
+  strategy: {
+    gps: () => ['strategy', 'gps'] as const,
+    drivers: (gp: string) => ['strategy', 'drivers', gp] as const,
+    lapRange: (gp: string, driver: string) => ['strategy', 'lap-range', gp, driver] as const,
+    lapState: (gp: string, driver: string, lap: number) =>
+      ['strategy', 'lap-state', gp, driver, lap] as const,
+    paceRange: (gp: string, driver: string, start: number, end: number) =>
+      ['strategy', 'pace-range', gp, driver, start, end] as const,
+    tireRange: (gp: string, driver: string, start: number, end: number) =>
+      ['strategy', 'tire-range', gp, driver, start, end] as const,
+    agent: (agent: string, gp: string, driver: string, lap: number) =>
+      ['strategy', 'agent', agent, gp, driver, lap] as const,
+  },
 } as const

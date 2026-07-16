@@ -266,6 +266,75 @@ def lap_range(gp: str, driver: str, year: int = 2025):
     }
 
 
+# ---------------------------------------------------------------------------
+# Raw per-race fallback — Safety Car / pit / out laps
+# ---------------------------------------------------------------------------
+# The featured parquet (get_laps_df) drops Safety-Car / pit / out laps PER
+# DRIVER because the ML models were not trained on them. The arcade replay,
+# by contrast, reads the RAW per-race parquet (data/raw/<year>/<location>/
+# laps.parquet), which keeps EVERY lap, so it can run strategy on any lap. To
+# reach arcade parity, /lap-state falls back to this raw source when the
+# featured parquet is missing the requested lap. The raw parquet already
+# carries every column the lap_state builder reads except the pre-converted
+# second columns, so we derive LapTime_s / Sector*_s and tag GP_Name, then feed
+# it through the SAME builder — the returned lap_state is byte-identical in
+# shape to the featured path.
+
+_RACE_LAPS_CACHE: Dict[tuple, Optional[pd.DataFrame]] = {}
+
+
+def _resolve_race_dir(year: int, gp: str) -> Path:
+    """Map a featured GP_Name to its data/raw/<year>/<location> folder.
+
+    Mirrors the arcade's resolver: GP_TO_LOCATION covers the country->circuit
+    aliases (Qatar->Lusail, Miami->Miami_Gardens); the underscore variant covers
+    the FastF1 space-vs-underscore mismatch (Las Vegas->Las_Vegas). Falls back to
+    the primary candidate so the caller's "not found" message stays clean.
+    """
+    from src.arcade.config import GP_TO_LOCATION
+
+    base = _REPO_ROOT / "data" / "raw" / str(year)
+    folder = GP_TO_LOCATION.get(gp, gp)
+    candidate = base / folder
+    if candidate.exists():
+        return candidate
+    return base / folder.replace(" ", "_")
+
+
+def _get_race_laps_df(year: int, gp: str) -> Optional[pd.DataFrame]:
+    """Load the RAW per-race laps parquet, normalised to the featured schema.
+
+    Returns None when the race folder or parquet is absent. Cached per
+    (year, gp) since the file never changes within a process. The derived
+    *_s columns and GP_Name tag are exactly the fields the featured parquet
+    pre-computes, so a raw row is interchangeable with a featured row in the
+    lap_state builder.
+    """
+    key = (year, gp)
+    if key in _RACE_LAPS_CACHE:
+        return _RACE_LAPS_CACHE[key]
+
+    path = _resolve_race_dir(year, gp) / "laps.parquet"
+    if not path.exists():
+        logger.warning("Raw race parquet not found: %s", path)
+        _RACE_LAPS_CACHE[key] = None
+        return None
+
+    df = pd.read_parquet(path)
+    df["LapTime_s"] = pd.to_timedelta(df["LapTime"]).dt.total_seconds()
+    for src_col, dst_col in (
+        ("Sector1Time", "Sector1_s"),
+        ("Sector2Time", "Sector2_s"),
+        ("Sector3Time", "Sector3_s"),
+    ):
+        df[dst_col] = pd.to_timedelta(df[src_col]).dt.total_seconds()
+    df["GP_Name"] = gp
+
+    _RACE_LAPS_CACHE[key] = df
+    logger.info("Loaded raw race laps %s %d: %d rows", gp, year, len(df))
+    return df
+
+
 @router.get("/lap-state")
 def get_lap_state(
     gp: str,
@@ -273,23 +342,35 @@ def get_lap_state(
     lap: int,
     year: int = 2025,
 ):
-    """Build the canonical lap_state dict from the featured parquet.
+    """Build the canonical lap_state dict for one (gp, driver, lap).
 
-    Returns the same structure that RaceStateManager.get_lap_state() produces
-    so it can be passed directly to any agent endpoint.
+    Reads the featured parquet first; when that lap was dropped from it
+    (Safety Car / pit / out lap), falls back to the raw per-race parquet so any
+    lap is runnable, exactly like the arcade replay. The returned structure
+    matches RaceStateManager.get_lap_state() either way, so it can be passed
+    directly to any agent endpoint.
     """
     from fastapi import HTTPException as _HTTPExc
 
+    def _lap_row(frame: Optional[pd.DataFrame]):
+        """The driver's row for this lap in *frame*, or None when unavailable."""
+        if frame is None:
+            return None
+        return frame[(frame["Driver"] == driver) & (frame["LapNumber"] == lap)]
+
     df = get_laps_df(year)
-    if df is None:
-        raise _HTTPExc(503, detail=f"No parquet for {year}")
+    gp_df = df[df["GP_Name"] == gp] if df is not None else None
+    row = _lap_row(gp_df)
 
-    gp_df = df[df["GP_Name"] == gp]
-    if gp_df.empty:
-        raise _HTTPExc(404, detail=f"GP '{gp}' not found")
+    if row is None or row.empty:
+        full = _get_race_laps_df(year, gp)
+        if full is not None:
+            gp_df = full
+            row = _lap_row(gp_df)
 
-    row = gp_df[(gp_df["Driver"] == driver) & (gp_df["LapNumber"] == lap)]
-    if row.empty:
+    if gp_df is None:
+        raise _HTTPExc(503, detail=f"No data source for {gp} {year}")
+    if row is None or row.empty:
         raise _HTTPExc(404, detail=f"No data for {driver} lap {lap} at {gp}")
 
     r = row.iloc[0]
@@ -334,6 +415,9 @@ def get_lap_state(
         "compound_id": int(_safe(r.get("CompoundID", 0))),
         "tyre_life": int(_safe(r.get("TyreLife", 0))),
         "stint": int(_safe(r.get("Stint", 1))),
+        "stint_baseline_tyre_life": _stint_baseline_tyre_life(
+            gp_df, driver, r.get("Stint"),
+        ),
         "fresh_tyre": bool(r.get("FreshTyre", False)),
         "speed_i1": float(_safe(r.get("SpeedI1", 0))),
         "speed_i2": float(_safe(r.get("SpeedI2", 0))),
@@ -347,11 +431,24 @@ def get_lap_state(
         "gap_ahead_s": round(gap_ahead_s, 3),
     }
 
-    # Rivals: all other drivers at the same lap, with real gaps
-    rivals_df = lap_snapshot[lap_snapshot["Driver"] != driver]
+    # Rivals: every other driver still CLASSIFIED on this lap, with real gaps.
+    #
+    # The null-Position filter is load-bearing, and it fixes two bugs at once
+    # (#428, #430). A crashed or retired car keeps a row on the lap it went out but
+    # its Position is NaN. Feeding that through `_safe` coerced it to 0, and 0 is a
+    # real, searchable key: the pit and situation agents look for the car ahead with
+    # `position == driver_pos - 1`, which for the RACE LEADER is exactly 0. So the
+    # leader's "car ahead" became, by arithmetic, whichever car had just crashed —
+    # the single most absurd car to undercut. Dropping position-less cars here means
+    # they are neither targeted nor counted, and no sentinel can collide with a real
+    # position. This is what `RaceStateManager` already does (it preserves NaN as
+    # None and retired cars fall out naturally); the API path just has to match it.
+    rivals_df = lap_snapshot[
+        (lap_snapshot["Driver"] != driver) & (lap_snapshot["Position"].notna())
+    ]
     rivals = []
     for _, rr in rivals_df.iterrows():
-        rival_pos = int(_safe(rr.get("Position", 0)))
+        rival_pos = int(rr["Position"])
         rival_gap = 0.0
         if rival_pos > 1:
             ahead = lap_snapshot[lap_snapshot["Position"] == rival_pos - 1]
@@ -480,6 +577,32 @@ def predict_pace_range(request: PaceRangeRequest):
     return {"predictions": results, "count": len(results)}
 
 
+def _stint_baseline_tyre_life(gp_df, driver: str, stint) -> Optional[int]:
+    """TyreLife at the first lap of `driver`'s `stint`, or None if unresolvable.
+
+    N06 trains `FuelEffect` as `(TyreLife - min(TyreLife of the stint)) * 0.055`, but
+    `run_pace_agent_from_state` receives only the lap_state — it has no laps frame to
+    take a minimum from. So the baseline has to travel INSIDE the lap_state, and the
+    producers (which do hold the frame) are the ones that can compute it (#446).
+
+    Returns None rather than a guess when the stint or its TyreLife is unresolvable; the
+    agent then emits NaN plus a warning, which XGBoost handles natively (the training
+    parquet itself carries 2% null FuelEffect) and which nobody can mistake for a reading.
+
+    Caveat worth knowing: on the FEATURED frame the stint's opening laps are often the
+    out-laps that N04's IsAccurate filter drops, so the minimum can sit 1-2 laps late and
+    understate FuelEffect by <= ~0.11 s. Bounded, conservative, and 40x smaller than the
+    bug it replaces. The raw-parquet fallback path sees the full stint and is exact.
+    """
+    if stint is None or pd.isna(stint):
+        return None
+    rows = gp_df[(gp_df["Driver"] == driver) & (gp_df["Stint"] == stint)]
+    tyre_life = rows["TyreLife"].dropna() if "TyreLife" in rows.columns else None
+    if tyre_life is None or tyre_life.empty:
+        return None
+    return int(tyre_life.min())
+
+
 def _build_lap_state_from_row(row, gp_df, gp: str, year: int, total_laps: int) -> dict:
     """Build the canonical lap_state dict from a single parquet row."""
     def _s(val, default=0):
@@ -503,6 +626,9 @@ def _build_lap_state_from_row(row, gp_df, gp: str, year: int, total_laps: int) -
             "compound_id": int(_s(row.get("CompoundID", 0))),
             "tyre_life": int(_s(row.get("TyreLife", 0))),
             "stint": int(_s(row.get("Stint", 1))),
+            "stint_baseline_tyre_life": _stint_baseline_tyre_life(
+                gp_df, str(row.get("Driver", "")), row.get("Stint"),
+            ),
             "fresh_tyre": bool(row.get("FreshTyre", False)),
             "speed_i1": float(_s(row.get("SpeedI1", 0))),
             "speed_i2": float(_s(row.get("SpeedI2", 0))),
@@ -528,6 +654,117 @@ def _build_lap_state_from_row(row, gp_df, gp: str, year: int, total_laps: int) -
             "total_laps": total_laps,
         },
     }
+
+
+# ---------------------------------------------------------------------------
+# /tire-range — TCN degradation across a lap range (Tyres agent-tab chart)
+# ---------------------------------------------------------------------------
+
+
+@router.post("/tire-range", dependencies=[Depends(rate_limit("tire-range", capacity=5, per_minute=10))])
+def predict_tire_range(
+    request: PaceRangeRequest,
+    laps_df: pd.DataFrame = Depends(_require_laps_df),
+):
+    """Run the TireDegTCN across a lap range for the Tyres agent-tab chart.
+
+    Returns, per lap in the window, the ACTUAL cumulative fuel-adjusted degradation
+    (the parquet's `FuelAdjustedDegAbsolute`, i.e. the TCN's own training target)
+    and the model's PREDICTED value (a deterministic forward pass over the stint up
+    to that lap). Laps the featured parquet dropped (Safety Car / out laps) are
+    simply absent from the series, so the lines break there rather than erroring.
+
+    The tire agent is set up once (its `laps_df`/`session_meta`), then only the
+    cheap deterministic predict path runs per lap — no per-lap MC Dropout.
+    """
+    import torch
+
+    from src.agents.tire_agent import _compound_name_to_id, _get_default_tire_agent
+
+    df = get_laps_df(request.year)
+    if df is None:
+        raise HTTPException(503, detail=f"No parquet for {request.year}")
+    gp_df = df[df["GP_Name"] == request.gp]
+    if gp_df.empty:
+        raise HTTPException(404, detail=f"GP '{request.gp}' not found")
+    drv_df = gp_df[gp_df["Driver"] == request.driver].sort_values("LapNumber")
+    if drv_df.empty:
+        raise HTTPException(404, detail=f"Driver '{request.driver}' not found")
+    drv_df = drv_df[
+        (drv_df["LapNumber"] >= request.lap_start) & (drv_df["LapNumber"] <= request.lap_end)
+    ]
+
+    total_laps = int(gp_df["LapNumber"].max())
+    agent = _get_default_tire_agent()
+
+    # Set the agent up ONCE, directly (NO run_from_state → no LLM): fill laps_df +
+    # session_meta exactly as run_from_state's setup does, then only the cheap
+    # deterministic TCN forward runs per lap. Running the full agent per lap would
+    # invoke the LLM (slow) and leaves the model in MC-train mode, which corrupts
+    # the eval-mode prediction scale — the manual setup keeps the forward clean.
+    team = str(drv_df.iloc[0].get("Team", "")) if not drv_df.empty else ""
+    agent.laps_df = laps_df.copy()
+    lt_col = "LapTime_s" if "LapTime_s" in laps_df.columns else "LapTime"
+    lap_times = pd.to_numeric(laps_df[lt_col], errors="coerce").dropna()
+    if "TrackStatus" in laps_df.columns:
+        clean_mask = laps_df["TrackStatus"].astype(str) == "1"
+        clean_times = lap_times[clean_mask] if clean_mask.sum() > 0 else lap_times
+    else:
+        clean_times = lap_times
+    agent.session_meta = {
+        "fastest_lap_s": float(clean_times.min()) if len(clean_times) > 0 else 90.0,
+        "cluster_mean_lap_s": float(clean_times.mean()) if len(clean_times) > 0 else 90.0,
+        "total_laps": total_laps,
+        "cluster_id": agent.cfg.circuit_cluster_map.get(request.gp, 0),
+        "team_id": agent.cfg.team_id_map.get(team, 4),
+        "year": request.year,
+        "AirTemp": 28.0,
+        "TrackTemp": 38.0,
+        "Humidity": 50.0,
+        "Rainfall": 0.0,
+    }
+
+    results = []
+    for _, row in drv_df.iterrows():
+        lap = int(row["LapNumber"])
+        compound = str(row.get("Compound", ""))
+        tyre_life = int(row["TyreLife"]) if not pd.isna(row.get("TyreLife")) else 0
+        actual = (
+            float(row["FuelAdjustedDegAbsolute"])
+            if "FuelAdjustedDegAbsolute" in row.index
+            and not pd.isna(row.get("FuelAdjustedDegAbsolute"))
+            else None
+        )
+
+        pred = None
+        try:
+            compound_id = (
+                compound
+                if compound.startswith("C")
+                else _compound_name_to_id(compound, request.gp, request.year)
+            )
+            stint = agent._get_driver_stint(request.driver, tyre_life)
+            if stint is not None and compound_id in agent.bundles:
+                tensor = agent._build_stint_tensor(stint, compound_id, agent.session_meta)
+                model = agent.bundles[compound_id]["model"]
+                with torch.no_grad():
+                    model.eval()
+                    pred = float(model(tensor).item())
+        except Exception as exc:  # noqa: BLE001 — a bad lap just leaves a gap, never a 500
+            logger.debug("tire-range: skipping lap %s (%s)", lap, exc)
+            pred = None
+
+        results.append(
+            {
+                "lap": lap,
+                "actual": actual,
+                "pred": pred,
+                "compound": compound,
+                "tyre_life": tyre_life,
+            }
+        )
+
+    return {"predictions": results, "count": len(results)}
 
 
 # ---------------------------------------------------------------------------
@@ -670,6 +907,74 @@ def query_rag(request: RagRequest):
 
 
 # ---------------------------------------------------------------------------
+# Safety-Car context — RCM events for the analysed lap
+# ---------------------------------------------------------------------------
+# The orchestrator only recommends PIT_NOW under a Safety Car when the
+# SAFETY_CAR_DEPLOYED race-control message reaches the Race Situation agent (N27),
+# which then flips sc_currently_active -> forces sc_prob_3lap=1.0 -> routes the pit
+# + RAG agents (RCMContextResolver, thesis 6.3). A "SAFETY CAR DEPLOYED" message is
+# a one-shot row at the deploy lap, so a single-lap run several laps into the
+# neutralisation would miss it. This mirrors the arcade/CLI exactly: replay every
+# lap's RCM window in order through a stateful RaceControlStateTracker and re-assert
+# (inject a synthetic event) on laps that carry no fresh message. RCM only — no
+# Whisper / radio transcription (disable_transcription keeps it out of the request
+# path; radio_msgs, which feed only N29, stay empty as before).
+
+_RADIO_RUNNER_CACHE: Dict[tuple, Any] = {}
+
+
+def _get_radio_runner(year: int, gp: str, laps_df: pd.DataFrame):
+    """A transcription-disabled RadioPipelineRunner for (year, gp), or None.
+
+    Cached per (year, gp). `disable_transcription` keeps Whisper out of the
+    request path — only the pre-parsed rcm.parquet is needed for the SC override.
+    A missing corpus degrades to None (no RCM), never an error.
+    """
+    key = (year, gp)
+    if key in _RADIO_RUNNER_CACHE:
+        return _RADIO_RUNNER_CACHE[key]
+    runner = None
+    try:
+        from src.nlp.radio_runner import RadioPipelineRunner
+
+        runner = RadioPipelineRunner(
+            year=year,
+            gp_name=gp,
+            laps_df=laps_df,
+            data_root=get_data_root(),
+            disable_transcription=True,
+        )
+    except Exception as exc:  # noqa: BLE001 - corpus is optional; degrade to no RCM
+        logger.warning("Radio/RCM corpus unavailable for %s %d: %s", gp, year, exc)
+    _RADIO_RUNNER_CACHE[key] = runner
+    return runner
+
+
+def _rcm_events_for_lap(year: int, gp: str, laps_df: pd.DataFrame, lap: int) -> List[Dict[str, Any]]:
+    """RCM events active at *lap*, replaying the stateful SC tracker from lap 1.
+
+    Returns the lap's own RCM rows plus a synthetic SAFETY CAR DEPLOYED when a
+    neutralisation is still in force but this lap carried no fresh message
+    (mirrors ``src/arcade/strategy.py``). Empty list when the corpus is missing.
+    """
+    runner = _get_radio_runner(year, gp, laps_df)
+    if runner is None:
+        return []
+    from src.nlp.rcm_state import RaceControlStateTracker
+
+    tracker = RaceControlStateTracker()
+    rcm_at_lap: List[Dict[str, Any]] = []
+    for n in range(1, lap + 1):
+        _radios, rcm = runner.radios_for_lap(n)
+        tracker.ingest(n, rcm)
+        if n == lap:
+            rcm_at_lap = list(rcm)
+    if tracker.should_inject(lap):
+        rcm_at_lap.append(tracker.synthetic_event())
+    return rcm_at_lap
+
+
+# ---------------------------------------------------------------------------
 # /recommend — N31 full orchestrator (all sub-agents + MC simulation + LLM)
 # ---------------------------------------------------------------------------
 
@@ -685,18 +990,40 @@ def recommend_strategy(
 
         from src.agents.strategy_orchestrator import run_strategy_orchestrator_from_state
 
+        # Safety-Car override: when the caller didn't supply RCM events, load them
+        # for this lap so an active Safety Car reaches N27 (arcade parity — without
+        # this the orchestrator never sees the neutralisation and stays out).
+        gp = request.gp_name or request.lap_state.get("session_meta", {}).get("gp_name", "")
+
+        rcm_events = request.rcm_events
+        if rcm_events is None:
+            lap = int(request.lap_state.get("lap_number", 0) or 0)
+            if gp and lap:
+                rcm_events = _rcm_events_for_lap(request.year, gp, laps_df, lap)
+
+        # Scope the frame to THIS race before the agents see it (#429). The cached
+        # parquet holds the whole season, and every agent lookup that takes it
+        # (_get_lap_row, _get_position_map, _get_undercut_candidates,
+        # _get_driver_stint, the SC feature builder) filters by Driver/LapNumber but
+        # NOT by GP — so they silently resolved to whichever race sorted first or
+        # last in the file. Measured before this filter: the lap-7 position map came
+        # from Zandvoort and PIA's lap-7 row from Barcelona, while analysing Lusail.
+        # Every one of those lookups wants the single race, so one filter here fixes
+        # them all without touching the agents.
+        race_laps_df = laps_df[laps_df["GP_Name"] == gp] if gp else laps_df
+
         race_state = build_race_state(
             request.lap_state,
             gap_ahead_s=request.gap_ahead_s,
             pace_delta_s=request.pace_delta_s,
             risk_tolerance=request.risk_tolerance,
             radio_msgs=request.radio_msgs,
-            rcm_events=request.rcm_events,
+            rcm_events=rcm_events,
         )
 
         result = run_strategy_orchestrator_from_state(
             race_state=race_state,
-            laps_df=laps_df,
+            laps_df=race_laps_df,
             lap_state=request.lap_state,
         )
         return StrategyResponse(agent="orchestrator", result=_to_dict(result))
