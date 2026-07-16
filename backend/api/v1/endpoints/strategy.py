@@ -961,12 +961,24 @@ def recommend_strategy(
         # Safety-Car override: when the caller didn't supply RCM events, load them
         # for this lap so an active Safety Car reaches N27 (arcade parity — without
         # this the orchestrator never sees the neutralisation and stays out).
+        gp = request.gp_name or request.lap_state.get("session_meta", {}).get("gp_name", "")
+
         rcm_events = request.rcm_events
         if rcm_events is None:
-            gp = request.gp_name or request.lap_state.get("session_meta", {}).get("gp_name", "")
             lap = int(request.lap_state.get("lap_number", 0) or 0)
             if gp and lap:
                 rcm_events = _rcm_events_for_lap(request.year, gp, laps_df, lap)
+
+        # Scope the frame to THIS race before the agents see it (#429). The cached
+        # parquet holds the whole season, and every agent lookup that takes it
+        # (_get_lap_row, _get_position_map, _get_undercut_candidates,
+        # _get_driver_stint, the SC feature builder) filters by Driver/LapNumber but
+        # NOT by GP — so they silently resolved to whichever race sorted first or
+        # last in the file. Measured before this filter: the lap-7 position map came
+        # from Zandvoort and PIA's lap-7 row from Barcelona, while analysing Lusail.
+        # Every one of those lookups wants the single race, so one filter here fixes
+        # them all without touching the agents.
+        race_laps_df = laps_df[laps_df["GP_Name"] == gp] if gp else laps_df
 
         race_state = build_race_state(
             request.lap_state,
@@ -979,7 +991,7 @@ def recommend_strategy(
 
         result = run_strategy_orchestrator_from_state(
             race_state=race_state,
-            laps_df=laps_df,
+            laps_df=race_laps_df,
             lap_state=request.lap_state,
         )
         return StrategyResponse(agent="orchestrator", result=_to_dict(result))
