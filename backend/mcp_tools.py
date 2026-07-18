@@ -14,10 +14,10 @@ calls the underlying Python functions directly.
 
 from __future__ import annotations
 
+import functools
 import json
 import logging
 import sys
-from pathlib import Path
 from typing import Any
 
 from fastmcp import FastMCP
@@ -50,6 +50,22 @@ mcp = FastMCP(
 # Private helpers
 # ---------------------------------------------------------------------------
 
+
+class ToolInputError(ValueError):
+    """Raised by a `_normalize_*` helper when an LLM argument can't be resolved.
+
+    Before #442 an unparseable year/lap/driver silently substituted a wrong
+    default (2025 / lap 1 / whichever real driver code happened to share the
+    first three letters), so a garbled argument produced a confident-looking
+    WRONG prediction instead of a visible failure. Every `@mcp.tool` wrapper
+    that normalizes user input is decorated with `_catch_tool_input_error`
+    (defined below, near `_build_lap_state`), which turns this into the
+    tool's own string result -- the same plain-text refusal shape
+    `pit_strategy_agent.py::score_undercut_tool` already uses for a bad rival
+    argument -- instead of a raw traceback or a silent wrong answer.
+    """
+
+
 # Country / alias → canonical GP name mapping (matches the GP_Name column
 # in the featured parquet, which uses circuit / city names).  An LLM with
 # only the schema "Grand Prix name" defaults to the country form
@@ -58,76 +74,124 @@ mcp = FastMCP(
 # external MCP client (Claude Desktop, Cursor) — gets the same handling.
 _GP_ALIASES: dict[str, str] = {
     # Bahrain
-    "bahrain": "Sakhir", "sakhir": "Sakhir",
-    "bahrein": "Sakhir", "baréin": "Sakhir", "barein": "Sakhir",
+    "bahrain": "Sakhir",
+    "sakhir": "Sakhir",
+    "bahrein": "Sakhir",
+    "baréin": "Sakhir",
+    "barein": "Sakhir",
     # Saudi Arabia
-    "jeddah": "Jeddah", "saudi": "Jeddah",
-    "saudi arabia": "Jeddah", "arabia saudita": "Jeddah",
-    "arabia": "Jeddah", "yeda": "Jeddah",
+    "jeddah": "Jeddah",
+    "saudi": "Jeddah",
+    "saudi arabia": "Jeddah",
+    "arabia saudita": "Jeddah",
+    "arabia": "Jeddah",
+    "yeda": "Jeddah",
     # Australia
-    "australia": "Melbourne", "melbourne": "Melbourne",
+    "australia": "Melbourne",
+    "melbourne": "Melbourne",
     # Japan
-    "japan": "Suzuka", "japón": "Suzuka", "japon": "Suzuka",
+    "japan": "Suzuka",
+    "japón": "Suzuka",
+    "japon": "Suzuka",
     "suzuka": "Suzuka",
     # China
-    "china": "Shanghai", "shanghai": "Shanghai",
+    "china": "Shanghai",
+    "shanghai": "Shanghai",
     # Miami
     "miami": "Miami",
     # Imola
-    "imola": "Imola", "emilia": "Imola", "emilia romagna": "Imola",
+    "imola": "Imola",
+    "emilia": "Imola",
+    "emilia romagna": "Imola",
     # Monaco
-    "monaco": "Monaco", "mónaco": "Monaco",
+    "monaco": "Monaco",
+    "mónaco": "Monaco",
     # Canada
-    "canada": "Montréal", "canadá": "Montréal",
-    "montreal": "Montréal", "montréal": "Montréal",
+    "canada": "Montréal",
+    "canadá": "Montréal",
+    "montreal": "Montréal",
+    "montréal": "Montréal",
     # Spain
-    "spain": "Barcelona", "españa": "Barcelona", "espana": "Barcelona",
-    "barcelona": "Barcelona", "cataluña": "Barcelona", "catalunya": "Barcelona",
+    "spain": "Barcelona",
+    "españa": "Barcelona",
+    "espana": "Barcelona",
+    "barcelona": "Barcelona",
+    "cataluña": "Barcelona",
+    "catalunya": "Barcelona",
     # Austria
-    "austria": "Spielberg", "spielberg": "Spielberg",
+    "austria": "Spielberg",
+    "spielberg": "Spielberg",
     "red bull ring": "Spielberg",
     # Britain
-    "britain": "Silverstone", "great britain": "Silverstone",
-    "gran bretaña": "Silverstone", "gran bretana": "Silverstone",
-    "uk": "Silverstone", "reino unido": "Silverstone",
+    "britain": "Silverstone",
+    "great britain": "Silverstone",
+    "gran bretaña": "Silverstone",
+    "gran bretana": "Silverstone",
+    "uk": "Silverstone",
+    "reino unido": "Silverstone",
     "silverstone": "Silverstone",
     # Hungary
-    "hungary": "Budapest", "hungría": "Budapest", "hungria": "Budapest",
+    "hungary": "Budapest",
+    "hungría": "Budapest",
+    "hungria": "Budapest",
     "budapest": "Budapest",
     # Belgium
-    "belgium": "Spa-Francorchamps", "bélgica": "Spa-Francorchamps",
-    "belgica": "Spa-Francorchamps", "spa": "Spa-Francorchamps",
-    "spa-francorchamps": "Spa-Francorchamps", "francorchamps": "Spa-Francorchamps",
+    "belgium": "Spa-Francorchamps",
+    "bélgica": "Spa-Francorchamps",
+    "belgica": "Spa-Francorchamps",
+    "spa": "Spa-Francorchamps",
+    "spa-francorchamps": "Spa-Francorchamps",
+    "francorchamps": "Spa-Francorchamps",
     # Netherlands
-    "netherlands": "Zandvoort", "países bajos": "Zandvoort",
-    "paises bajos": "Zandvoort", "holanda": "Zandvoort",
+    "netherlands": "Zandvoort",
+    "países bajos": "Zandvoort",
+    "paises bajos": "Zandvoort",
+    "holanda": "Zandvoort",
     "zandvoort": "Zandvoort",
     # Italy
-    "italy": "Monza", "italia": "Monza", "monza": "Monza",
+    "italy": "Monza",
+    "italia": "Monza",
+    "monza": "Monza",
     # Azerbaijan
-    "azerbaijan": "Baku", "azerbaiyán": "Baku", "azerbaiyan": "Baku",
-    "baku": "Baku", "bakú": "Baku",
+    "azerbaijan": "Baku",
+    "azerbaiyán": "Baku",
+    "azerbaiyan": "Baku",
+    "baku": "Baku",
+    "bakú": "Baku",
     # Singapore
-    "singapore": "Marina Bay", "singapur": "Marina Bay",
+    "singapore": "Marina Bay",
+    "singapur": "Marina Bay",
     "marina bay": "Marina Bay",
     # United States
-    "united states": "Austin", "austin": "Austin",
-    "cota": "Austin", "estados unidos": "Austin", "usa": "Austin",
+    "united states": "Austin",
+    "austin": "Austin",
+    "cota": "Austin",
+    "estados unidos": "Austin",
+    "usa": "Austin",
     "us gp": "Austin",
     # Mexico
-    "mexico": "Mexico City", "méxico": "Mexico City",
-    "mexico city": "Mexico City", "ciudad de méxico": "Mexico City",
+    "mexico": "Mexico City",
+    "méxico": "Mexico City",
+    "mexico city": "Mexico City",
+    "ciudad de méxico": "Mexico City",
     # Brazil
-    "brazil": "São Paulo", "brasil": "São Paulo",
+    "brazil": "São Paulo",
+    "brasil": "São Paulo",
     "interlagos": "São Paulo",
-    "sao paulo": "São Paulo", "são paulo": "São Paulo",
+    "sao paulo": "São Paulo",
+    "são paulo": "São Paulo",
     # Las Vegas
-    "las vegas": "Las Vegas", "vegas": "Las Vegas",
+    "las vegas": "Las Vegas",
+    "vegas": "Las Vegas",
     # Qatar
-    "qatar": "Lusail", "lusail": "Lusail", "catar": "Lusail",
+    "qatar": "Lusail",
+    "lusail": "Lusail",
+    "catar": "Lusail",
     # Abu Dhabi
-    "abu dhabi": "Yas Island", "yas marina": "Yas Island",
-    "yas island": "Yas Island", "uae": "Yas Island",
+    "abu dhabi": "Yas Island",
+    "yas marina": "Yas Island",
+    "yas island": "Yas Island",
+    "uae": "Yas Island",
 }
 
 
@@ -154,22 +218,66 @@ def _normalize_gp_name(gp: str) -> str:
 # column in the featured parquet, which is the only form the agents
 # expect.
 _DRIVER_CODES: set[str] = {
-    "VER", "PER", "LEC", "SAI", "HAM", "RUS", "ANT", "NOR", "PIA",
-    "ALO", "STR", "GAS", "OCO", "DOO", "COL", "ALB", "SAR", "TSU",
-    "RIC", "LAW", "HAD", "BOT", "ZHO", "HUL", "BOR", "MAG", "BEA",
+    "VER",
+    "PER",
+    "LEC",
+    "SAI",
+    "HAM",
+    "RUS",
+    "ANT",
+    "NOR",
+    "PIA",
+    "ALO",
+    "STR",
+    "GAS",
+    "OCO",
+    "DOO",
+    "COL",
+    "ALB",
+    "SAR",
+    "TSU",
+    "RIC",
+    "LAW",
+    "HAD",
+    "BOT",
+    "ZHO",
+    "HUL",
+    "BOR",
+    "MAG",
+    "BEA",
 }
 
 # Surname (lowercase, no diacritics) → 3-letter code.  Lets an LLM that
 # defaults to natural names ("Verstappen", "Max Verstappen", "leclerc")
 # still hit the agents without us forcing it to memorise codes.
 _DRIVER_SURNAMES: dict[str, str] = {
-    "verstappen": "VER", "perez": "PER", "leclerc": "LEC", "sainz": "SAI",
-    "hamilton": "HAM", "russell": "RUS", "antonelli": "ANT", "norris": "NOR",
-    "piastri": "PIA", "alonso": "ALO", "stroll": "STR", "gasly": "GAS",
-    "ocon": "OCO", "doohan": "DOO", "colapinto": "COL", "albon": "ALB",
-    "sargeant": "SAR", "tsunoda": "TSU", "ricciardo": "RIC", "lawson": "LAW",
-    "hadjar": "HAD", "bottas": "BOT", "zhou": "ZHO", "hulkenberg": "HUL",
-    "bortoleto": "BOR", "magnussen": "MAG", "bearman": "BEA",
+    "verstappen": "VER",
+    "perez": "PER",
+    "leclerc": "LEC",
+    "sainz": "SAI",
+    "hamilton": "HAM",
+    "russell": "RUS",
+    "antonelli": "ANT",
+    "norris": "NOR",
+    "piastri": "PIA",
+    "alonso": "ALO",
+    "stroll": "STR",
+    "gasly": "GAS",
+    "ocon": "OCO",
+    "doohan": "DOO",
+    "colapinto": "COL",
+    "albon": "ALB",
+    "sargeant": "SAR",
+    "tsunoda": "TSU",
+    "ricciardo": "RIC",
+    "lawson": "LAW",
+    "hadjar": "HAD",
+    "bottas": "BOT",
+    "zhou": "ZHO",
+    "hulkenberg": "HUL",
+    "bortoleto": "BOR",
+    "magnussen": "MAG",
+    "bearman": "BEA",
 }
 
 
@@ -178,12 +286,20 @@ def _normalize_driver_code(driver: str) -> str:
 
     Accepts 3-letter codes ("VER", "ver"), surnames ("Verstappen",
     "leclerc") and full names ("Max Verstappen") — the LLM doesn't have
-    to remember the F1 abbreviation system.  Falls back to the input as
-    given so the data layer still surfaces an honest "driver not found"
-    when the user truly typed something unrecognisable.
+    to remember the F1 abbreviation system. Raises :class:`ToolInputError`
+    when nothing matches, instead of guessing.
+
+    The previous fallback took the input's first three letters and matched
+    them against `_DRIVER_CODES` (e.g. "Pereira"[:3] == "PER"), so an LLM
+    typo or an unlisted surname silently resolved to a real but unrelated
+    driver — "Pereira" (nobody on the 2023-2025 grid) became Sergio Perez's
+    code (#442). A driver code that can't be resolved must say so, not guess.
     """
     if not driver:
-        return driver
+        raise ToolInputError(
+            "Driver REFUSED — no driver was provided. "
+            f"Valid codes: {', '.join(sorted(_DRIVER_CODES))}."
+        )
     raw = str(driver).strip()
     upper = raw.upper()
     if upper in _DRIVER_CODES:
@@ -194,35 +310,46 @@ def _normalize_driver_code(driver: str) -> str:
     for token in lower.split():
         if token in _DRIVER_SURNAMES:
             return _DRIVER_SURNAMES[token]
-    if len(upper) >= 3 and upper[:3] in _DRIVER_CODES:
-        return upper[:3]
-    return raw
+    raise ToolInputError(
+        f"Driver REFUSED — {driver!r} is not a recognized 3-letter code or "
+        f"surname. Valid codes: {', '.join(sorted(_DRIVER_CODES))}."
+    )
 
 
 def _normalize_year(year: Any) -> int:
-    """Coerce year to int, defaulting to 2025 when the value is unparseable.
+    """Coerce year to int; raise :class:`ToolInputError` when unparseable.
 
-    The LLM occasionally emits ``"2024"`` (string) instead of ``2024``
-    even though the schema says integer; coercing here keeps the agents
-    from blowing up on the type mismatch.
+    The LLM sometimes emits ``"2024"`` (string) instead of ``2024`` even
+    though the schema says integer, so a simple ``int()`` coercion is still
+    attempted first. Before #442 a genuinely unparseable value (e.g.
+    ``"banana"``) silently became 2025 — a confident, WRONG season for a
+    query the LLM meant to ask about something else entirely.
     """
     try:
         return int(year)
     except (TypeError, ValueError):
-        return 2025
+        raise ToolInputError(
+            f"Year REFUSED — {year!r} is not a valid season year. "
+            "Provide an integer year, e.g. 2023, 2024, or 2025."
+        ) from None
 
 
 def _normalize_lap(lap: Any) -> int:
-    """Coerce lap to int, defaulting to 1 on garbage input.
+    """Coerce lap to int; raise :class:`ToolInputError` when unparseable.
 
-    Range validation lives in the agents (they know how many laps a
-    particular GP has); we only protect against ``"25"`` arriving as a
-    string instead of an int.
+    Range validation still lives in the agents (they know how many laps a
+    particular GP has) — this only protects the ``int()`` coercion itself.
+    Before #442 an unparseable value (e.g. ``"twenty-five"``) silently
+    became lap 1, so a garbled lap argument analysed the wrong point in the
+    race instead of surfacing a visible failure.
     """
     try:
         return int(lap)
     except (TypeError, ValueError):
-        return 1
+        raise ToolInputError(
+            f"Lap REFUSED — {lap!r} is not a valid lap number. "
+            "Provide an integer lap count, e.g. 12."
+        ) from None
 
 
 def _normalize_risk_tolerance(risk: Any) -> float:
@@ -238,6 +365,34 @@ def _normalize_risk_tolerance(risk: Any) -> float:
     return max(0.0, min(1.0, value))
 
 
+def _catch_tool_input_error(fn):
+    """Turn a :class:`ToolInputError` into the tool's own string return value.
+
+    Every tool wrapped with this decorator eventually normalizes gp/driver/
+    lap/year through the `_normalize_*` helpers above. Those helpers now
+    raise instead of silently substituting a wrong value (#442); this
+    wrapper is what turns that raise into a normal-looking tool result — the
+    LLM sees a plain "X is invalid, here are the valid options" string, the
+    same REFUSED shape `pit_strategy_agent.py::score_undercut_tool` already
+    returns for a bad rival argument, instead of a raw traceback.
+
+    Must sit BELOW ``@mcp.tool`` (closer to the function) so FastMCP wraps
+    the already-guarded callable: ``@mcp.tool`` / ``@_catch_tool_input_error``
+    / ``def foo(...)``. ``functools.wraps`` preserves the wrapped function's
+    signature via ``__wrapped__`` so FastMCP's schema introspection still
+    sees the real parameter names and types, not ``(*args, **kwargs)``.
+    """
+
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        try:
+            return fn(*args, **kwargs)
+        except ToolInputError as exc:
+            return str(exc)
+
+    return wrapper
+
+
 def _build_lap_state(gp: str, driver: str, lap: int, year: int = 2025) -> dict[str, Any]:
     """Build a canonical lap_state dict from the featured parquet.
 
@@ -248,6 +403,7 @@ def _build_lap_state(gp: str, driver: str, lap: int, year: int = 2025) -> dict[s
     benefits without having to remember the conversion at the call site.
     """
     from backend.api.v1.endpoints.strategy import get_lap_state
+
     return get_lap_state(
         gp=_normalize_gp_name(gp),
         driver=_normalize_driver_code(driver),
@@ -259,12 +415,14 @@ def _build_lap_state(gp: str, driver: str, lap: int, year: int = 2025) -> dict[s
 def _get_laps_df(year: int = 2025):
     """Return the cached featured DataFrame for the given season."""
     from backend.utils.laps_cache import get_laps_df
+
     return get_laps_df(year)
 
 
 def _serialize(obj: Any) -> dict[str, Any]:
     """Convert an agent output (dataclass / dict) to a plain dict."""
     from backend.utils.serialization import agent_output_to_dict
+
     return agent_output_to_dict(obj)
 
 
@@ -277,7 +435,9 @@ def _format_result(data: dict[str, Any]) -> str:
 # MCP Tools — Agent wrappers
 # ---------------------------------------------------------------------------
 
+
 @mcp.tool
+@_catch_tool_input_error
 def predict_pace(gp: str, driver: str, lap: int, year: int = 2025) -> str:
     """Predict lap time for a driver at a specific lap using the N25 XGBoost model.
 
@@ -292,6 +452,7 @@ def predict_pace(gp: str, driver: str, lap: int, year: int = 2025) -> str:
 
 
 @mcp.tool
+@_catch_tool_input_error
 def predict_tire(gp: str, driver: str, lap: int, year: int = 2025) -> str:
     """Analyse tyre degradation and estimate laps to performance cliff.
 
@@ -308,6 +469,7 @@ def predict_tire(gp: str, driver: str, lap: int, year: int = 2025) -> str:
 
 
 @mcp.tool
+@_catch_tool_input_error
 def predict_situation(gp: str, driver: str, lap: int, year: int = 2025) -> str:
     """Estimate overtake probability and safety car likelihood.
 
@@ -324,6 +486,7 @@ def predict_situation(gp: str, driver: str, lap: int, year: int = 2025) -> str:
 
 
 @mcp.tool
+@_catch_tool_input_error
 def predict_pit(gp: str, driver: str, lap: int, year: int = 2025) -> str:
     """Recommend pit stop strategy — when to pit, which compound, undercut odds.
 
@@ -339,23 +502,47 @@ def predict_pit(gp: str, driver: str, lap: int, year: int = 2025) -> str:
 
 
 @mcp.tool
+@_catch_tool_input_error
 def analyze_radio(gp: str, driver: str, lap: int, year: int = 2025) -> str:
     """Analyse team radio communications for a driver on a specific lap.
 
     Runs the N29 NLP pipeline (RoBERTa sentiment, SetFit intent, BERT NER)
     on available radio transcripts and returns alerts, sentiment, and entities.
     """
+    from backend.api.v1.endpoints.strategy import _get_radio_runner, _rcm_events_for_lap
     from src.agents.radio_agent import RadioMessage, RCMEvent, run_radio_agent_from_state
 
-    base_state = _build_lap_state(gp, driver, lap, year)
-    # Mirror the endpoint pattern: merge radio fields into lap_state
+    norm_gp = _normalize_gp_name(gp)
+    norm_driver = _normalize_driver_code(driver)
+    norm_lap = _normalize_lap(lap)
+    norm_year = _normalize_year(year)
+
+    base_state = _build_lap_state(norm_gp, norm_driver, norm_lap, norm_year)
+    laps_df = _get_laps_df(norm_year)
+
+    # Real radio corpus + Safety Car RCM state, mirroring what the /radio and
+    # /recommend HTTP endpoints already wire in strategy.py, instead of the
+    # empty literals this tool previously hardcoded on every call (#442).
+    # `_get_radio_runner` reads the pre-transcribed JSON cache (no live
+    # Whisper call on this request path — disable_transcription=True);
+    # `_rcm_events_for_lap` replays the stateful SC tracker from lap 1 so a
+    # neutralisation still in force reaches N29 even when this lap's own RCM
+    # window carries no fresh message. Radios are filtered to this driver's
+    # own code — the tool analyses ONE driver's communications, not the
+    # whole grid's.
+    runner = _get_radio_runner(norm_year, norm_gp, laps_df)
+    radios_raw = runner.radios_for_lap(norm_lap)[0] if runner is not None else []
+    radio_msgs = [RadioMessage(**msg) for msg in radios_raw if msg.get("driver") == norm_driver]
+    rcm_events = [
+        RCMEvent(**event) for event in _rcm_events_for_lap(norm_year, norm_gp, laps_df, norm_lap)
+    ]
+
     lap_state = {
         **base_state,
-        "lap": base_state.get("lap_number", lap),
-        "radio_msgs": [],
-        "rcm_events": [],
+        "lap": base_state.get("lap_number", norm_lap),
+        "radio_msgs": radio_msgs,
+        "rcm_events": rcm_events,
     }
-    laps_df = _get_laps_df(year)
     result = run_radio_agent_from_state(lap_state, laps_df)
     return _format_result(_serialize(result))
 
@@ -374,6 +561,7 @@ def query_regulations(question: str) -> str:
 
 
 @mcp.tool
+@_catch_tool_input_error
 def recommend_strategy(
     gp: str,
     driver: str,
@@ -394,11 +582,20 @@ def recommend_strategy(
     lap_state = _build_lap_state(gp, driver, lap, year)
     laps_df = _get_laps_df(year)
 
-    # Mirror the /recommend endpoint exactly
+    # Mirror the /recommend endpoint exactly. pace_delta_s used to be
+    # hardcoded 0.0 (#442), which told N27's overtake scoring "identical pace
+    # to last lap" on every single call regardless of what actually happened;
+    # thread it from lap_state the same way gap_ahead_s already is, using the
+    # per-row Prev_LapTime the producers now carry (#435).
+    driver_state = lap_state.get("driver", {})
+    lap_time_s = driver_state.get("lap_time_s") or 0.0
+    prev_lap_time = driver_state.get("prev_lap_time")
+    pace_delta_s = round(lap_time_s - prev_lap_time, 3) if prev_lap_time else 0.0
+
     race_state = build_race_state(
         lap_state,
-        gap_ahead_s=lap_state.get("driver", {}).get("gap_ahead_s", 2.0),
-        pace_delta_s=0.0,
+        gap_ahead_s=driver_state.get("gap_ahead_s", 2.0),
+        pace_delta_s=pace_delta_s,
         risk_tolerance=_normalize_risk_tolerance(risk_tolerance),
         radio_msgs=None,
         rcm_events=None,
@@ -416,26 +613,31 @@ def recommend_strategy(
 # MCP Tools — Helper / listing tools
 # ---------------------------------------------------------------------------
 
+
 @mcp.tool
+@_catch_tool_input_error
 def list_available_gps(year: int = 2025) -> str:
     """List all Grand Prix events available in the data for a given season."""
     from backend.api.v1.endpoints.strategy import available_gps
+
     return _format_result(available_gps(_normalize_year(year)))
 
 
 @mcp.tool
+@_catch_tool_input_error
 def list_available_drivers(gp: str, year: int = 2025) -> str:
     """List all drivers that participated in a specific Grand Prix."""
     from backend.api.v1.endpoints.strategy import available_drivers
-    return _format_result(
-        available_drivers(_normalize_gp_name(gp), _normalize_year(year))
-    )
+
+    return _format_result(available_drivers(_normalize_gp_name(gp), _normalize_year(year)))
 
 
 @mcp.tool
+@_catch_tool_input_error
 def get_lap_range(gp: str, driver: str, year: int = 2025) -> str:
     """Get the min and max lap numbers available for a driver in a GP."""
     from backend.api.v1.endpoints.strategy import lap_range
+
     return _format_result(
         lap_range(
             _normalize_gp_name(gp),
@@ -464,6 +666,7 @@ def get_lap_range(gp: str, driver: str, year: int = 2025) -> str:
 # all tools (Phase 1 manual + Phase 2 auto) are available under one server.
 
 import httpx as _httpx
+
 
 def _mount_openapi_tools(app: Any | None = None) -> None:
     """Mount auto-generated MCP tools from the FastAPI OpenAPI spec.

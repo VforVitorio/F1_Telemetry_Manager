@@ -235,10 +235,21 @@ def _compute_gap_ahead(lap_state: dict[str, Any]) -> float:
     Mirrors the CLI's derivation at ``scripts/run_simulation_cli.py`` L1354-1358
     but kept inline here because the two copies are short and intentionally
     decoupled.
+
+    ``.get("position", 99)`` used to be a dead default: when RaceStateManager
+    reports an unresolved position it still emits the ``"position"`` KEY with a
+    ``None`` VALUE, so the fallback never fired and ``our_pos - 1`` crashed with
+    a TypeError instead of degrading gracefully. An explicit None check makes
+    "unknown position" mean "no known car ahead" rather than a hidden crash
+    risk (#465). In practice this lap never reaches here anyway --
+    ``_lap_skip_reason`` below already refuses to build a RaceState when
+    position is None -- but the guard keeps this helper safe standalone too.
     """
     driver_st = lap_state.get("driver", {})
     rivals = lap_state.get("rivals", [])
-    our_pos = driver_st.get("position", 99)
+    our_pos = driver_st.get("position")
+    if our_pos is None:
+        return 0.0
     car_ahead = next((r for r in rivals if r.get("position") == our_pos - 1), None)
     if not car_ahead:
         return 0.0
@@ -594,9 +605,17 @@ def _accumulate(
     # confidence so best/worst still track something meaningful.
     score = decision.scenario_scores.get(decision.action, decision.confidence)
     if score > state.best_decision["score"]:
-        state.best_decision = {"lap": decision.lap_number, "score": float(score), "action": decision.action}
+        state.best_decision = {
+            "lap": decision.lap_number,
+            "score": float(score),
+            "action": decision.action,
+        }
     if score < state.worst_decision["score"]:
-        state.worst_decision = {"lap": decision.lap_number, "score": float(score), "action": decision.action}
+        state.worst_decision = {
+            "lap": decision.lap_number,
+            "score": float(score),
+            "action": decision.action,
+        }
 
     if isinstance(result, dict):
         if result.get("_pit_out") is not None:
@@ -619,9 +638,35 @@ def _top_tokens(blob: list[str], top_n: int = 10) -> dict[str, int]:
     """
     from collections import Counter
 
-    stop = {"the", "a", "an", "of", "to", "in", "on", "is", "and", "for",
-            "with", "this", "that", "it", "as", "by", "at", "be", "or",
-            "are", "was", "were", "but", "not", "our", "we", "you"}
+    stop = {
+        "the",
+        "a",
+        "an",
+        "of",
+        "to",
+        "in",
+        "on",
+        "is",
+        "and",
+        "for",
+        "with",
+        "this",
+        "that",
+        "it",
+        "as",
+        "by",
+        "at",
+        "be",
+        "or",
+        "are",
+        "was",
+        "were",
+        "but",
+        "not",
+        "our",
+        "we",
+        "you",
+    }
     counter: Counter[str] = Counter()
     for line in blob:
         for tok in line.lower().split():
@@ -658,8 +703,16 @@ def _finalize_summary(
         "max": max(gaps) if gaps else 0.0,
     }
 
-    best = state.best_decision if state.best_decision["action"] else {"lap": 0, "score": 0.0, "action": ""}
-    worst = state.worst_decision if state.worst_decision["action"] else {"lap": 0, "score": 0.0, "action": ""}
+    best = (
+        state.best_decision
+        if state.best_decision["action"]
+        else {"lap": 0, "score": 0.0, "action": ""}
+    )
+    worst = (
+        state.worst_decision
+        if state.worst_decision["action"]
+        else {"lap": 0, "score": 0.0, "action": ""}
+    )
 
     return RunSummary(
         status={"ok_laps": state.ok_laps, "error_laps": state.error_laps},

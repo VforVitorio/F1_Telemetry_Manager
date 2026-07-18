@@ -79,14 +79,33 @@ def build_race_state(
 
     if rival:
         gap_ahead_s, pace_delta_s = _targeting_against_rival(
-            lap_state, rival, gap_ahead_s, pace_delta_s,
+            lap_state,
+            rival,
+            gap_ahead_s,
+            pace_delta_s,
+        )
+
+    # `.get("position", 10)` was a dead default: RaceStateManager (and, since
+    # #465, this same API's own get_lap_state) report an unresolved position by
+    # keeping the "position" KEY with a None VALUE, and dict.get's default only
+    # ever fires when the key itself is MISSING -- so an incomplete/out-lap
+    # silently built a RaceState with position=None instead of the intended
+    # fallback of 10. RaceState.position is a required, non-optional int
+    # (`src/agents/strategy_orchestrator.py`, out of scope for this module), so
+    # an unresolved position is surfaced here as an explicit, readable failure
+    # instead of a None quietly reaching a field that must never hold one (#465).
+    position = drv.get("position")
+    if position is None:
+        raise ValueError(
+            "Cannot build RaceState: driver position is unknown for this lap "
+            "(likely an incomplete or out-lap). Choose a different lap."
         )
 
     return RaceState(
         driver=drv.get("driver", "UNK"),
         lap=lap_state.get("lap_number", 1),
         total_laps=meta.get("total_laps", 57),
-        position=drv.get("position", 10),
+        position=position,
         compound=drv.get("compound", "MEDIUM"),
         tyre_life=drv.get("tyre_life", 1),
         gap_ahead_s=float(gap_ahead_s),

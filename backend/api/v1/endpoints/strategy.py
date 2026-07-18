@@ -347,6 +347,40 @@ def _get_race_laps_df(year: int, gp: str) -> Optional[pd.DataFrame]:
     return df
 
 
+def _safe(val):
+    """Convert numpy types to Python native; NaN -> 0.
+
+    Only for fields where 0 is a legitimate stand-in for "no reading" and is
+    never confused with a real, distinct value or used as a lookup key. See
+    `_safe_none` below for the fields where that confusion is exactly the bug.
+    """
+    if pd.isna(val):
+        return 0
+    try:
+        return val.item()
+    except AttributeError:
+        return val
+
+
+def _safe_none(val):
+    """Convert numpy types to Python native; NaN -> None.
+
+    Mirrors the reference contract in `src/simulation/race_state_manager.py`:
+    an absent reading stays absent instead of becoming a searchable sentinel.
+    Used for TyreLife, weather (AirTemp/TrackTemp/Humidity), SpeedST, and the
+    driver's own Position -- fields where 0 is already a real, distinct value
+    (a fresh tyre has TyreLife=0; the race leader has Position=1), so coercing
+    an absent reading to 0 collides with a genuine reading downstream (a
+    car-ahead lookup keyed on `position == 0`, the #428/#430 bug class) (#465).
+    """
+    if pd.isna(val):
+        return None
+    try:
+        return val.item()
+    except AttributeError:
+        return val
+
+
 @router.get("/lap-state")
 def get_lap_state(
     gp: str,
@@ -387,15 +421,6 @@ def get_lap_state(
 
     r = row.iloc[0]
 
-    def _safe(val):
-        """Convert numpy types to Python native; NaN → 0."""
-        if pd.isna(val):
-            return 0
-        try:
-            return val.item()
-        except AttributeError:
-            return val
-
     cum_times = _elapsed_times_at_lap(gp_df, lap)
     driver_cum = cum_times.get(driver, 0.0)
 
@@ -404,9 +429,13 @@ def get_lap_state(
     lap_snapshot["_cum"] = lap_snapshot["Driver"].map(cum_times)
     lap_snapshot = lap_snapshot.sort_values("Position")
 
-    drv_pos = int(_safe(r.get("Position", 0)))
+    # Position stays None on an unresolved lap (grid formation, incomplete lap)
+    # instead of a coerced 0 -- a value that is ALSO a real position and a real
+    # lookup key downstream (#465, same collision class as the #428/#430 rival
+    # fix a few lines below).
+    drv_pos = _safe_none(r.get("Position"))
     gap_ahead_s = 0.0
-    if drv_pos > 1:
+    if drv_pos is not None and drv_pos > 1:
         car_ahead = lap_snapshot[lap_snapshot["Position"] == drv_pos - 1]
         if not car_ahead.empty:
             gap_ahead_s = abs(float(driver_cum - car_ahead.iloc[0]["_cum"]))
@@ -416,19 +445,26 @@ def get_lap_state(
         "team": str(r.get("Team", "")),
         "lap_number": int(_safe(r.get("LapNumber", lap))),
         "lap_time_s": float(_safe(r.get("LapTime_s", 0))),
+        # The featured parquet's own previous-lap time (N04's Prev_LapTime
+        # column), NOT this lap's own lap_time_s reused as a stand-in -- that
+        # self-referential default fed the pace agent's own most recent
+        # prediction back in as "previous" and made pace self-fulfilling (#435).
+        "prev_lap_time": _prev_lap_time_for_row(r, gp_df, driver),
         "position": drv_pos,
         "compound": str(r.get("Compound", "")),
         "compound_id": int(_safe(r.get("CompoundID", 0))),
-        "tyre_life": int(_safe(r.get("TyreLife", 0))),
+        "tyre_life": _safe_none(r.get("TyreLife")),
         "stint": int(_safe(r.get("Stint", 1))),
         "stint_baseline_tyre_life": _stint_baseline_tyre_life(
-            gp_df, driver, r.get("Stint"),
+            gp_df,
+            driver,
+            r.get("Stint"),
         ),
         "fresh_tyre": bool(r.get("FreshTyre", False)),
         "speed_i1": float(_safe(r.get("SpeedI1", 0))),
         "speed_i2": float(_safe(r.get("SpeedI2", 0))),
         "speed_fl": float(_safe(r.get("SpeedFL", 0))),
-        "speed_st": float(_safe(r.get("SpeedST", 0))),
+        "speed_st": _safe_none(r.get("SpeedST")),
         "fuel_load": float(_safe(r.get("FuelLoad", 0))),
         "driver_number": int(_safe(r.get("DriverNumber", 0))),
         "sector1_s": float(_safe(r.get("Sector1_s", 0))),
@@ -470,21 +506,23 @@ def get_lap_state(
         interval_to_driver = None
         if pd.notna(rival_cum) and driver in cum_times and pd.notna(driver_cum):
             interval_to_driver = round(float(rival_cum) - float(driver_cum), 3)
-        rivals.append({
-            "driver": str(rr.get("Driver", "")),
-            "team": str(rr.get("Team", "")),
-            "position": rival_pos,
-            "lap_time_s": float(_safe(rr.get("LapTime_s", 0))),
-            "compound": str(rr.get("Compound", "")),
-            "tyre_life": int(_safe(rr.get("TyreLife", 0))),
-            "gap_ahead_s": round(rival_gap, 3),
-            "interval_to_driver_s": interval_to_driver,
-        })
+        rivals.append(
+            {
+                "driver": str(rr.get("Driver", "")),
+                "team": str(rr.get("Team", "")),
+                "position": rival_pos,
+                "lap_time_s": float(_safe(rr.get("LapTime_s", 0))),
+                "compound": str(rr.get("Compound", "")),
+                "tyre_life": _safe_none(rr.get("TyreLife")),
+                "gap_ahead_s": round(rival_gap, 3),
+                "interval_to_driver_s": interval_to_driver,
+            }
+        )
 
     weather = {
-        "air_temp": float(_safe(r.get("AirTemp", 25))),
-        "track_temp": float(_safe(r.get("TrackTemp", 40))),
-        "humidity": float(_safe(r.get("Humidity", 50))),
+        "air_temp": _safe_none(r.get("AirTemp")),
+        "track_temp": _safe_none(r.get("TrackTemp")),
+        "humidity": _safe_none(r.get("Humidity")),
         "rainfall": int(_safe(r.get("Rainfall", 0))),
     }
 
@@ -501,15 +539,21 @@ def get_lap_state(
             "driver": driver,
             "team": driver_dict["team"],
             "total_laps": total_laps,
+            "track_temp_start": _session_track_temp_start(gp_df),
         },
     }
+
 
 # ---------------------------------------------------------------------------
 # /pace — N25 XGBoost lap-time prediction + bootstrap CI
 # ---------------------------------------------------------------------------
 
 
-@router.post("/pace", response_model=StrategyResponse, dependencies=[Depends(rate_limit("pace", capacity=20, per_minute=60))])
+@router.post(
+    "/pace",
+    response_model=StrategyResponse,
+    dependencies=[Depends(rate_limit("pace", capacity=20, per_minute=60))],
+)
 def predict_pace(request: PaceRequest):
     """Run the Pace Agent (N25) for a single lap."""
     try:
@@ -530,7 +574,9 @@ def predict_pace(request: PaceRequest):
 # ---------------------------------------------------------------------------
 
 
-@router.post("/pace-range", dependencies=[Depends(rate_limit("pace-range", capacity=5, per_minute=10))])
+@router.post(
+    "/pace-range", dependencies=[Depends(rate_limit("pace-range", capacity=5, per_minute=10))]
+)
 def predict_pace_range(request: PaceRangeRequest):
     """Run Pace Agent across a lap range and return actual vs predicted."""
 
@@ -549,8 +595,7 @@ def predict_pace_range(request: PaceRangeRequest):
         raise HTTPException(404, detail=f"Driver '{request.driver}' not found")
 
     drv_df = drv_df[
-        (drv_df["LapNumber"] >= request.lap_start)
-        & (drv_df["LapNumber"] <= request.lap_end)
+        (drv_df["LapNumber"] >= request.lap_start) & (drv_df["LapNumber"] <= request.lap_end)
     ]
 
     total_laps = int(gp_df["LapNumber"].max())
@@ -563,12 +608,17 @@ def predict_pace_range(request: PaceRangeRequest):
         # Skip laps without a valid previous lap time (lap 1 of each stint)
         prev_lt = row.get("Prev_LapTime")
         if pd.isna(prev_lt) or (prev_lt is not None and prev_lt < 60):
-            results.append({
-                "lap": lap_num, "actual": actual,
-                "pred": None, "ci_p10": None, "ci_p90": None,
-                "compound": str(row.get("Compound", "")),
-                "stint": int(row.get("Stint", 1)),
-            })
+            results.append(
+                {
+                    "lap": lap_num,
+                    "actual": actual,
+                    "pred": None,
+                    "ci_p10": None,
+                    "ci_p90": None,
+                    "compound": str(row.get("Compound", "")),
+                    "stint": int(row.get("Stint", 1)),
+                }
+            )
             continue
 
         # Build a minimal lap_state for this row
@@ -576,19 +626,29 @@ def predict_pace_range(request: PaceRangeRequest):
 
         try:
             out = run_pace_agent_from_state(lap_state)
-            results.append({
-                "lap": lap_num, "actual": actual,
-                "pred": out.lap_time_pred, "ci_p10": out.ci_p10, "ci_p90": out.ci_p90,
-                "compound": str(row.get("Compound", "")),
-                "stint": int(row.get("Stint", 1)),
-            })
+            results.append(
+                {
+                    "lap": lap_num,
+                    "actual": actual,
+                    "pred": out.lap_time_pred,
+                    "ci_p10": out.ci_p10,
+                    "ci_p90": out.ci_p90,
+                    "compound": str(row.get("Compound", "")),
+                    "stint": int(row.get("Stint", 1)),
+                }
+            )
         except Exception:
-            results.append({
-                "lap": lap_num, "actual": actual,
-                "pred": None, "ci_p10": None, "ci_p90": None,
-                "compound": str(row.get("Compound", "")),
-                "stint": int(row.get("Stint", 1)),
-            })
+            results.append(
+                {
+                    "lap": lap_num,
+                    "actual": actual,
+                    "pred": None,
+                    "ci_p10": None,
+                    "ci_p90": None,
+                    "compound": str(row.get("Compound", "")),
+                    "stint": int(row.get("Stint", 1)),
+                }
+            )
 
     return {"predictions": results, "count": len(results)}
 
@@ -607,11 +667,17 @@ def _elapsed_times_at_lap(gp_df, lap: int):
     Falls back to the old sum, loudly, if ``Time_s`` is absent. The loader restores it
     from the raw per-race parquet (#447), so absence means that restoration failed and
     the caller should know the gaps are degraded rather than silently trust them.
+
+    The all-NaN case is checked explicitly, not just column presence: a GP whose raw
+    parquet lacks Time (or failed the restore silently) still gets a Time_s COLUMN from
+    the merge, filled entirely with NaN, and ``"Time_s" not in gp_df.columns`` passes
+    right over that -- the exact "default only fires when the KEY is missing, never when
+    the VALUE is" bug class (#486).
     """
-    if "Time_s" not in gp_df.columns:
+    if "Time_s" not in gp_df.columns or not gp_df["Time_s"].notna().any():
         logger.warning(
-            "Time_s absent from the laps frame: falling back to cumulative LapTime_s "
-            "sums, which understate gaps wherever laps were dropped (#437/#447)"
+            "Time_s absent or entirely NaN in the laps frame: falling back to cumulative "
+            "LapTime_s sums, which understate gaps wherever laps were dropped (#437/#447)"
         )
         laps_up_to = gp_df[gp_df["LapNumber"] <= lap]
         return laps_up_to.sort_values(["Driver", "LapNumber"]).groupby("Driver")["LapTime_s"].sum()
@@ -646,8 +712,64 @@ def _stint_baseline_tyre_life(gp_df, driver: str, stint) -> Optional[int]:
     return int(tyre_life.min())
 
 
+def _session_track_temp_start(gp_df) -> Optional[float]:
+    """The session's first-sample TrackTemp for this GP, or None if unavailable.
+
+    N14 trains ``track_temp_delta = track_temp - track_temp_start`` as its 5th most
+    important feature (~6% gain). Its consumer (`race_situation_agent.py`) defaults
+    `track_temp_start` to the CURRENT lap's track_temp whenever this key is absent
+    from `session_meta`, which zeroes the delta on every lap of every race (#486).
+    `RaceStateManager` derives the equivalent value from a dedicated weather_df; the
+    API path only ever loads the laps frame, so the earliest chronological non-NaN
+    TrackTemp reading for this GP is the same session-opening value.
+    """
+    if "TrackTemp" not in gp_df.columns:
+        return None
+    ordered = gp_df.sort_values("LapNumber")["TrackTemp"].dropna()
+    if ordered.empty:
+        return None
+    return float(ordered.iloc[0])
+
+
+def _prev_lap_time_for_row(row, gp_df, driver: str) -> Optional[float]:
+    """This row's previous-lap time in seconds, or None when unavailable.
+
+    Prefers the featured parquet's own `Prev_LapTime` column (N04's pre-computed
+    previous-lap-time feature) when present. The raw per-race fallback frame
+    (`_get_race_laps_df`, serving Safety Car / pit / out laps the featured parquet
+    drops, #447) carries no such column, so it derives the value from the SAME
+    driver's `lap_number - 1` row instead. Missing either way -> None, never the
+    CURRENT lap's own time: that self-referential default is #435 -- it fed the
+    pace agent's own most recent prediction back in as "previous" and made pace
+    self-fulfilling.
+    """
+
+    def _to_seconds(val):
+        """Accept either a raw seconds float or a timedelta-like value."""
+        if pd.isna(val):
+            return None
+        if hasattr(val, "total_seconds"):
+            return float(val.total_seconds())
+        try:
+            return float(val)
+        except (TypeError, ValueError):
+            return None
+
+    if "Prev_LapTime" in row.index:
+        return _to_seconds(row.get("Prev_LapTime"))
+
+    lap_number = row.get("LapNumber")
+    if pd.isna(lap_number):
+        return None
+    prior = gp_df[(gp_df["Driver"] == driver) & (gp_df["LapNumber"] == int(lap_number) - 1)]
+    if prior.empty:
+        return None
+    return _to_seconds(prior.iloc[0].get("LapTime_s"))
+
+
 def _build_lap_state_from_row(row, gp_df, gp: str, year: int, total_laps: int) -> dict:
     """Build the canonical lap_state dict from a single parquet row."""
+
     def _s(val, default=0):
         if pd.isna(val):
             return default
@@ -657,20 +779,24 @@ def _build_lap_state_from_row(row, gp_df, gp: str, year: int, total_laps: int) -
             return val
 
     lap = int(row["LapNumber"])
+    driver_code = str(row.get("Driver", ""))
     return {
         "lap_number": lap,
         "driver": {
-            "driver": str(row.get("Driver", "")),
+            "driver": driver_code,
             "team": str(row.get("Team", "")),
             "lap_number": lap,
             "lap_time_s": float(_s(row.get("LapTime_s", 0))),
+            "prev_lap_time": _prev_lap_time_for_row(row, gp_df, driver_code),
             "position": int(_s(row.get("Position", 10))),
             "compound": str(row.get("Compound", "")),
             "compound_id": int(_s(row.get("CompoundID", 0))),
             "tyre_life": int(_s(row.get("TyreLife", 0))),
             "stint": int(_s(row.get("Stint", 1))),
             "stint_baseline_tyre_life": _stint_baseline_tyre_life(
-                gp_df, str(row.get("Driver", "")), row.get("Stint"),
+                gp_df,
+                driver_code,
+                row.get("Stint"),
             ),
             "fresh_tyre": bool(row.get("FreshTyre", False)),
             "speed_i1": float(_s(row.get("SpeedI1", 0))),
@@ -691,10 +817,12 @@ def _build_lap_state_from_row(row, gp_df, gp: str, year: int, total_laps: int) -
             "rainfall": int(_s(row.get("Rainfall", 0))),
         },
         "session_meta": {
-            "gp_name": gp, "year": year,
-            "driver": str(row.get("Driver", "")),
+            "gp_name": gp,
+            "year": year,
+            "driver": driver_code,
             "team": str(row.get("Team", "")),
             "total_laps": total_laps,
+            "track_temp_start": _session_track_temp_start(gp_df),
         },
     }
 
@@ -704,7 +832,9 @@ def _build_lap_state_from_row(row, gp_df, gp: str, year: int, total_laps: int) -
 # ---------------------------------------------------------------------------
 
 
-@router.post("/tire-range", dependencies=[Depends(rate_limit("tire-range", capacity=5, per_minute=10))])
+@router.post(
+    "/tire-range", dependencies=[Depends(rate_limit("tire-range", capacity=5, per_minute=10))]
+)
 def predict_tire_range(
     request: PaceRangeRequest,
     laps_df: pd.DataFrame = Depends(_require_laps_df),
@@ -828,7 +958,11 @@ def predict_tire_range(
 # ---------------------------------------------------------------------------
 
 
-@router.post("/tire", response_model=StrategyResponse, dependencies=[Depends(rate_limit("tire", capacity=20, per_minute=60))])
+@router.post(
+    "/tire",
+    response_model=StrategyResponse,
+    dependencies=[Depends(rate_limit("tire", capacity=20, per_minute=60))],
+)
 def predict_tire(
     request: TireRequest,
     laps_df: pd.DataFrame = Depends(_require_laps_df),
@@ -854,7 +988,11 @@ def predict_tire(
 # ---------------------------------------------------------------------------
 
 
-@router.post("/situation", response_model=StrategyResponse, dependencies=[Depends(rate_limit("situation", capacity=20, per_minute=60))])
+@router.post(
+    "/situation",
+    response_model=StrategyResponse,
+    dependencies=[Depends(rate_limit("situation", capacity=20, per_minute=60))],
+)
 def predict_situation(
     request: SituationRequest,
     laps_df: pd.DataFrame = Depends(_require_laps_df),
@@ -880,7 +1018,11 @@ def predict_situation(
 # ---------------------------------------------------------------------------
 
 
-@router.post("/pit", response_model=StrategyResponse, dependencies=[Depends(rate_limit("pit", capacity=20, per_minute=60))])
+@router.post(
+    "/pit",
+    response_model=StrategyResponse,
+    dependencies=[Depends(rate_limit("pit", capacity=20, per_minute=60))],
+)
 def predict_pit(
     request: PitRequest,
     laps_df: pd.DataFrame = Depends(_require_laps_df),
@@ -906,7 +1048,11 @@ def predict_pit(
 # ---------------------------------------------------------------------------
 
 
-@router.post("/radio", response_model=StrategyResponse, dependencies=[Depends(rate_limit("radio", capacity=20, per_minute=60))])
+@router.post(
+    "/radio",
+    response_model=StrategyResponse,
+    dependencies=[Depends(rate_limit("radio", capacity=20, per_minute=60))],
+)
 def analyze_radio(
     request: RadioRequest,
     laps_df: pd.DataFrame = Depends(_require_laps_df),
@@ -946,7 +1092,11 @@ def analyze_radio(
 # ---------------------------------------------------------------------------
 
 
-@router.post("/rag", response_model=StrategyResponse, dependencies=[Depends(rate_limit("rag", capacity=5, per_minute=10))])
+@router.post(
+    "/rag",
+    response_model=StrategyResponse,
+    dependencies=[Depends(rate_limit("rag", capacity=5, per_minute=10))],
+)
 def query_rag(request: RagRequest):
     """Run the RAG Agent (N30) to answer a regulation question."""
     try:
@@ -1006,7 +1156,9 @@ def _get_radio_runner(year: int, gp: str, laps_df: pd.DataFrame):
     return runner
 
 
-def _rcm_events_for_lap(year: int, gp: str, laps_df: pd.DataFrame, lap: int) -> List[Dict[str, Any]]:
+def _rcm_events_for_lap(
+    year: int, gp: str, laps_df: pd.DataFrame, lap: int
+) -> List[Dict[str, Any]]:
     """RCM events active at *lap*, replaying the stateful SC tracker from lap 1.
 
     Returns the lap's own RCM rows plus a synthetic SAFETY CAR DEPLOYED when a
@@ -1035,7 +1187,11 @@ def _rcm_events_for_lap(year: int, gp: str, laps_df: pd.DataFrame, lap: int) -> 
 # ---------------------------------------------------------------------------
 
 
-@router.post("/recommend", response_model=StrategyResponse, dependencies=[Depends(rate_limit("recommend", capacity=5, per_minute=10))])
+@router.post(
+    "/recommend",
+    response_model=StrategyResponse,
+    dependencies=[Depends(rate_limit("recommend", capacity=5, per_minute=10))],
+)
 def recommend_strategy(
     request: RecommendRequest,
     laps_df: pd.DataFrame = Depends(_require_laps_df),
@@ -1193,12 +1349,14 @@ def radio_laps(gp: str, year: int = 2025, driver: Optional[str] = None):
         for _, row in grp.sort_values("lap_number").iterrows():
             audio_key = str(row.get("audio_path", "")).replace("\\", "/")
             tx = transcripts.get(audio_key, {})
-            laps_data.append({
-                "lap": int(row["lap_number"]),
-                "text": tx.get("text", ""),
-                "has_transcript": bool(tx.get("text")),
-                "audio_path": audio_key,
-            })
+            laps_data.append(
+                {
+                    "lap": int(row["lap_number"]),
+                    "text": tx.get("text", ""),
+                    "has_transcript": bool(tx.get("text")),
+                    "audio_path": audio_key,
+                }
+            )
         result.append({"driver": code, "driver_number": int(drv_num), "laps": laps_data})
 
     result.sort(key=lambda d: d["driver"])
@@ -1244,13 +1402,15 @@ def radio_transcript(gp: str, driver: str, lap: int, year: int = 2025):
     for _, row in rows.iterrows():
         audio_key = str(row.get("audio_path", "")).replace("\\", "/")
         tx = transcripts.get(audio_key, {})
-        results.append({
-            "driver": driver,
-            "lap": lap,
-            "text": tx.get("text", "[no transcript available]"),
-            "duration_s": tx.get("duration_s"),
-            "audio_path": audio_key,
-        })
+        results.append(
+            {
+                "driver": driver,
+                "lap": lap,
+                "text": tx.get("text", "[no transcript available]"),
+                "duration_s": tx.get("duration_s"),
+                "audio_path": audio_key,
+            }
+        )
 
     return {"messages": results}
 
