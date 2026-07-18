@@ -732,11 +732,17 @@ def predict_tire_range(
     # invoke the LLM (slow) and leaves the model in MC-train mode, which corrupts
     # the eval-mode prediction scale — the manual setup keeps the forward clean.
     team = str(drv_df.iloc[0].get("Team", "")) if not drv_df.empty else ""
-    agent.laps_df = laps_df.copy()
-    lt_col = "LapTime_s" if "LapTime_s" in laps_df.columns else "LapTime"
-    lap_times = pd.to_numeric(laps_df[lt_col], errors="coerce").dropna()
-    if "TrackStatus" in laps_df.columns:
-        clean_mask = laps_df["TrackStatus"].astype(str) == "1"
+    # Scope the agent to THIS Grand Prix, not the whole season. `laps_df` from the
+    # dependency holds all 24 races, and `_get_driver_stint` matches on Driver +
+    # Compound + TyreLife; without the GP scope a MEDIUM stint at this circuit also
+    # matches every other race's MEDIUM stint, so the TCN window mixed 8 GPs and read a
+    # later race's lap as "current". `gp_df` is the same single-race frame `run_lap`
+    # passes the agents via `_scope_laps_to_gp` (#429/#480).
+    agent.laps_df = gp_df.copy()
+    lt_col = "LapTime_s" if "LapTime_s" in gp_df.columns else "LapTime"
+    lap_times = pd.to_numeric(gp_df[lt_col], errors="coerce").dropna()
+    if "TrackStatus" in gp_df.columns:
+        clean_mask = gp_df["TrackStatus"].astype(str) == "1"
         clean_times = lap_times[clean_mask] if clean_mask.sum() > 0 else lap_times
     else:
         clean_times = lap_times
@@ -772,6 +778,13 @@ def predict_tire_range(
                 if compound.startswith("C")
                 else _compound_name_to_id(compound, request.gp, request.year)
             )
+            # Feed the same stint/lap scope keys run_from_state sets, so the TCN window
+            # is this driver's current stint up to this lap, not every stint on the
+            # compound and not future laps (#449/#485). Set per lap since the loop walks
+            # the stint forward.
+            if not pd.isna(row.get("Stint")):
+                agent.session_meta[f"{request.driver}_stint"] = int(row["Stint"])
+            agent.session_meta["current_lap"] = lap
             stint = agent._get_driver_stint(request.driver, tyre_life)
             if stint is not None and compound_id in agent.bundles:
                 tensor = agent._build_stint_tensor(stint, compound_id, agent.session_meta)
