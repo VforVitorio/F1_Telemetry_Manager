@@ -264,16 +264,72 @@ def _driver2_gap(lap_state: dict[str, Any], driver2: Optional[str]) -> Optional[
 # ---------------------------------------------------------------------------
 
 
+def _build_rcm_feed(year: int, gp: str, laps_df: pd.DataFrame):
+    """Build the (RadioPipelineRunner, RaceControlStateTracker) pair for the SC override.
+
+    RCM only: ``disable_transcription`` keeps Whisper out of the streaming path, since the
+    Safety Car override reads the pre-parsed rcm.parquet, not radio transcripts. Returns
+    ``(None, None)`` when the corpus is unavailable, so the caller degrades to no RCM
+    rather than failing the stream (the pre-#459 behaviour).
+    """
+    try:
+        from src.nlp.radio_runner import RadioPipelineRunner
+        from src.nlp.rcm_state import RaceControlStateTracker
+    except Exception as exc:  # noqa: BLE001 - radio deps optional; degrade to no RCM
+        logger.warning("Radio/RCM deps unavailable (%s): SSE runs without the SC override", exc)
+        return None, None
+    try:
+        runner = RadioPipelineRunner(
+            year=year,
+            gp_name=gp,
+            laps_df=laps_df,
+            data_root=_data_root(),
+            disable_transcription=True,
+        )
+    except Exception as exc:  # noqa: BLE001 - corpus optional; degrade to no RCM
+        logger.warning("Radio/RCM corpus unavailable for %s %d: %s", gp, year, exc)
+        return None, None
+    return runner, RaceControlStateTracker()
+
+
+def _rcm_events_for_lap(runner, tracker, lap: int) -> list[dict]:
+    """RCM events in force at *lap*, feeding the stateful tracker one lap forward.
+
+    Appends a synthetic SAFETY CAR DEPLOYED when a neutralisation is still in force but
+    the lap carried no fresh message (the tracker owns that rule; do not re-derive it
+    from TrackStatus here). Empty list when the corpus is missing.
+    """
+    if runner is None or tracker is None:
+        return []
+    try:
+        _radios, rcm = runner.radios_for_lap(lap)
+    except Exception as exc:  # noqa: BLE001 - a bad lap just means no RCM this lap
+        logger.debug("radios_for_lap(%d) failed: %s", lap, exc)
+        return []
+    tracker.ingest(lap, rcm)
+    events = list(rcm)
+    if tracker.should_inject(lap):
+        events.append(tracker.synthetic_event())
+    return events
+
+
 def _local_build_race_state(
     lap_state: dict[str, Any],
     prev_lap_time: float,
     risk_tolerance: float,
+    rcm_events: list[dict] | None = None,
 ) -> RaceState:
     """Thin wrapper over the shared ``build_race_state`` helper.
 
     Computes ``gap_ahead_s`` from the rivals list and ``pace_delta_s`` against
     the previous lap's time so downstream agents get realistic inputs (the
     shared helper only handles static ``lap_state`` fields).
+
+    ``rcm_events`` carries the lap's Race Control messages so N27 can see a
+    deployed Safety Car. Without it the stream returned STAY_OUT on every SC lap
+    even with the bunching plain in the lap times, because the RaceState reached
+    the agents with an empty ``rcm_events`` (#459). ``build_race_state`` already
+    accepts the argument; the simulator simply never passed it.
     """
     driver_st = lap_state.get("driver", {})
     cur_lap_time = driver_st.get("lap_time_s") or 0.0
@@ -283,6 +339,7 @@ def _local_build_race_state(
         gap_ahead_s=_compute_gap_ahead(lap_state),
         pace_delta_s=pace_delta,
         risk_tolerance=risk_tolerance,
+        rcm_events=rcm_events,
     )
 
 
@@ -664,13 +721,24 @@ def simulate_race(config: SimConfig) -> Generator[dict[str, Any], None, None]:
     laps_processed = 0
     sim_start = time.monotonic()
 
+    # Race Control feed for the Safety Car override (#459). RCM only, no Whisper: the
+    # override needs the pre-parsed rcm.parquet, not radio transcription, and this is a
+    # streaming path. A stateful tracker is fed each lap in order (O(n), unlike the
+    # endpoint's replay-from-lap-1 helper) and re-asserts an active SC on laps whose RCM
+    # window carries no fresh deploy message, mirroring the arcade's SimConnector. A
+    # missing corpus degrades to no RCM, exactly the pre-fix behaviour.
+    rcm_runner, sc_tracker = _build_rcm_feed(config.year, config.gp, laps_df)
+
     for lap_state in engine.replay():
         lap_num = lap_state.get("lap_number", 0)
         if lap_num < lap_start or lap_num > lap_end:
             continue
 
         try:
-            race_state = _local_build_race_state(lap_state, prev_lap_time, config.risk_tolerance)
+            rcm_events = _rcm_events_for_lap(rcm_runner, sc_tracker, lap_num)
+            race_state = _local_build_race_state(
+                lap_state, prev_lap_time, config.risk_tolerance, rcm_events=rcm_events
+            )
             if config.no_llm:
                 result = _run_no_llm_path(race_state, lap_state, laps_df)
             else:
