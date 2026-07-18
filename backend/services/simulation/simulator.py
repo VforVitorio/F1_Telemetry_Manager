@@ -259,6 +259,34 @@ def _driver2_gap(lap_state: dict[str, Any], driver2: Optional[str]) -> Optional[
     return None
 
 
+def _lap_skip_reason(driver_st: dict[str, Any]) -> Optional[str]:
+    """Reason this lap must skip the pipeline, or None when it is safe to build.
+
+    Mirrors the two guards the CLI PMV applies before building a RaceState
+    (scripts/run_simulation_cli.py L1551-1584):
+
+    - DNF: ``RaceStateManager.get_driver_state`` returns an empty dict once the
+      driver retires, so an empty ``driver`` state means the car is out.
+    - Incomplete lap: FastF1 lands a NaN position / tyre_life / lap_time on some
+      opening laps (RSM emits them as None). A None position would be coerced
+      into a searchable number and a None lap_time into a physically impossible
+      pace delta.
+
+    Without this guard ``_local_build_race_state`` fabricates a P10 MEDIUM car
+    for a retired driver and the loop emits a lap event (and pays for the
+    pipeline) every remaining lap (#441).
+    """
+    if not driver_st:
+        return "DNF"
+    if driver_st.get("position") is None:
+        return "incomplete lap (position is None)"
+    if driver_st.get("tyre_life") is None:
+        return "incomplete lap (tyre_life is None)"
+    if driver_st.get("lap_time_s") is None:
+        return "incomplete lap (lap_time is None)"
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Race state + decision pipeline
 # ---------------------------------------------------------------------------
@@ -732,6 +760,15 @@ def simulate_race(config: SimConfig) -> Generator[dict[str, Any], None, None]:
     for lap_state in engine.replay():
         lap_num = lap_state.get("lap_number", 0)
         if lap_num < lap_start or lap_num > lap_end:
+            continue
+
+        # DNF + incomplete-lap guard (mirrors the CLI, run_simulation_cli.py
+        # L1551-1584). Without it _local_build_race_state defaults an empty
+        # driver state to a P10 MEDIUM car and the loop keeps emitting lap
+        # events (paying for the pipeline) for a car that retired (#441).
+        skip_reason = _lap_skip_reason(lap_state.get("driver", {}))
+        if skip_reason is not None:
+            logger.info("Lap %s skipped (%s): no strategy pipeline call", lap_num, skip_reason)
             continue
 
         try:
