@@ -111,6 +111,10 @@ class RecommendRequest(BaseModel):
     risk_tolerance: float = 0.5
     radio_msgs: Optional[List[Dict[str, Any]]] = None
     rcm_events: Optional[List[Dict[str, Any]]] = None
+    # Three-letter code of the rival the user selected in the Strategy tab. When
+    # set, build_race_state measures gap_ahead_s / pace_delta_s against this car
+    # instead of the positional car ahead (#431). None keeps current behaviour.
+    rival: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
@@ -456,6 +460,16 @@ def get_lap_state(
             ahead = lap_snapshot[lap_snapshot["Position"] == rival_pos - 1]
             if not ahead.empty:
                 rival_gap = abs(float(rr["_cum"] - ahead.iloc[0]["_cum"]))
+        # Driver-relative interval (rival elapsed time minus ours): the sign
+        # encodes ahead/behind, the magnitude is the on-track gap to OUR car.
+        # RaceStateManager already emits this per rival; mirroring it here lets a
+        # user-chosen rival be scored against our driver rather than against the
+        # car one position ahead of it (#431). Only real when both elapsed times
+        # are present — never defaulted to a searchable 0 (the #428 lesson).
+        rival_cum = rr["_cum"]
+        interval_to_driver = None
+        if pd.notna(rival_cum) and driver in cum_times and pd.notna(driver_cum):
+            interval_to_driver = round(float(rival_cum) - float(driver_cum), 3)
         rivals.append({
             "driver": str(rr.get("Driver", "")),
             "team": str(rr.get("Team", "")),
@@ -464,6 +478,7 @@ def get_lap_state(
             "compound": str(rr.get("Compound", "")),
             "tyre_life": int(_safe(rr.get("TyreLife", 0))),
             "gap_ahead_s": round(rival_gap, 3),
+            "interval_to_driver_s": interval_to_driver,
         })
 
     weather = {
@@ -518,7 +533,6 @@ def predict_pace(request: PaceRequest):
 @router.post("/pace-range", dependencies=[Depends(rate_limit("pace-range", capacity=5, per_minute=10))])
 def predict_pace_range(request: PaceRangeRequest):
     """Run Pace Agent across a lap range and return actual vs predicted."""
-    import numpy as np
 
     from src.agents.pace_agent import run_pace_agent_from_state
 
@@ -1061,6 +1075,7 @@ def recommend_strategy(
             risk_tolerance=request.risk_tolerance,
             radio_msgs=request.radio_msgs,
             rcm_events=rcm_events,
+            rival=request.rival,
         )
 
         result = run_strategy_orchestrator_from_state(
