@@ -57,6 +57,10 @@ export interface LapStateRival {
   compound: string
   tyre_life: number
   gap_ahead_s: number
+  /** On-track interval to OUR driver (rival elapsed time minus ours): sign
+   *  encodes ahead/behind, magnitude is the gap. Null when either car's elapsed
+   *  time is missing. Used to score a user-chosen rival against our car. */
+  interval_to_driver_s?: number | null
 }
 
 export interface Weather {
@@ -187,6 +191,10 @@ export interface RecommendRequest {
   gap_ahead_s?: number
   pace_delta_s?: number
   risk_tolerance?: number
+  /** Three-letter code of the user-chosen rival. When set, the backend measures
+   *  gap_ahead_s / pace_delta_s against this car instead of the positional car
+   *  ahead (#431). Omitted keeps the default behaviour. */
+  rival?: string
 }
 
 // ── Error type — carries HTTP status so the UI can branch (404/422/429/500) ──
@@ -304,10 +312,16 @@ export async function runAgent<A extends AgentName>(
  * Run the full N31 orchestrator (all sub-agents + 500-sample MC + LLM synthesis).
  * Rate-limited to 5/min on the backend → surfaces as a 429 StrategyApiError.
  * `gap_ahead_s` defaults to the driver's own gap (2.0 fallback, as Streamlit).
+ *
+ * When `rival` is set (the car the user picked in the Strategy tab), the backend
+ * recomputes gap_ahead_s / pace_delta_s against that specific car, so the
+ * recommendation is framed around the duel the user asked about (#431). Without
+ * it the request behaves exactly as before.
  */
 export async function runRecommend(
   lapState: LapState,
   riskTolerance: number,
+  rival?: string,
   signal?: AbortSignal,
 ): Promise<StrategyRecommendation> {
   const body: RecommendRequest = {
@@ -317,6 +331,7 @@ export async function runRecommend(
     gap_ahead_s: lapState.driver.gap_ahead_s || 2.0,
     pace_delta_s: 0,
     risk_tolerance: riskTolerance,
+    rival,
   }
   const data = await postJson<Envelope<StrategyRecommendation>>('recommend', body, signal)
   return data.result

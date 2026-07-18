@@ -158,7 +158,7 @@ export function useRecommend() {
     mutationFn: async ({ search, signal }) => {
       const lap = analysedLap(search)!
       const lapState = await fetchLapState(search.gp!, search.driver!, lap)
-      const result = await runRecommend(lapState, search.risk, signal)
+      const result = await runRecommend(lapState, search.risk, search.rival, signal)
       return { lapState, result }
     },
   })
