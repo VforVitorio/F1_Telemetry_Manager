@@ -131,13 +131,15 @@ def test_build_lap_state_from_row_includes_track_temp_start_and_prev_lap_time():
 
     lap_state = _build_lap_state_from_row(row, gp_df, str(row["GP_Name"]), 2025, total_laps)
 
-    assert "track_temp_start" in lap_state["session_meta"]
+    # In weather, not session_meta: that is the channel the track_temp_delta
+    # consumer reads (wx['track_temp_start']), so the key must live there (#486).
+    assert "track_temp_start" in lap_state["weather"]
     assert "prev_lap_time" in lap_state["driver"]
 
     # track_temp_start must be the session's chronologically FIRST TrackTemp
     # reading, not this lap's own value re-served as a constant (#486).
     expected_start = float(gp_df.sort_values("LapNumber")["TrackTemp"].dropna().iloc[0])
-    assert lap_state["session_meta"]["track_temp_start"] == pytest.approx(expected_start)
+    assert lap_state["weather"]["track_temp_start"] == pytest.approx(expected_start)
 
     # prev_lap_time must come from the featured parquet's own Prev_LapTime
     # column, never this lap's own lap_time_s reused as a stand-in (#435).
@@ -152,8 +154,8 @@ def test_get_lap_state_includes_track_temp_start_and_prev_lap_time():
 
     state = get_lap_state(gp=gp, driver=driver, lap=lap, year=2025)
 
-    assert "track_temp_start" in state["session_meta"]
-    assert state["session_meta"]["track_temp_start"] is not None
+    assert "track_temp_start" in state["weather"]
+    assert state["weather"]["track_temp_start"] is not None
     assert "prev_lap_time" in state["driver"]
     expected_prev = _to_seconds(row["Prev_LapTime"])
     assert state["driver"]["prev_lap_time"] == pytest.approx(expected_prev)

@@ -522,6 +522,10 @@ def get_lap_state(
     weather = {
         "air_temp": _safe_none(r.get("AirTemp")),
         "track_temp": _safe_none(r.get("TrackTemp")),
+        # track_temp_start belongs in weather, not session_meta: the only consumer
+        # (race_situation_agent's track_temp_delta feature) reads wx['track_temp_start'],
+        # so a session_meta-only value silently fell back to 38.0 everywhere (#486).
+        "track_temp_start": _session_track_temp_start(gp_df),
         "humidity": _safe_none(r.get("Humidity")),
         "rainfall": int(_safe(r.get("Rainfall", 0))),
     }
@@ -539,7 +543,6 @@ def get_lap_state(
             "driver": driver,
             "team": driver_dict["team"],
             "total_laps": total_laps,
-            "track_temp_start": _session_track_temp_start(gp_df),
         },
     }
 
@@ -813,6 +816,9 @@ def _build_lap_state_from_row(row, gp_df, gp: str, year: int, total_laps: int) -
         "weather": {
             "air_temp": float(_s(row.get("AirTemp", 25))),
             "track_temp": float(_s(row.get("TrackTemp", 40))),
+            # In weather, not session_meta — the track_temp_delta consumer reads it
+            # from wx, so a session_meta-only value fell back to 38.0 (#486).
+            "track_temp_start": _session_track_temp_start(gp_df),
             "humidity": float(_s(row.get("Humidity", 50))),
             "rainfall": int(_s(row.get("Rainfall", 0))),
         },
@@ -822,7 +828,6 @@ def _build_lap_state_from_row(row, gp_df, gp: str, year: int, total_laps: int) -
             "driver": driver_code,
             "team": str(row.get("Team", "")),
             "total_laps": total_laps,
-            "track_temp_start": _session_track_temp_start(gp_df),
         },
     }
 
