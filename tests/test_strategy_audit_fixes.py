@@ -190,3 +190,33 @@ def test_get_lap_state_tyre_life_and_speed_st_never_coerced_when_nan():
         assert drv["speed_st"] is None
     else:
         assert drv["speed_st"] == pytest.approx(float(src_speed_st))
+
+
+def test_build_lap_state_from_row_nan_tyre_life_stays_none():
+    """#500: the /pace-range builder must not coerce NaN TyreLife/Position to a
+    searchable sentinel (F5).
+
+    None is safe here: run_from_state or-guards both fields before any arithmetic
+    (pace_agent.py:671/:673), and /lap-state already ships None to the SAME consumer
+    (run_pace_agent_from_state). The Fable audit confirmed None yields an identical,
+    finite prediction to the old 0 sentinel, so this is a contract-honesty fix.
+    """
+    df = get_laps_df(2025)
+    if df is None or "TyreLife" not in df.columns or "Prev_LapTime" not in df.columns:
+        pytest.skip("featured parquet with TyreLife/Prev_LapTime not available")
+
+    # The /pace-range gate (Prev_LapTime >= 60) is what lets a NaN-TyreLife row
+    # actually reach the builder; without it the row is skipped upstream.
+    nan_rows = df[
+        df["TyreLife"].isna() & df["Prev_LapTime"].notna() & (df["Prev_LapTime"] >= 60)
+    ]
+    if nan_rows.empty:
+        pytest.skip("no gate-surviving NaN-TyreLife row in this parquet")
+
+    row = nan_rows.iloc[0]
+    gp_df = df[df["GP_Name"] == row["GP_Name"]]
+    lap_state = _build_lap_state_from_row(
+        row, gp_df, str(row["GP_Name"]), 2025, int(gp_df["LapNumber"].max())
+    )
+    assert lap_state["driver"]["tyre_life"] is None  # not the old 0 sentinel
+    assert lap_state["driver"]["position"] == row["Position"]  # real value untouched

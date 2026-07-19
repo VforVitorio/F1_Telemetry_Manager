@@ -791,10 +791,10 @@ def _build_lap_state_from_row(row, gp_df, gp: str, year: int, total_laps: int) -
             "lap_number": lap,
             "lap_time_s": float(_s(row.get("LapTime_s", 0))),
             "prev_lap_time": _prev_lap_time_for_row(row, gp_df, driver_code),
-            "position": int(_s(row.get("Position", 10))),
+            "position": _safe_none(row.get("Position")),
             "compound": str(row.get("Compound", "")),
             "compound_id": int(_s(row.get("CompoundID", 0))),
-            "tyre_life": int(_s(row.get("TyreLife", 0))),
+            "tyre_life": _safe_none(row.get("TyreLife")),
             "stint": int(_s(row.get("Stint", 1))),
             "stint_baseline_tyre_life": _stint_baseline_tyre_life(
                 gp_df,
