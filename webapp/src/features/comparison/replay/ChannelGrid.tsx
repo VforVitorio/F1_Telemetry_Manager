@@ -1,8 +1,8 @@
-// The Comparison replay's 4-channel grid (spec §4.5): Delta, Speed, Brake,
-// Throttle, each a fully static ECharts pane (ChannelPane) with a DOM-overlay
-// playhead. Every chart's option is rebuilt via `useMemo` only on (model,
-// theme) — never on a clock tick; the moving cursor lives entirely in
-// ChannelPane's CursorOverlay/FutureDimmer.
+// The Comparison replay's 4-channel grid: Delta, Speed, Brake, Throttle, each
+// a fully static ECharts pane (ChannelPane) with a DOM-overlay playhead. Every
+// chart's option is rebuilt via `useMemo` only on (model, theme) — never on a
+// clock tick; the moving cursor lives entirely in ChannelPane's
+// CursorOverlay/FutureDimmer.
 
 import { useMemo } from 'react'
 import type { EChartsOption } from 'echarts'
@@ -34,11 +34,10 @@ export interface ChannelGridProps {
 /** 2x2 grid of the 4 channel panes: Delta first (the cross-pilot summary),
  *  then Speed/Brake/Throttle in `LINE_CHANNEL_KEYS` order. */
 export function ChannelGrid({ model, clock, status, className }: ChannelGridProps) {
-  // The app's light/dark mode (not the ECharts theme name) — both the delta
-  // markLine/curve ink and every series' `resolvePilotColor` identity colour
-  // key off this one value (channelOptions.ts stays a pure builder; see its
-  // module docstring). ChannelPane re-applies the registered ECharts theme
-  // separately, via its own theme-keyed remount.
+  // The app's light/dark mode (not the ECharts theme name) — every series'
+  // `resolvePilotColor` identity colour keys off this one value, while
+  // channelOptions.ts stays a pure builder. ChannelPane re-applies the
+  // registered ECharts theme separately, via its own theme-keyed remount.
   const uiTheme = useUiStore((state) => state.theme)
 
   const deltaOption = useMemo(() => buildDeltaOption(model, uiTheme), [model, uiTheme])
@@ -70,7 +69,6 @@ export function ChannelGrid({ model, clock, status, className }: ChannelGridProp
         model={model}
         clock={clock}
         status={status}
-        showSignKey
       />
       {LINE_CHANNEL_KEYS.map((channel) => (
         <ChannelPane

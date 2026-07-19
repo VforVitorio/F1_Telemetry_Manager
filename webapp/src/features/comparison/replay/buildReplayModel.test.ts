@@ -1,12 +1,11 @@
-// Golden-fixture test for the replay math port (spec §6 / #36 acceptance).
+// Golden-fixture test for the replay math port.
 //
 // The fixture is the REAL output of the production Python
 // (comparison_service.prepare_comparison_data) on the only fully-cached offline
 // session: 2023 Monaco GP, Race, VER vs LEC. It carries the exact API `payload`
 // plus a NumPy `reference` for the per-driver time-domain synthesis. We build the
 // TS model from the payload and assert the port reproduces both to 1e-6, pinning
-// buildReplayModel to the thesis-validated maths. Loaded via node:fs so `tsc`
-// never has to infer a 500-element JSON literal type.
+// buildReplayModel to the thesis-validated maths.
 
 import { describe, expect, it } from 'vitest'
 // Vite `?raw` import: the fixture arrives as a plain string (typed by vite/client),
@@ -42,7 +41,7 @@ describe('buildReplayModel — golden fixture (2023 Monaco R, VER vs LEC)', () =
     expect(maxErr).toBeLessThan(TOL)
   })
 
-  it('reproduces both per-driver time syntheses to 1e-6 (spec §4.1)', () => {
+  it('reproduces both per-driver time syntheses to 1e-6', () => {
     const check = (got: Float64Array, want: number[]) => {
       let maxErr = 0
       for (let i = 0; i < want.length; i++) maxErr = Math.max(maxErr, Math.abs(got[i] - want[i]))
@@ -147,11 +146,10 @@ describe('buildReplayModel — synthetic edge cases', () => {
 })
 
 // Adversarial cross-check: the REAL Python (comparison_service.calculate_delta_time
-// + the §4.1 time synthesis) was run on hand-built synthetic telemetry that
-// exercises what the single Monaco fixture cannot — both delta signs, a sign
-// crossing, equal lap times (the scale-to-zero branch), and a near-stopped
-// segment (the epsilon guard). The TS port must reproduce every case to 1e-6.
-// (This is the check the Fable bugs-audit pass was running; completed here.)
+// + the time synthesis) was run on hand-built synthetic telemetry that exercises
+// what the single Monaco fixture cannot — both delta signs, a sign crossing,
+// equal lap times (the scale-to-zero branch), and a near-stopped segment (the
+// epsilon guard). The TS port must reproduce every case to 1e-6.
 interface SyntheticCase {
   name: string
   distance: number[]

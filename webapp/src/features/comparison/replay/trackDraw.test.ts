@@ -1,7 +1,7 @@
 // Unit tests for trackDraw.ts's pure helpers only — the predicates and colour
 // mappers that decide WHAT to draw. The actual canvas painting (drawStaticLayer/
 // drawDynamicLayer) is DOM/canvas behaviour with no meaningful jsdom 2D context;
-// it's verified visually instead (screenshot pass), per the worker brief.
+// it's verified visually instead (screenshot pass).
 
 import { describe, expect, it } from 'vitest'
 import { resolvePilotColor } from '@/lib/drivers'
@@ -12,6 +12,7 @@ import {
   localDeltaGain,
   NEUTRAL_GAIN_COLOR,
   pickSegmentColor,
+  revealEdgeIntensity,
   shouldShowGapLink,
   speedHeatColor,
   sweepFrontier,
@@ -137,9 +138,7 @@ describe('pickSegmentColor', () => {
 
   it('dominance mode darkens an over-bright segment colour on the light theme', () => {
     // Same #abcdef is ABOVE the light-theme ceiling, so it needs darkening —
-    // delegated to resolvePilotColor rather than duplicated here (P1 fix +
-    // the audit's nice-to-have: the revealed dominance ribbon was never
-    // theme-checked at all).
+    // delegated to resolvePilotColor rather than duplicated here.
     const seg = segment({ color: '#abcdef' })
     expect(pickSegmentColor(seg, 'dominance', speedRange, gain(0), 'light')).toBe(
       resolvePilotColor('#abcdef', 'light'),
@@ -165,8 +164,8 @@ describe('pickSegmentColor', () => {
   })
 
   it('gain mode falls back to a neutral grey near a dead heat, not the dominance colour', () => {
-    // Previously fell back to the segment's dominance colour, which silently
-    // implied a "winner" on a stretch that is actually level (Fable UI audit P2).
+    // A dominance-colour fallback here would silently imply a "winner" on a
+    // stretch that is actually level.
     const seg = segment({ color: '#abcdef' })
     expect(pickSegmentColor(seg, 'gain', speedRange, gain(0), 'dark')).toBe(NEUTRAL_GAIN_COLOR)
   })
@@ -217,6 +216,27 @@ describe('sweepSegmentAlpha', () => {
     for (let i = 1; i < samples.length; i++) {
       expect(samples[i]).toBeLessThanOrEqual(samples[i - 1])
     }
+  })
+})
+
+describe('revealEdgeIntensity', () => {
+  const WINDOW = 40
+
+  it('peaks at 1 the instant the leader crosses a segment end', () => {
+    expect(revealEdgeIntensity(500, 500, WINDOW)).toBe(1)
+  })
+
+  it('fades to 0 once the leader is a full window ahead', () => {
+    expect(revealEdgeIntensity(500, 540, WINDOW)).toBe(0)
+  })
+
+  it('decays quadratically, so it concentrates at the frontier', () => {
+    // Halfway through the window the linear term is 0.5, squared → 0.25.
+    expect(revealEdgeIntensity(520, 540, WINDOW)).toBeCloseTo(0.25, 9)
+  })
+
+  it('is disabled (0) for a non-positive window, e.g. reduced motion', () => {
+    expect(revealEdgeIntensity(500, 500, 0)).toBe(0)
   })
 })
 

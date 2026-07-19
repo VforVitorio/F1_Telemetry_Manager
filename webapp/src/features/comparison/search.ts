@@ -2,7 +2,7 @@
 // session / drivers) lives in the URL — same shape as the Dashboard so the
 // cross-link "Go to comparison" carries context — but capped at TWO drivers, plus
 // an optional `t` moment-link that reproduces a paused instant of the replay
-// (`?…&drivers=VER,LEC&t=34.2`, spec §6). Same raw↔component boundary as
+// (`?…&drivers=VER,LEC&t=34.2`). Same raw↔component boundary as
 // dashboard/search.ts; the cap-2 + `t` are the only differences.
 
 export const MAX_DRIVERS = 2
@@ -13,9 +13,9 @@ export interface ComparisonSearch {
   gp?: string
   session?: string
   drivers: string[]
-  /** The explicit COMPARE gate (spec §4.2): the (expensive) fetch runs only when
-   *  this is set. The button sets it; changing any selector clears it. A deep
-   *  link with `compare=1` reproduces a loaded comparison. */
+  /** The explicit COMPARE gate: the (expensive) fetch runs only when this is
+   *  set. The button sets it; changing any selector clears it. A deep link with
+   *  `compare=1` reproduces a loaded comparison. */
   compare?: boolean
   /** Optional replay moment (seconds), applied once on load then owned by the
    *  share button. Clamped to [0, duration] at apply time (duration isn't known

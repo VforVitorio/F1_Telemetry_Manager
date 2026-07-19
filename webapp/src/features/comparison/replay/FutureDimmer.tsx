@@ -2,8 +2,8 @@
 // and whose right edge sits at the end of the plot — everything to the right
 // of the cursor (what hasn't happened yet on track) reads as dimmed, without
 // touching the chart itself. Same DOM-overlay + cached-mapping strategy as
-// CursorOverlay (spec §4.5): recomputed on chart-ready/resize, moved and
-// resized per frame via `transform`/`width`, never a `setOption`.
+// CursorOverlay: recomputed on chart-ready/resize, moved and resized per frame
+// via `transform`/`width`, never a `setOption`.
 
 import { useEffect, useRef } from 'react'
 import type { ECharts } from 'echarts'
@@ -13,8 +13,8 @@ import type { ReplayClock, ReplayModel, ReplayStatus } from './types'
 // Vertical inset approximating the plot's own reserved chrome (mirrors
 // channelOptions.ts's `GRID.top`, and the axis-label band ECharts'
 // `containLabel: true` reserves at the bottom) so the veil covers the DATA
-// only — the original `inset-y-0` also dimmed the x-axis label row into
-// unreadability (Fable UI audit, P1).
+// only — a plain `inset-y-0` also dims the x-axis label row into
+// unreadability.
 const PLOT_TOP_INSET = 16
 const PLOT_BOTTOM_INSET = 28
 
@@ -22,10 +22,9 @@ export interface FutureDimmerProps {
   model: ReplayModel
   clock: ReplayClock
   /** At `ready` (t=0, nothing has played yet) the veil is invisible — the
-   *  spec's own framing is "a complete static analysis screen", not a dimmed
-   *  one. It fades in over `~250ms` the moment the replay leaves `ready`,
-   *  turning the fix into a designed beat: "the future veils itself when the
-   *  clock starts" (Fable UI audit, P1 / motion idea M4). */
+   *  first frame is a complete static analysis screen, not a dimmed one. It
+   *  fades in over `~250ms` the moment the replay leaves `ready`, so the future
+   *  veils itself when the clock starts. */
   status: ReplayStatus
   /** Resolves the live ECharts instance. The caller (ChannelPane) only mounts
    *  this component once the chart has fired `onChartReady`, so this always

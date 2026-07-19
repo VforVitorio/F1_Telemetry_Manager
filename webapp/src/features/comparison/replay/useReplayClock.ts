@@ -1,4 +1,4 @@
-// The ONE rAF clock for the Comparison replay (spec §4.2/§4.3, #36). Every
+// The ONE rAF clock for the Comparison replay. Every
 // other replay piece — TrackCanvas, the channel-chart playhead overlay, the
 // transport bar, the scrubber — reads time through THIS clock; nothing else
 // runs its own requestAnimationFrame loop. The playhead lives in a ref, never
@@ -216,7 +216,7 @@ export function useReplayClock(opts: UseReplayClockOptions): ReplayClock {
  * (elapsed/remaining labels, tooltips). This is the ONLY place the clock's
  * ref-based time is lifted into React state — canvas and DOM-overlay consumers
  * must keep reading `clock.getTime()` inside their own `subscribe` callback so
- * a 60fps tick never re-renders the tree (spec §4.2).
+ * a 60fps tick never re-renders the tree.
  */
 export function useReplayTime(clock: ReplayClock, hz = 10): number {
   const [time, setTime] = useState(clock.getTime())

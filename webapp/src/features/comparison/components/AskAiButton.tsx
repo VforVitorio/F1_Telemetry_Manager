@@ -1,6 +1,6 @@
-// "Ask AI about this comparison" entry point (design spec §2 row 15). The
-// chat surface (#39) hasn't landed yet, so this ships disabled with an
-// explanatory tooltip — but the real `/chat` deep-link target is already
+// "Ask AI about this comparison" entry point. The chat surface hasn't landed
+// yet, so this ships disabled with an explanatory tooltip — but the real
+// `/chat` deep-link target is already
 // computed from the current selection, so wiring it up later is a one-line
 // change (drop `disabled`, point the trigger at the router) rather than a
 // redesign.

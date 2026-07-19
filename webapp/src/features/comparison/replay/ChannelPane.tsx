@@ -1,7 +1,7 @@
 // One channel's chart card: a titled shell hosting a fully static ECharts
-// option (spec §4.5 — `setOption` runs once, at mount, and never again) plus
-// its two DOM-overlay layers, FutureDimmer (painted first, so it sits under)
-// and CursorOverlay (painted after, so its 1px line sits on top).
+// option (`setOption` runs once, at mount, and never again) plus its two
+// DOM-overlay layers, FutureDimmer (painted first, so it sits under) and
+// CursorOverlay (painted after, so its 1px line sits on top).
 //
 // Joins the shared `echarts.connect` crosshair group, mirroring
 // ChannelChart.tsx's CROSSHAIR_GROUP, so once the replay is paused, hovering
@@ -37,8 +37,8 @@ const CROSSHAIR_GROUP = 'comparison-replay-crosshair'
 export interface ChannelPaneProps {
   /** Uppercase-styled channel name, e.g. "Speed", "Delta" — kept separate
    *  from `unit` so the unit's own casing (lowercase "s", "km/h") survives
-   *  the label's `uppercase` styling (P3: "Delta (s)" was rendering as
-   *  "DELTA (S)" because `uppercase` applied to the whole combined title). */
+   *  the label's `uppercase` styling. A combined "Delta (s)" title would
+   *  render as "DELTA (S)" because `uppercase` applies to the whole string. */
   label: string
   /** Parenthesised unit, e.g. "(km/h)", "(s)" — rendered `normal-case`. */
   unit: string
@@ -48,24 +48,12 @@ export interface ChannelPaneProps {
   model: ReplayModel
   clock: ReplayClock
   status: ReplayStatus
-  /** Only the Delta pane sets this: renders a team-coloured sign key
-   *  ("▲ LEC ahead · ▼ VER ahead") in the header so the fill's +/− tinting
-   *  is decodable at a glance (P1 — previously there was no key anywhere). */
-  showSignKey?: boolean
 }
 
 /** One channel of the 4-chart grid: a static ECharts pane inside a titled
  *  card, with its two DOM-overlay layers mounted only once the chart
  *  instance exists (so they can assume a non-null `getChart()`). */
-export function ChannelPane({
-  label,
-  unit,
-  option,
-  model,
-  clock,
-  status,
-  showSignKey,
-}: ChannelPaneProps) {
+export function ChannelPane({ label, unit, option, model, clock, status }: ChannelPaneProps) {
   const chartTheme = useChartTheme()
   const uiTheme = useUiStore((state) => state.theme)
   const chartRef = useRef<ECharts | null>(null)
@@ -100,33 +88,25 @@ export function ChannelPane({
         <h3 className="font-display text-xs font-medium uppercase tracking-wide text-fg-3">
           {label} <span className="normal-case">{unit}</span>
         </h3>
-        {/* Delta pane: the sign key already names BOTH drivers (team-coloured,
-            with ▲/▼ for who's ahead), so it stands alone — showing the chips too
-            overflowed the ~240px header and truncated a code. The line panes
-            show the chips (their traces need a colour→driver legend). */}
-        {showSignKey ? (
-          <span className="flex items-center gap-1.5 whitespace-nowrap font-mono text-[10px] text-fg-3">
-            <span style={{ color: chips[1]?.color }}>▲ {pilot2.code} ahead</span>
-            <span className="text-fg-4">·</span>
-            <span style={{ color: chips[0]?.color }}>▼ {pilot1.code} ahead</span>
-          </span>
-        ) : (
-          <span className="flex items-center gap-2">
-            {chips.map((chip) => (
+        {/* Team-coloured driver chips — the same identity legend on all four
+            panes. The delta pane earns them too now that it draws two
+            team-coloured lines (faster's flat baseline + slower's deficit
+            curve), so identity lives in the data like Speed/Brake/Throttle. */}
+        <span className="flex items-center gap-2">
+          {chips.map((chip) => (
+            <span
+              key={chip.code}
+              className="flex items-center gap-1 font-mono text-[10px] text-fg-3"
+            >
               <span
-                key={chip.code}
-                className="flex items-center gap-1 font-mono text-[10px] text-fg-3"
-              >
-                <span
-                  aria-hidden="true"
-                  className="size-1.5 rounded-full"
-                  style={{ backgroundColor: chip.color }}
-                />
-                {chip.code}
-              </span>
-            ))}
-          </span>
-        )}
+                aria-hidden="true"
+                className="size-1.5 rounded-full"
+                style={{ backgroundColor: chip.color }}
+              />
+              {chip.code}
+            </span>
+          ))}
+        </span>
       </div>
       <div className="relative" style={{ height: CHART_HEIGHT }}>
         <div style={{ pointerEvents: paused ? 'auto' : 'none' }}>

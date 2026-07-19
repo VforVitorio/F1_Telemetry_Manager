@@ -2,13 +2,13 @@ import { useEffect } from 'react'
 import type { RefObject } from 'react'
 import type { ReplayClock } from './types'
 
-// Global keyboard transport for the replay card (spec §4.6, fixes dossier
-// #33). The page attaches this to the focused replay `Card`'s ref; it covers
-// the shortcut surface — play/pause, scrub, speed, restart — from anywhere
-// inside the card. Generic over the speed type `S` so this stays a reusable
-// transport primitive (spec §5's "keep the seams free of comparison-specific
-// types"): TypeScript infers `S` as `ReplaySpeed` from the caller's actual
-// `speed`/`speeds`/`onSpeedChange` without this file importing that type.
+// Global keyboard transport for the replay card. The page attaches this to the
+// focused replay `Card`'s ref; it covers the shortcut surface — play/pause,
+// scrub, speed, restart — from anywhere inside the card. Generic over the speed
+// type `S` so this stays a reusable transport primitive that keeps the seams
+// free of comparison-specific types: TypeScript infers `S` as `ReplaySpeed`
+// from the caller's actual `speed`/`speeds`/`onSpeedChange` without this file
+// importing that type.
 
 const NUDGE_SMALL_SECONDS = 0.5
 const NUDGE_LARGE_SECONDS = 5

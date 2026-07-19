@@ -4,8 +4,8 @@ import type { ReplayStatus, TrackMode } from './replay/types'
 
 // Comparison replay UI state (Zustand). Holds ONLY view/transport preferences and
 // the coarse replay lifecycle — NOT the playhead time (that lives in a ref inside
-// useReplayClock; 60 setState/s would re-render the whole tree, spec §4.2) and
-// NOT the comparison DATA (that's TanStack Query, immutable). The clock drives
+// useReplayClock; 60 setState/s would re-render the whole tree) and NOT the
+// comparison DATA (that's TanStack Query, immutable). The clock drives
 // `status`; the transport drives speed/loop/trackMode.
 //
 // speed/loop/trackMode persist as preferences (like the Dashboard's chartLayout);

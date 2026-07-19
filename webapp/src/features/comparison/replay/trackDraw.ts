@@ -1,23 +1,22 @@
-// Pure canvas-drawing layer for the Comparison TrackCanvas (spec §4.4). No
-// React here — every function either (a) is a plain, unit-testable predicate/
-// mapper over model data, or (b) paints one layer onto a 2D context the caller
-// already sized and transformed (see TrackCanvas.tsx). Keeping the two apart
-// means the interesting logic (what gets revealed, what colour a segment is,
-// when the gap-link shows) is testable without ever touching a canvas.
+// Pure canvas-drawing layer for the Comparison TrackCanvas. No React here —
+// every function either (a) is a plain, unit-testable predicate/mapper over
+// model data, or (b) paints one layer onto a 2D context the caller already
+// sized and transformed (see TrackCanvas.tsx). Keeping the two apart means the
+// interesting logic (what gets revealed, what colour a segment is, when the
+// gap-link shows) is testable without ever touching a canvas.
 //
 // Coordinate frame: the whole ReplayModel is y-flipped (down = positive, canvas
 // convention) — buildReplayModel flips both TrackGeometry (outline/segments) AND
 // PilotModel.x/y at build time, so dots/trails and the ribbon share one frame.
 // `toPilotPx` is therefore a straight `fit.toPx`, no per-point flip.
 //
-// Theme: `drawStaticLayer`/`drawDynamicLayer` take a `CanvasTheme` so the ONE
-// canvas surface in the app stops being theme-blind (Fable UI audit, Comparison
-// #36, finding P1) — the base ribbon, gap-link and gap label were hardcoded
-// dark-theme ink and became a near-invisible ghost in light mode. Pilot identity
-// colours (dots, trails, gain-mode segment tints, the gap label) are additionally
-// passed through `resolvePilotColor` (P2: a too-dark team colour recedes on the
-// dark cards) — same helper `channelOptions.ts` already uses, so a driver reads
-// with equal visual weight whether they're a chart line or a canvas dot.
+// Theme: `drawStaticLayer`/`drawDynamicLayer` take a `CanvasTheme` so the base
+// ribbon, gap-link and gap label follow light/dark ink instead of a hardcoded
+// dark tone that became a near-invisible ghost in light mode. Pilot identity
+// colours (dots, trails, gain-mode segment tints, the gap label) additionally
+// pass through `resolvePilotColor` so a too-dark team colour is lifted on the
+// dark cards — the same helper `channelOptions.ts` uses, so a driver reads with
+// equal visual weight whether they're a chart line or a canvas dot.
 
 import type { CanvasFit } from '@/features/dashboard/components/circuitDraw'
 import { resolvePilotColor } from '@/lib/drivers'
@@ -31,9 +30,9 @@ export type CanvasTheme = 'dark' | 'light'
 
 // ── Static ribbon ────────────────────────────────────────────────────────────
 
-/** The faint un-revealed course preview, per theme. Dark keeps the original
- *  slate tone; light swaps to ink at a lower alpha — the dark value sat at
- *  ~1.15:1 against a white card (Fable UI audit P1). */
+/** The faint un-revealed course preview, per theme. Dark keeps the slate tone;
+ *  light swaps to ink at a lower alpha, since the dark value sat at ~1.15:1
+ *  against a white card. */
 const BASE_RIBBON_PALETTE: Record<CanvasTheme, { color: string; alpha: number }> = {
   dark: { color: '#94a3b8', alpha: 0.28 },
   light: { color: '#14121f', alpha: 0.25 },
@@ -45,18 +44,17 @@ const BASE_RIBBON_WIDTH_PX = 9
 const SEGMENT_STROKE_WIDTH_PX = 5
 
 /** Slow end of the speed heatmap — a desaturated blue-grey, deliberately NOT a
- *  saturated identity blue: the previous blue(slow)->red(fast) ramp collided
- *  with VER's Red Bull blue and LEC's Ferrari red, so "speed mode" and
- *  "dominance mode" read as the same thing at a glance (Fable UI audit P2). */
+ *  saturated identity blue: a blue(slow)->red(fast) ramp would collide with
+ *  VER's Red Bull blue and LEC's Ferrari red, so "speed mode" and "dominance
+ *  mode" would read as the same thing at a glance. */
 const SPEED_COLOR_SLOW = { r: 100, g: 116, b: 139 } // slate-500
 /** Fast end of the speed heatmap — amber, clear of both team colours above. */
 const SPEED_COLOR_FAST = { r: 245, g: 158, b: 11 } // amber-500
 
 /** Below this local delta-derivative (seconds) a stretch reads as a dead heat.
  *  `gain` mode tints it with `NEUTRAL_GAIN_COLOR` rather than either pilot's
- *  colour, or — as it did before — the segment's dominance colour, which
- *  silently implied a "winner" on ground that is actually level (Fable UI
- *  audit P2). */
+ *  colour — tinting a level stretch with a dominance colour would silently
+ *  imply a "winner" on ground that is actually level. */
 const GAIN_NEUTRAL_THRESHOLD_S = 1e-3
 
 /** Dead-heat tint for `gain` mode. Deliberately mid-luminance (~0.24) so it
@@ -64,7 +62,7 @@ const GAIN_NEUTRAL_THRESHOLD_S = 1e-3
  *  a genuinely neutral grey, not tuned toward either pilot. */
 export const NEUTRAL_GAIN_COLOR = '#7c8798'
 
-// ── Mode-transition sweep (T3 — dominance draw-on) ──────────────────────────
+// ── Mode-transition sweep (dominance draw-on) ───────────────────────────────
 
 /** Minimum feather width in metres — floors the soft leading edge so a switch
  *  right after the start line (small leaderDistance) doesn't collapse the
@@ -73,6 +71,23 @@ const SWEEP_FEATHER_MIN_M = 30
 /** Feather as a fraction of the leader's current distance, floored by
  *  SWEEP_FEATHER_MIN_M above. */
 const SWEEP_FEATHER_RATIO = 0.04
+
+// ── Reveal edge (wet-paint highlight) ────────────────────────────────────────
+
+/** A soft white highlight riding the reveal frontier during play: the moment
+ *  the leader crosses a segment's end it lights up, then fades back to its
+ *  settled colour over the next `windowMeters` of the leader's travel. Reads as
+ *  the dominance/speed/gain colour being "painted on" segment by segment.
+ *  Window = this fraction of the lap, floored by REVEAL_EDGE_MIN_M. */
+const REVEAL_EDGE_RATIO = 0.015
+const REVEAL_EDGE_MIN_M = 40
+/** Peak highlight opacity right at the frontier, per theme — kept low so it
+ *  brightens the fresh segment without washing out its colour. */
+const REVEAL_EDGE_MAX_ALPHA: Record<CanvasTheme, number> = { dark: 0.4, light: 0.25 }
+/** Extra stroke width at the frontier, tapering to 0 with the highlight — a
+ *  touch of swell so the painting edge catches the eye. */
+const REVEAL_EDGE_WIDTH_BOOST_PX = 2
+const REVEAL_EDGE_COLOR = '#ffffff'
 
 // ── Trails ───────────────────────────────────────────────────────────────────
 
@@ -88,7 +103,7 @@ const DOT_RADIUS_PX = 7
 const DOT_RING_WIDTH_PX = 2
 /** Stays white in BOTH themes — the ring frames the fill, which already
  *  carries the (theme-resolved) team colour + glow; the ring itself never
- *  needs to compete for legibility (Fable UI audit P1). */
+ *  needs to compete for legibility. */
 const DOT_RING_COLOR = '#ffffff'
 const DOT_GLOW_BLUR_PX = 14
 /** Breathing amplitude around DOT_GLOW_BLUR_PX (±35%), not an on/off flicker. */
@@ -103,9 +118,9 @@ const DOT_GLOW_PULSE_HZ = 0.8
 const GAP_LINK_THRESHOLD_RATIO = 0.08
 const GAP_LINK_DASH: [number, number] = [5, 4]
 const GAP_LINK_WIDTH_PX = 1.5
-/** Dashed line between the two cars, per theme — the dark value was already
- *  fine; light swaps to an ink-based tone at the same alpha (Fable UI audit
- *  P1: it was invisible-ish on a white card). */
+/** Dashed line between the two cars, per theme — the dark value stays; light
+ *  swaps to an ink-based tone at the same alpha, since the dark one was
+ *  invisible-ish on a white card. */
 const GAP_LINK_COLOR: Record<CanvasTheme, string> = {
   dark: 'rgba(226,232,240,0.7)',
   light: 'rgba(20,18,31,0.7)',
@@ -125,9 +140,9 @@ function lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t
 }
 
-/** `p*p*(3−2p)` — eases 0→1 with a soft entry/exit. Used for the T2 mode-
- *  switch alpha crossfade: a raw linear alpha ramp reads as a flash at the
- *  start/end, smoothstep reads as a smooth blend instead. */
+/** `p*p*(3−2p)` — eases 0→1 with a soft entry/exit. Used for the mode-switch
+ *  alpha crossfade: a raw linear alpha ramp reads as a flash at the start/end,
+ *  smoothstep reads as a smooth blend instead. */
 function smoothstep(p: number): number {
   return p * p * (3 - 2 * p)
 }
@@ -183,32 +198,49 @@ export function isSegmentRevealed(segment: TrackSegment, leaderDistance: number)
 }
 
 /** `1 − (1−p)³` — a fast launch off the start line that settles into the
- *  target distance. Private to `sweepFrontier` below (T3's dominance
- *  draw-on) — never used or exported on its own. */
+ *  target distance. Private to `sweepFrontier` below (the dominance draw-on) —
+ *  never used or exported on its own. */
 function easeOutCubic(p: number): number {
   return 1 - (1 - p) ** 3
 }
 
 /**
- * Where the T3 "dominance draw-on" sweep has reached along the track, in
- * metres — an eased fraction of the leader's OWN (growing) distance, so the
- * frontier can never outrun the leader it's chasing (monotone, no pop, even
- * while playing). `progress` is the raw (un-eased) 0→1 fraction of the
- * transition window; the easing lives here rather than in the caller so it
- * travels with the metre-space math it shapes.
+ * Where the "dominance draw-on" sweep has reached along the track, in metres —
+ * an eased fraction of the leader's OWN (growing) distance, so the frontier can
+ * never outrun the leader it's chasing (monotone, no pop, even while playing).
+ * `progress` is the raw (un-eased) 0→1 fraction of the transition window; the
+ * easing lives here rather than in the caller so it travels with the
+ * metre-space math it shapes.
  */
 export function sweepFrontier(progress: number, leaderDistance: number): number {
   return easeOutCubic(progress) * leaderDistance
 }
 
 /**
- * A segment's alpha during the T3 sweep: 0 once fully ahead of the frontier,
- * 1 once fully behind it (already swept), ramping linearly across `feather`
- * metres in between — the soft leading edge that reads as a wipe rather than
- * a hard cut.
+ * A segment's alpha during the mode-switch sweep: 0 once fully ahead of the
+ * frontier, 1 once fully behind it (already swept), ramping linearly across
+ * `feather` metres in between — the soft leading edge that reads as a wipe
+ * rather than a hard cut.
  */
 export function sweepSegmentAlpha(endDistance: number, frontier: number, feather: number): number {
   return clamp01((frontier - endDistance) / feather)
+}
+
+/**
+ * How brightly the reveal-edge highlight sits on a segment: 1 the instant the
+ * leader crosses its end, fading to 0 over `windowMeters` of leader travel.
+ * Squared so the glow concentrates right at the frontier and tapers gently
+ * behind it. Returns 0 for a non-positive window (reduced motion, or a
+ * degenerate track) so callers can gate the whole highlight on one value.
+ */
+export function revealEdgeIntensity(
+  segmentEndDistance: number,
+  leaderDistance: number,
+  windowMeters: number,
+): number {
+  if (windowMeters <= 0) return 0
+  const linear = clamp01(1 - (leaderDistance - segmentEndDistance) / windowMeters)
+  return linear * linear
 }
 
 /**
@@ -231,8 +263,7 @@ export function shouldShowGapLink(separationMeters: number, trackLengthMeters: n
 
 /** On-track gap-link label: the leader's code + the on-track time gap — e.g.
  *  "LEC ▲ +0.15s" — so the canvas agrees with the transport's own readout
- *  ("● LEC ▲ 0.15s") instead of showing an unattributed "▲ +0.15s" (Fable UI
- *  audit P3). */
+ *  ("● LEC ▲ 0.15s") instead of showing an unattributed "▲ +0.15s". */
 export function buildGapLabel(leaderCode: string, gapSeconds: number): string {
   return `${leaderCode} ▲ +${gapSeconds.toFixed(2)}s`
 }
@@ -328,22 +359,39 @@ export function drawStaticLayer(
   strokeBaseRibbon(ctx, model, fit, theme)
 }
 
-/** A short (T2 ~220ms / T3 ~400ms) mode-switch beat, threaded optionally
- *  through `drawDynamicLayer` → `drawRevealedSegments`. Pass 1 repaints the
- *  OUTGOING mode (`fromMode`) at full alpha; pass 2 blends the LIVE mode on
- *  top. `progress` is the raw 0→1 fraction of the transition window — each
- *  branch inside `drawRevealedSegments` applies its own easing (`smoothstep`
- *  for a plain crossfade, `sweepFrontier`'s `easeOutCubic` for the dominance
- *  sweep), so easing stays a drawing decision rather than something the
- *  caller has to get right per target mode. */
+/** A short (~220ms plain crossfade / ~400ms dominance sweep) mode-switch beat,
+ *  threaded optionally through `drawDynamicLayer` → `drawRevealedSegments`.
+ *  Pass 1 repaints the OUTGOING mode (`fromMode`) at full alpha; pass 2 blends
+ *  the LIVE mode on top. `progress` is the raw 0→1 fraction of the transition
+ *  window — each branch inside `drawRevealedSegments` applies its own easing
+ *  (`smoothstep` for a plain crossfade, `sweepFrontier`'s `easeOutCubic` for
+ *  the dominance sweep), so easing stays a drawing decision rather than
+ *  something the caller has to get right per target mode. */
 export interface ModeTransition {
   fromMode: TrackMode
   /** 0→1, raw (un-eased) — see the type-level note above. */
   progress: number
 }
 
+/** The raw path stroke for one segment — moveTo/lineTo/stroke in the current
+ *  `ctx.strokeStyle`/`lineWidth`. Shared by `strokeSegment` (which sets the
+ *  colour first) and the reveal-edge highlight (which re-strokes an
+ *  already-coloured segment in white). */
+function strokeSegmentPath(
+  ctx: CanvasRenderingContext2D,
+  segment: TrackSegment,
+  fit: CanvasFit,
+): void {
+  ctx.beginPath()
+  const [x1, y1] = fit.toPx(segment.x1, segment.y1)
+  const [x2, y2] = fit.toPx(segment.x2, segment.y2)
+  ctx.moveTo(x1, y1)
+  ctx.lineTo(x2, y2)
+  ctx.stroke()
+}
+
 /** Strokes one revealed segment in the given mode's colour — the shared body
- *  behind today's single pass AND both T2/T3 transition passes, so a colour
+ *  behind the single live pass AND both transition passes, so a colour
  *  decision never has to be written (or drift) three times. Caller owns
  *  `ctx.globalAlpha` before calling this (a uniform crossfade alpha or a
  *  per-segment sweep alpha, depending on the pass). */
@@ -364,26 +412,54 @@ function strokeSegment(
     pilot2Color: pilot2.color,
   }
   ctx.strokeStyle = pickSegmentColor(segment, mode, speedRange, gain, theme)
-  ctx.beginPath()
-  const [x1, y1] = fit.toPx(segment.x1, segment.y1)
-  const [x2, y2] = fit.toPx(segment.x2, segment.y2)
-  ctx.moveTo(x1, y1)
-  ctx.lineTo(x2, y2)
-  ctx.stroke()
+  strokeSegmentPath(ctx, segment, fit)
+}
+
+/**
+ * The wet-paint highlight: re-strokes the segments just behind the reveal
+ * frontier in translucent white, brightest at the leader and fading over
+ * `windowMeters`. Walks back from the last revealed segment and stops at the
+ * first one the window no longer reaches (segments are distance-ordered, so
+ * everything earlier is fainter still). A no-op when `windowMeters <= 0` or
+ * nothing is revealed yet. Caller has already painted the settled colours.
+ */
+function drawRevealEdge(
+  ctx: CanvasRenderingContext2D,
+  segments: TrackSegment[],
+  lastRevealed: number,
+  leaderDistance: number,
+  windowMeters: number,
+  fit: CanvasFit,
+  theme: CanvasTheme,
+): void {
+  if (windowMeters <= 0 || lastRevealed < 0) return
+  ctx.save()
+  ctx.strokeStyle = REVEAL_EDGE_COLOR
+  ctx.lineCap = 'round'
+  const maxAlpha = REVEAL_EDGE_MAX_ALPHA[theme]
+  for (let i = lastRevealed; i >= 0; i--) {
+    const intensity = revealEdgeIntensity(segments[i].endDistance, leaderDistance, windowMeters)
+    if (intensity <= 0) break
+    ctx.globalAlpha = maxAlpha * intensity
+    ctx.lineWidth = SEGMENT_STROKE_WIDTH_PX + REVEAL_EDGE_WIDTH_BOOST_PX * intensity
+    strokeSegmentPath(ctx, segments[i], fit)
+  }
+  ctx.restore()
 }
 
 /**
  * Draws the progressive dominance/speed/gain reveal. With no `modeTransition`
- * this is a single pass in the live `trackMode` (today's behaviour, unchanged
- * — every existing caller keeps working since the param is optional). With
- * one, it's a two-pass crossfade (T2): pass 1 repaints `fromMode` at full
- * alpha, pass 2 blends the live `trackMode` on top — identical geometry means
- * pass 2 progressively COVERS pass 1, reading as a per-segment colour
- * crossfade with zero hex-string interpolation (both passes reuse
- * `pickSegmentColor` as-is). When the live mode is `dominance`, pass 2
- * becomes T3's feathered distance-frontier sweep instead of a uniform alpha —
+ * this is a single pass in the live `trackMode`, followed by the reveal-edge
+ * highlight riding the frontier (skipped when `edgeWindowMeters <= 0`, e.g.
+ * reduced motion). With a transition it's a two-pass crossfade: pass 1 repaints
+ * `fromMode` at full alpha, pass 2 blends the live `trackMode` on top —
+ * identical geometry means pass 2 progressively COVERS pass 1, reading as a
+ * per-segment colour crossfade with zero hex-string interpolation (both passes
+ * reuse `pickSegmentColor` as-is). When the live mode is `dominance`, pass 2
+ * becomes the feathered distance-frontier sweep instead of a uniform alpha —
  * switching AWAY from dominance stays a plain crossfade (a reverse-wipe would
- * read as the track emptying, the wrong metaphor).
+ * read as the track emptying, the wrong metaphor). The reveal-edge highlight is
+ * skipped mid-transition so the two effects never fight.
  */
 function drawRevealedSegments(
   ctx: CanvasRenderingContext2D,
@@ -394,6 +470,7 @@ function drawRevealedSegments(
   speedRange: SpeedRange,
   theme: CanvasTheme,
   modeTransition?: ModeTransition | null,
+  edgeWindowMeters = 0,
 ): void {
   const segments = model.circuit.segments
   ctx.save()
@@ -401,11 +478,14 @@ function drawRevealedSegments(
   ctx.lineCap = 'round'
 
   if (!modeTransition) {
+    let lastRevealed = -1
     for (let i = 0; i < segments.length; i++) {
       const segment = segments[i]
       if (!isSegmentRevealed(segment, leaderDistance)) continue
       strokeSegment(ctx, model, segment, i, fit, trackMode, speedRange, theme)
+      lastRevealed = i
     }
+    drawRevealEdge(ctx, segments, lastRevealed, leaderDistance, edgeWindowMeters, fit, theme)
     ctx.restore()
     return
   }
@@ -552,7 +632,7 @@ function drawGapLink(
   const label = buildGapLabel(leaderCode, frame.gapSeconds)
   ctx.save()
   ctx.font = `${GAP_LABEL_FONT_SIZE_PX}px ${MONO_FONT_STACK}`
-  ctx.fillStyle = pilotColors[frame.leaderIndex] // attributes the label to the leader (P3)
+  ctx.fillStyle = pilotColors[frame.leaderIndex] // attributes the label to the leader
   ctx.textAlign = 'center'
   ctx.textBaseline = 'bottom'
   ctx.fillText(label, midX, midY - GAP_LABEL_OFFSET_PX)
@@ -561,7 +641,7 @@ function drawGapLink(
 
 /** Both pilots' identity colour, resolved once per frame for the given theme —
  *  shared by the dots, the trails, and the gap label so a driver's colour
- *  never drifts between the three (Fable UI audit P2). */
+ *  never drifts between the three. */
 function resolvePilotColors(model: ReplayModel, theme: CanvasTheme): [string, string] {
   const [pilot1, pilot2] = model.pilots
   return [resolvePilotColor(pilot1.color, theme), resolvePilotColor(pilot2.color, theme)]
@@ -574,9 +654,11 @@ function resolvePilotColors(model: ReplayModel, theme: CanvasTheme): [string, st
  * `model.frameAt(t)` is resolved exactly once and threaded through every
  * layer below — cheap, but no reason to pay it twice in one frame.
  *
- * `modeTransition` (optional, T2/T3) blends `drawRevealedSegments`'s reveal
- * between two track-colour modes over a short window — see `ModeTransition`.
- * Every existing caller that omits it keeps today's single-pass draw.
+ * `modeTransition` (optional) blends `drawRevealedSegments`'s reveal between
+ * two track-colour modes over a short window — see `ModeTransition`. Callers
+ * that omit it get the single-pass draw plus the reveal-edge highlight, whose
+ * window scales with the lap length (and collapses to nothing under
+ * `reducedMotion`, disabling the highlight).
  */
 export function drawDynamicLayer(
   ctx: CanvasRenderingContext2D,
@@ -592,6 +674,10 @@ export function drawDynamicLayer(
   clearCanvas(ctx, fit)
   const frame = model.frameAt(t)
   const pilotColors = resolvePilotColors(model, theme)
+  const trackLength = model.distance[model.distance.length - 1]
+  const edgeWindowMeters = reducedMotion
+    ? 0
+    : Math.max(REVEAL_EDGE_RATIO * trackLength, REVEAL_EDGE_MIN_M)
   drawRevealedSegments(
     ctx,
     model,
@@ -601,6 +687,7 @@ export function drawDynamicLayer(
     speedRange,
     theme,
     modeTransition,
+    edgeWindowMeters,
   )
   if (!reducedMotion) drawTrails(ctx, model, t, fit, pilotColors)
   drawDots(ctx, model, t, fit, reducedMotion, pilotColors)

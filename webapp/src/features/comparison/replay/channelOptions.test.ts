@@ -1,7 +1,7 @@
 // Pure-function tests for the channel grid's ECharts option builders. No
 // ECharts instance, no React, no canvas — just asserting the shape of the
-// plain objects channelOptions.ts returns (spec §4.5's whole point: these
-// options are built once and never touched imperatively again).
+// plain objects channelOptions.ts returns. These options are built once and
+// never touched imperatively again, which the final test pins.
 
 import type { LineSeriesOption } from 'echarts'
 import { describe, expect, it } from 'vitest'
@@ -52,7 +52,10 @@ function fakeModel(): ReplayModel {
     duration: 90,
     distance: DISTANCE,
     pilots,
-    delta: Float64Array.from([0, 0.2, -0.1, 0.3]),
+    // VER (pilot1/index0) is the winner, so delta (= pilot1 − pilot2) nets
+    // negative and ends at −gapSeconds (VER 1s faster). The oriented delta curve
+    // must therefore end at +gapSeconds.
+    delta: Float64Array.from([0, -0.2, 0.1, -1]),
     circuit: {
       bounds: { minX: 0, maxX: 1, minY: 0, maxY: 1 },
       outline: new Float32Array(),
@@ -105,76 +108,73 @@ describe('buildLineOption', () => {
 
 describe('buildDeltaOption', () => {
   const model = fakeModel()
+  const FASTER = resolvePilotColor(PILOT_1_COLOR, 'dark') // VER (winner)
+  const SLOWER = resolvePilotColor(PILOT_2_COLOR, 'dark') // LEC
 
-  it('has one named delta line (with a dashed y=0 markLine) + two sign fills', () => {
-    const series = buildDeltaOption(model).series as LineSeriesOption[]
-    expect(series).toHaveLength(3)
-    const line = series.find((s) => s.name === 'Δ')
-    expect(line?.markLine?.data).toEqual([{ yAxis: 0 }])
-    // The line carries an explicit colour so it never depends on a visualMap
-    // (which silently dropped the whole series in the browser).
-    expect(line?.lineStyle?.color).toBeTruthy()
+  it('draws two team-coloured lines (faster flat baseline + slower deficit curve), no markLine', () => {
+    const series = buildDeltaOption(model, 'dark').series as LineSeriesOption[]
+    expect(series).toHaveLength(4) // 2 sign fills + faster line + slower line
+    for (const s of series) expect(s.markLine).toBeUndefined()
+
+    const fasterLine = series.find((s) => s.name === 'VER')
+    const slowerLine = series.find((s) => s.name === 'LEC')
+    // Faster = a flat baseline at y=0 in their colour.
+    expect(fasterLine?.lineStyle?.color).toBe(FASTER)
+    const baseline = fasterLine?.data as Array<[number, number]>
+    expect(baseline.every(([, v]) => v === 0)).toBe(true)
+    // Slower = the oriented deficit curve in their colour, ending at +gapSeconds.
+    expect(slowerLine?.lineStyle?.color).toBe(SLOWER)
+    const curve = slowerLine?.data as Array<[number, number]>
+    expect(curve[curve.length - 1][1]).toBeCloseTo(model.winner.gapSeconds, 6)
   })
 
-  it('tints each sign region by the driver AHEAD there, not the one falling behind', () => {
-    // delta[i] > 0 means pilot1 is SLOWER, i.e. pilot2 is ahead — so the
-    // positive fill must carry pilot2's colour and the negative fill
-    // pilot1's (the original build had this inverted: it tinted the
-    // positive/pilot1-slower region in pilot1's OWN colour, glowing the
-    // losing driver's hue — Fable UI audit, P1).
+  it('flips the orientation sign when the winner is pilot2 (curve = raw delta)', () => {
+    const flipped = fakeModel()
+    flipped.delta = Float64Array.from([0, 0.2, -0.1, 1]) // LEC now wins by 1s (pilot1 slower)
+    flipped.winner = { ...flipped.winner, winnerIndex: 1, winnerCode: 'LEC', loserCode: 'VER' }
+    const series = buildDeltaOption(flipped, 'dark').series as LineSeriesOption[]
+    const slowerLine = series.find((s) => s.name === 'VER') // VER is now the slower
+    const curve = slowerLine?.data as Array<[number, number]>
+    // winnerIndex===1 -> sign +1 -> oriented === raw delta.
+    expect(curve[curve.length - 1][1]).toBeCloseTo(1, 6)
+  })
+
+  it('tints the two zero-anchored fills by the driver ahead (above 0 = faster, below = slower), no animation', () => {
     const fills = (buildDeltaOption(model, 'dark').series as LineSeriesOption[]).filter(
       (s) => !s.name,
     )
     expect(fills).toHaveLength(2)
     const [positiveFill, negativeFill] = fills as [LineSeriesOption, LineSeriesOption]
-
-    // Fills clamp to one sign each: positive fill never dips below 0, negative
-    // fill never rises above 0.
-    const positiveData = positiveFill.data as Array<[number, number]>
-    const negativeData = negativeFill.data as Array<[number, number]>
-    expect(positiveData.every(([, v]) => v >= 0)).toBe(true)
-    expect(negativeData.every(([, v]) => v <= 0)).toBe(true)
-
-    expect(positiveFill.areaStyle?.color).toBe(resolvePilotColor(PILOT_2_COLOR, 'dark'))
-    expect(negativeFill.areaStyle?.color).toBe(resolvePilotColor(PILOT_1_COLOR, 'dark'))
-  })
-
-  it('paints the sign fills without an entrance animation, so they never look truncated mid-sweep', () => {
-    const fills = (buildDeltaOption(model).series as LineSeriesOption[]).filter((s) => !s.name)
+    expect((positiveFill.data as Array<[number, number]>).every(([, v]) => v >= 0)).toBe(true)
+    expect((negativeFill.data as Array<[number, number]>).every(([, v]) => v <= 0)).toBe(true)
+    expect(positiveFill.areaStyle?.color).toBe(FASTER)
+    expect(negativeFill.areaStyle?.color).toBe(SLOWER)
     for (const fill of fills) expect(fill.animation).toBe(false)
   })
 
-  it('uses a neutral (non-accent-purple) colour for the delta curve itself', () => {
-    const line = (buildDeltaOption(model).series as LineSeriesOption[]).find((s) => s.name === 'Δ')
-    expect(line?.lineStyle?.color).not.toBe('#6c5ce7')
+  it('tooltip names the driver ahead (faster when curve>0, slower when <0), keyed off the slower series', () => {
+    const formatter = (
+      buildDeltaOption(model, 'dark').tooltip as { formatter: (p: unknown) => string }
+    ).formatter
+    // curve read off the SLOWER's (LEC) series: +0.3 = slower behind -> VER (faster) ahead.
+    const ahead = formatter([{ seriesName: 'LEC', value: [0, 0.3] }])
+    expect(ahead).toContain('VER')
+    expect(ahead).toContain('0.300')
+    // negative -> the slower (LEC) is ahead here.
+    expect(formatter([{ seriesName: 'LEC', value: [0, -0.3] }])).toContain('LEC')
   })
 
-  it('tooltip names the driver AHEAD (team-coloured) + gap at 3dp, ignoring the raw fill series', () => {
-    const option = buildDeltaOption(model)
-    const tooltip = option.tooltip as { formatter?: (params: unknown) => string }
-    const formatter = tooltip.formatter as (params: unknown) => string
-    // delta > 0 ⇒ pilot1 slower ⇒ pilot2 (LEC) ahead. The unnamed sign fills
-    // arrive as "series0"/"series1" on the axis trigger and must NOT leak.
-    const html = formatter([
-      { seriesName: 'series0', value: [0, 0.831] },
-      { seriesName: 'series1', value: [0, 0] },
-      { seriesName: 'Δ', value: [0, 0.831] },
-    ])
-    expect(html).toContain('LEC') // the driver ahead is named
-    expect(html).toContain('0.831') // gap at 3dp
-    expect(html).not.toContain('series0')
-    expect(html).not.toContain('series1')
-  })
-
-  it('tooltip says "Level" when the two cars are within a few thousandths', () => {
-    const option = buildDeltaOption(model)
-    const formatter = (option.tooltip as { formatter: (p: unknown) => string }).formatter
-    expect(formatter([{ seriesName: 'Δ', value: [0, 0.001] }])).toContain('Level')
+  it('tooltip says "Level" only within a thousandth (0.0004), not at a real 0.004 lead', () => {
+    const formatter = (
+      buildDeltaOption(model, 'dark').tooltip as { formatter: (p: unknown) => string }
+    ).formatter
+    expect(formatter([{ seriesName: 'LEC', value: [0, 0.0004] }])).toContain('Level')
+    expect(formatter([{ seriesName: 'LEC', value: [0, 0.004] }])).not.toContain('Level')
   })
 })
 
 describe('channelOptions.ts never calls ECharts imperatively', () => {
-  it('makes no `.setOption(`/`.dispatchAction(` CALL in the source (spec §4.5)', () => {
+  it('makes no `.setOption(`/`.dispatchAction(` CALL in the source', () => {
     // Match method CALLS, not the words in prose — the module's own docstring
     // explains that it never calls setOption, so a bare word match self-trips.
     expect(channelOptionsSource).not.toMatch(/\.(setOption|dispatchAction)\s*\(/)

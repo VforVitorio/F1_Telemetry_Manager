@@ -4,17 +4,17 @@ import { cn } from '@/lib/cn'
 import { useReplayTime } from './useReplayClock'
 import type { ReplayClock } from './types'
 
-// Time-domain scrubber for the replay clock (spec §4.6, dossier #33). Built
-// directly on `@radix-ui/react-slider` rather than the shared `Slider` — the
-// scrubber needs `aria-valuetext` and S1/S2/S3 sector ticks that `Slider`
-// deliberately doesn't support (see Slider.tsx's own comment).
+// Time-domain scrubber for the replay clock. Built directly on
+// `@radix-ui/react-slider` rather than the shared `Slider` — the scrubber needs
+// `aria-valuetext` and S1/S2/S3 sector ticks that `Slider` deliberately doesn't
+// support (see Slider.tsx's own comment).
 //
-// While the user is NOT dragging, the thumb mirrors `useReplayTime` (Worker
-// E's throttled clock mirror, bumped to 30Hz here — smooth enough for a
-// single visual element without re-rendering the whole tree). While
-// dragging, a local `dragTime` state takes over: `onValueChange` seeks the
-// clock live so the redraw is O(1), and playback pauses for the drag,
-// resuming on release only if it was actually playing.
+// While the user is NOT dragging, the thumb mirrors `useReplayTime` (the
+// throttled clock mirror, bumped to 30Hz here — smooth enough for a single
+// visual element without re-rendering the whole tree). While dragging, a local
+// `dragTime` state takes over: `onValueChange` seeks the clock live so the
+// redraw is O(1), and playback pauses for the drag, resuming on release only if
+// it was actually playing.
 
 const SCRUBBER_HZ = 30
 const STEP_SECONDS = 0.05
@@ -31,7 +31,7 @@ export interface ReplayScrubberProps {
   duration: number
   clock: ReplayClock
   /** Sector boundary times (s), for the S1/S2/S3 ticks — placeholder 25/50/75%
-   *  of duration when the model has no official splits (spec §4.6). */
+   *  of duration when the model has no official splits. */
   sectorTimes: number[]
   /** Builds the thumb's `aria-valuetext` for a given elapsed time. */
   ariaValueText: (t: number) => string
@@ -53,7 +53,7 @@ function sectorPercent(sectorTime: number, duration: number): string {
 
 /** Shared hover title for a sector tick/label — honestly discloses that the
  *  split is the 25/50/75%-of-duration placeholder (`buildReplayModel`'s
- *  `sectorTimes`), not an official S1/S2/S3 boundary (P3, spec §4.6). */
+ *  `sectorTimes`), not an official S1/S2/S3 boundary. */
 function sectorTitle(index: number): string {
   return `S${index + 1} split (est.)`
 }

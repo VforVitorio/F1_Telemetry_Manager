@@ -1,7 +1,7 @@
 // The moving playhead for the channel grid, drawn OUTSIDE ECharts entirely.
-// The 4 charts are fully static (spec §4.5 — `setOption` runs once, at mount,
-// and never again while the clock ticks); the cursor instead lives as a 1px
-// DOM line whose position is a compositor-only `transform: translateX(px)`.
+// The 4 charts are fully static (`setOption` runs once, at mount, and never
+// again while the clock ticks); the cursor instead lives as a 1px DOM line
+// whose position is a compositor-only `transform: translateX(px)`.
 //
 // The distance -> pixel mapping is expensive to recompute (it goes through
 // ECharts' own axis conversion), so it's cached as a plain linear function
