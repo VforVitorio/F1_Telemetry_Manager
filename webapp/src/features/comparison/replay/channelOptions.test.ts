@@ -3,7 +3,7 @@
 // plain objects channelOptions.ts returns (spec §4.5's whole point: these
 // options are built once and never touched imperatively again).
 
-import type { LineSeriesOption, PiecewiseVisualMapComponentOption } from 'echarts'
+import type { LineSeriesOption } from 'echarts'
 import { describe, expect, it } from 'vitest'
 import { buildDeltaOption, buildLineOption } from './channelOptions'
 // Vite `?raw`: the module's own source as a string (typed by vite/client) — lets
@@ -100,18 +100,25 @@ describe('buildLineOption', () => {
 describe('buildDeltaOption', () => {
   const model = fakeModel()
 
-  it('has exactly one delta series with a dashed y=0 markLine', () => {
+  it('has one named delta line (with a dashed y=0 markLine) + two sign fills', () => {
     const series = buildDeltaOption(model).series as LineSeriesOption[]
-    expect(series).toHaveLength(1)
-    expect(series[0]?.markLine?.data).toEqual([{ yAxis: 0 }])
+    expect(series).toHaveLength(3)
+    const line = series.find((s) => s.name === 'Δ')
+    expect(line?.markLine?.data).toEqual([{ yAxis: 0 }])
+    // The line carries an explicit colour so it never depends on a visualMap
+    // (which silently dropped the whole series in the browser).
+    expect(line?.lineStyle?.color).toBeTruthy()
   })
 
-  it('carries a piecewise visualMap referencing both pilot colours', () => {
-    const option = buildDeltaOption(model)
-    const visualMap = option.visualMap as PiecewiseVisualMapComponentOption
-    const pieceColors = visualMap.pieces?.map((piece) => piece.color)
-    expect(pieceColors).toContain(PILOT_1_COLOR)
-    expect(pieceColors).toContain(PILOT_2_COLOR)
+  it('tints the two zero-anchored area fills by each pilot colour', () => {
+    const fills = (buildDeltaOption(model).series as LineSeriesOption[]).filter((s) => !s.name)
+    expect(fills).toHaveLength(2)
+    const fillColors = fills.map((s) => s.areaStyle?.color)
+    expect(fillColors).toContain(PILOT_1_COLOR)
+    expect(fillColors).toContain(PILOT_2_COLOR)
+    // Fills clamp to one sign each: positive fill never dips below 0.
+    const positiveFill = fills[0]?.data as Array<[number, number]>
+    expect(positiveFill.every(([, v]) => v >= 0)).toBe(true)
   })
 })
 

@@ -16,7 +16,6 @@ import type {
   DefaultLabelFormatterCallbackParams,
   EChartsOption,
   LineSeriesOption,
-  PiecewiseVisualMapComponentOption,
   TooltipComponentFormatterCallbackParams,
 } from 'echarts'
 import { F1_LIGHT_THEME } from '@/charts/echartsTheme'
@@ -32,6 +31,10 @@ const GRID = { top: 16, left: 8, right: 20, bottom: 8, containLabel: true } as c
 // colour is threaded in per the app's current light/dark mode.
 const MARK_LINE_COLOR_DARK = 'rgba(255,255,255,0.35)'
 const MARK_LINE_COLOR_LIGHT = 'rgba(20,18,31,0.35)'
+
+/** The delta CURVE itself — the brand accent purple, distinct from both driver
+ *  colours (which tint the sign-split fills), readable on light and dark. */
+const DELTA_LINE_COLOR = '#6c5ce7'
 
 /** Area fill under the split-sign delta line — faint enough that the y=0
  *  markLine and the line itself stay the primary read (spec §4.5: "who
@@ -130,10 +133,18 @@ function baseChannelOption(
     grid: GRID,
     xAxis: {
       type: 'value',
-      name: 'Distance (m)',
-      nameLocation: 'middle',
-      nameGap: 28,
       splitLine: { show: false },
+      // These panes are ~240px wide, so the raw metre ticks (500,1000,…) collide
+      // into an unreadable smear. Compact them to km and let ECharts drop any
+      // that still overlap. The moving cursor + S1/S2/S3 scrubber ticks carry the
+      // precise position; the axis just needs a legible sense of scale.
+      axisLabel: {
+        hideOverlap: true,
+        formatter: (value: string | number) => {
+          const n = Number(value)
+          return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : `${n}`
+        },
+      },
     },
     yAxis: { type: 'value', scale: true },
   }
@@ -164,52 +175,62 @@ export function buildLineOption(
   return { ...baseChannelOption(legend, buildTooltipFormatter(colorByName)), series }
 }
 
-/** Piecewise `visualMap` that recolours the delta line (and its area fill) by
- *  sign, per spec §4.5's explicit rule: pilot1's colour where `model.delta >=
- *  0`, pilot2's colour where it's negative. This is what makes "who gains
- *  where" legible while the replay is stopped, without any per-frame
- *  update. */
-function buildDeltaVisualMap(color1: string, color2: string): PiecewiseVisualMapComponentOption {
+/** One zero-anchored area fill carrying one sign of the delta: `keepPositive`
+ *  clamps to `max(v,0)` (pilot1-slower region, tinted pilot1), otherwise
+ *  `min(v,0)` (pilot2-slower, tinted pilot2). `origin: 0` fills to the zero
+ *  baseline, not the axis floor. Silent + unnamed so it adds no tooltip row.
+ *
+ *  This replaces a piecewise `visualMap` (spec §4.5's original suggestion),
+ *  which in filter mode silently drops the whole line — verified in the browser.
+ *  Two explicit fills + a solid line render reliably in both themes. */
+function buildSignFill(
+  points: Array<[number, number]>,
+  keepPositive: boolean,
+  color: string,
+): LineSeriesOption {
   return {
-    type: 'piecewise',
-    show: false,
-    dimension: 1, // the [distance, delta] series' 2nd data dimension = delta
-    seriesIndex: 0,
-    pieces: [
-      { gte: 0, color: color1 },
-      { lt: 0, color: color2 },
-    ],
+    type: 'line',
+    silent: true,
+    showSymbol: false,
+    lineStyle: { width: 0 },
+    areaStyle: { color, opacity: DELTA_AREA_ALPHA, origin: 0 },
+    data: points.map(([d, v]) => [d, keepPositive ? Math.max(v, 0) : Math.min(v, 0)]),
+    z: 1,
   }
 }
 
-/** The single delta series (`model.delta`, already scaled to the real
- *  lap-time gap by buildReplayModel — positive = pilot1 slower), a dashed
- *  y=0 reference line, and the split-sign area fill via `visualMap` above. */
+/** The delta chart: a solid delta CURVE (`model.delta`, already scaled to the
+ *  real lap-time gap — positive = pilot1 slower), a dashed y=0 reference line,
+ *  and two sign-tinted area fills that show "who gains where" while stopped. */
 export function buildDeltaOption(model: ReplayModel, chartTheme?: string): EChartsOption {
   const [pilot1, pilot2] = model.pilots
   const markLineColor = chartTheme === F1_LIGHT_THEME ? MARK_LINE_COLOR_LIGHT : MARK_LINE_COLOR_DARK
+  const points = toPoints(model.distance, model.delta)
 
-  const series: LineSeriesOption = {
+  const line: LineSeriesOption = {
     name: 'Δ',
     type: 'line',
     showSymbol: false,
-    lineStyle: { width: LINE_WIDTH },
-    areaStyle: { opacity: DELTA_AREA_ALPHA },
-    data: toPoints(model.distance, model.delta),
+    lineStyle: { width: LINE_WIDTH, color: DELTA_LINE_COLOR },
+    data: points,
     markLine: {
       symbol: 'none',
       silent: true,
+      label: { show: false }, // no stray "0" tag at the line's end
       lineStyle: { type: 'dashed', color: markLineColor },
       data: [{ yAxis: 0 }],
     },
+    z: 3,
   }
 
   return {
-    // Delta's own legend is hidden (see `baseChannelOption` — one series,
-    // not one per pilot); the tooltip still needs the colour map so a hover
-    // over the single "Δ" line renders in a legible colour.
-    ...baseChannelOption([], buildTooltipFormatter({ Δ: 'inherit' })),
-    visualMap: buildDeltaVisualMap(pilot1.color, pilot2.color),
-    series: [series],
+    // Delta's own legend is hidden (see `baseChannelOption` — one conceptual
+    // series); the tooltip colour map keeps a hover over "Δ" legible.
+    ...baseChannelOption([], buildTooltipFormatter({ Δ: DELTA_LINE_COLOR })),
+    series: [
+      buildSignFill(points, true, pilot1.color),
+      buildSignFill(points, false, pilot2.color),
+      line,
+    ],
   }
 }
