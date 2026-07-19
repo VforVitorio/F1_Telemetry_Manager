@@ -148,14 +148,17 @@ export function ComparisonPage() {
   /** Share the current paused instant: write `&t=` into the URL, copy it, toast. */
   const handleShareMoment = () => {
     const t = Number(clock.getTime().toFixed(2))
-    void navigate({ search: (prev) => toRaw({ ...fromRaw(prev), compare: true, t }) })
-    void navigator.clipboard?.writeText(window.location.href)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 1500)
-    toast({
-      title: 'Moment link copied',
-      description: `Paused at ${t.toFixed(1)}s`,
-      tone: 'success',
+    // Copy AFTER the navigate resolves — `navigate` is async, so reading
+    // window.location.href before it settles would copy a URL still missing `t=`.
+    void navigate({ search: (prev) => toRaw({ ...fromRaw(prev), compare: true, t }) }).then(() => {
+      void navigator.clipboard?.writeText(window.location.href)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+      toast({
+        title: 'Moment link copied',
+        description: `Paused at ${t.toFixed(1)}s`,
+        tone: 'success',
+      })
     })
   }
 

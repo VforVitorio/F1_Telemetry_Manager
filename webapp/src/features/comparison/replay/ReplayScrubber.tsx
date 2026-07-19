@@ -84,7 +84,13 @@ export function ReplayScrubber({
 
   function handleValueCommit() {
     setDragTime(null)
-    if (resumeOnReleaseRef.current) clock.play()
+    // Capture-and-reset: without clearing the ref, a later KEYBOARD commit (Radix
+    // fires onValueCommit on arrow keys too, with no preceding pointerDown to
+    // re-arm the ref) would replay the last pointer-drag's "was playing" verdict
+    // and spuriously resume playback.
+    const resume = resumeOnReleaseRef.current
+    resumeOnReleaseRef.current = false
+    if (resume) clock.play()
   }
 
   return (

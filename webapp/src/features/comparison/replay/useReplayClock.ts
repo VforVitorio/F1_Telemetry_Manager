@@ -191,9 +191,14 @@ export function useReplayClock(opts: UseReplayClockOptions): ReplayClock {
           resumeAfterHiddenRef.current = true
         }
       } else if (resumeAfterHiddenRef.current) {
+        // Always clear the flag on return, but only re-arm the loop if the clock
+        // is STILL logically playing — a pause() that landed while hidden (e.g.
+        // programmatic) must not be undone by the resume.
         resumeAfterHiddenRef.current = false
-        lastFrameRef.current = performance.now()
-        rafIdRef.current = requestAnimationFrame(engine.advance)
+        if (playingRef.current) {
+          lastFrameRef.current = performance.now()
+          rafIdRef.current = requestAnimationFrame(engine.advance)
+        }
       }
     }
     document.addEventListener('visibilitychange', handleVisibilityChange)

@@ -29,6 +29,14 @@ function isTypingTarget(target: EventTarget | null): boolean {
   return target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable
 }
 
+/** True when the target is the scrubber thumb (Radix `role="slider"`). It
+ *  handles ArrowLeft/Right/Home/End natively (fine 0.05s steps), so the
+ *  card-level seek shortcuts must NOT also fire on those keys or every press
+ *  seeks twice (0.05 + 0.5s). Non-seek shortcuts (play/speed/restart) still run. */
+function isSliderTarget(target: EventTarget | null): boolean {
+  return target instanceof HTMLElement && target.closest('[role="slider"]') !== null
+}
+
 /** One step through `speeds` in `direction`, clamped at the ends (no wrap). */
 function stepSpeed<S extends number>(speeds: readonly S[], current: S, direction: 1 | -1): S {
   const currentIndex = speeds.indexOf(current)
@@ -56,6 +64,9 @@ export function useReplayKeyboard<S extends number = number>(
     function handleKeyDown(event: KeyboardEvent) {
       if (isTypingTarget(event.target)) return
 
+      // The scrubber thumb owns the seek keys; skip them here to avoid a double
+      // seek, but let play/speed/restart still work while the thumb is focused.
+      const onSlider = isSliderTarget(event.target)
       const nudgeSeconds = event.shiftKey ? NUDGE_LARGE_SECONDS : NUDGE_SMALL_SECONDS
 
       switch (event.key) {
@@ -66,18 +77,22 @@ export function useReplayKeyboard<S extends number = number>(
           clock.toggle()
           break
         case 'ArrowLeft':
+          if (onSlider) break
           event.preventDefault()
           clock.nudge(-nudgeSeconds)
           break
         case 'ArrowRight':
+          if (onSlider) break
           event.preventDefault()
           clock.nudge(nudgeSeconds)
           break
         case 'Home':
+          if (onSlider) break
           event.preventDefault()
           clock.seek(0)
           break
         case 'End':
+          if (onSlider) break
           event.preventDefault()
           clock.seek(duration)
           break

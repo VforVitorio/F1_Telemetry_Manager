@@ -12,6 +12,7 @@ import { describe, expect, it } from 'vitest'
 // Vite `?raw` import: the fixture arrives as a plain string (typed by vite/client),
 // so `tsc` never infers a 500-element JSON literal type and no node:fs is needed.
 import fixtureRaw from './comparison-monaco-2023.fixture.json?raw'
+import syntheticRaw from './synthetic-delta-cases.fixture.json?raw'
 import { buildReplayModel } from './buildReplayModel'
 import type { ComparisonPayload } from '@/lib/api/comparison'
 
@@ -143,4 +144,64 @@ describe('buildReplayModel — synthetic edge cases', () => {
     expect(model.winner.winnerCode).toBe('AAA') // pilot1 lap_time 40 < 41
     expect(model.winner.winnerIndex).toBe(0)
   })
+})
+
+// Adversarial cross-check: the REAL Python (comparison_service.calculate_delta_time
+// + the §4.1 time synthesis) was run on hand-built synthetic telemetry that
+// exercises what the single Monaco fixture cannot — both delta signs, a sign
+// crossing, equal lap times (the scale-to-zero branch), and a near-stopped
+// segment (the epsilon guard). The TS port must reproduce every case to 1e-6.
+// (This is the check the Fable bugs-audit pass was running; completed here.)
+interface SyntheticCase {
+  name: string
+  distance: number[]
+  speed1: number[]
+  speed2: number[]
+  lap_time1: number
+  lap_time2: number
+  delta: number[]
+  time1: number[]
+  time2: number[]
+}
+
+const syntheticCases = (JSON.parse(syntheticRaw) as { cases: SyntheticCase[] }).cases
+
+function payloadFromCase(c: SyntheticCase): ComparisonPayload {
+  const zeros = c.distance.map(() => 0)
+  const pilot = (speed: number[], lapTime: number) => ({
+    distance: c.distance,
+    x: c.distance,
+    y: zeros,
+    speed,
+    throttle: zeros,
+    brake: zeros,
+    lap_time: lapTime,
+    color: '#000000',
+    name: 'X',
+    lap: 1,
+  })
+  return {
+    circuit: { x: c.distance, y: zeros, colors: c.distance.map(() => '#aaaaaa') },
+    pilot1: pilot(c.speed1, c.lap_time1),
+    pilot2: pilot(c.speed2, c.lap_time2),
+    delta: [],
+    metadata: { rotation: 0, aspect_ratio: 1 },
+  }
+}
+
+function maxAbsErr(got: ArrayLike<number>, want: number[]): number {
+  let err = 0
+  for (let i = 0; i < want.length; i++) err = Math.max(err, Math.abs(got[i] - want[i]))
+  return err
+}
+
+describe('buildReplayModel — Python↔TS math parity on synthetic edge cases', () => {
+  for (const c of syntheticCases) {
+    it(`${c.name}: delta + both time domains match the real Python to 1e-6`, () => {
+      const model = buildReplayModel(payloadFromCase(c))
+      expect(maxAbsErr(model.delta, c.delta)).toBeLessThan(TOL)
+      expect(maxAbsErr(model.pilots[0].timeAtDistance, c.time1)).toBeLessThan(TOL)
+      expect(maxAbsErr(model.pilots[1].timeAtDistance, c.time2)).toBeLessThan(TOL)
+    })
+  }
 })

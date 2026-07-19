@@ -97,4 +97,20 @@ describe('useReplayKeyboard', () => {
     press(input, ' ')
     expect(clock.toggle).not.toHaveBeenCalled()
   })
+
+  it('does NOT seek on arrow/Home/End when the scrubber thumb is focused (the Radix slider owns those keys — no double seek)', () => {
+    const { card, clock } = setup()
+    const thumb = document.createElement('span')
+    thumb.setAttribute('role', 'slider') // Radix Slider.Thumb
+    card.appendChild(thumb)
+    press(thumb, 'ArrowRight')
+    press(thumb, 'ArrowLeft')
+    press(thumb, 'Home')
+    press(thumb, 'End')
+    expect(clock.nudge).not.toHaveBeenCalled()
+    expect(clock.seek).not.toHaveBeenCalled()
+    // Non-seek shortcuts still work while the thumb is focused.
+    press(thumb, ' ')
+    expect(clock.toggle).toHaveBeenCalledTimes(1)
+  })
 })

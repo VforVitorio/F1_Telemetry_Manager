@@ -76,6 +76,10 @@ export function FutureDimmer({ model, clock, status, getChart }: FutureDimmerPro
 
     const unsubscribe = clock.subscribe(applyFrame)
     const resizeObserver = new ResizeObserver(() => {
+      // Force a synchronous resize before re-reading the axis — echarts-for-react
+      // only resizes on a 60ms-debounced sensor, so mapping against the container
+      // change directly would leave the veil against the pre-resize geometry.
+      chart.resize()
       mapping = mapDistanceToPixel(chart, dMin, dMax)
       applyFrame(clock.getTime())
     })

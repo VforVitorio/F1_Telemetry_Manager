@@ -64,6 +64,12 @@ export function CursorOverlay({ model, clock, getChart }: CursorOverlayProps) {
 
     const unsubscribe = clock.subscribe(applyFrame)
     const resizeObserver = new ResizeObserver(() => {
+      // echarts-for-react resizes the chart on a 60ms-debounced size-sensor, so
+      // reading `convertToPixel` the instant the container changes would map
+      // against the PRE-resize axis and leave the cursor misaligned. Force a
+      // synchronous resize first so the conversion is against the new geometry
+      // (idempotent — echarts-for-react's own later resize is then a no-op).
+      chart.resize()
       mapping = mapDistanceToPixel(chart, dMin, dMax)
       applyFrame(clock.getTime())
     })
