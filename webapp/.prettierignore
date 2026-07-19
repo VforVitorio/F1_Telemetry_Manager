@@ -4,3 +4,7 @@ coverage
 bun.lock
 bun.lockb
 src/lib/api/schema.ts
+# Test fixtures are generated (compact JSON, some with 500-element arrays) — not
+# hand-edited, so prettier-formatting them just bloats them. See the Comparison
+# golden/synthetic replay fixtures.
+**/*.fixture.json

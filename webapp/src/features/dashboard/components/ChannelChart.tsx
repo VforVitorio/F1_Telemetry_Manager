@@ -25,6 +25,7 @@ import { F1_LIGHT_THEME } from '@/charts/echartsTheme'
 import { ChartMaximizedContext } from '@/components/ChartCard'
 import type { LapTelemetry } from '@/lib/api/telemetry'
 import { getDriverColor, getDriverTextColor } from '@/lib/drivers'
+import { interp } from '@/lib/interp'
 import type { ChannelConfig } from './channels'
 import { TelemetryLoader } from './TelemetryLoader'
 
@@ -331,29 +332,6 @@ export const ChannelChart = memo(function ChannelChart({
 // ---- Delta: cross-driver, needs its own data prep --------------------------
 
 const MIN_DELTA_DRIVERS = 2
-
-/**
- * Linear interpolation of `ys` at `x`, given a monotonically increasing `xs`
- * (mirrors `numpy.interp`, used by the Streamlit original in
- * `delta_graph.py::_calculate_deltas` to align a driver's time series onto
- * the reference driver's distance grid). Values outside `[xs[0], xs[last]]`
- * clamp to the nearest endpoint instead of extrapolating.
- */
-function interp(x: number, xs: number[], ys: number[]): number {
-  const last = xs.length - 1
-  if (x <= xs[0]) return ys[0]
-  if (x >= xs[last]) return ys[last]
-
-  let lo = 0
-  let hi = last
-  while (hi - lo > 1) {
-    const mid = (lo + hi) >> 1
-    if (xs[mid] <= x) lo = mid
-    else hi = mid
-  }
-  const t = (x - xs[lo]) / (xs[hi] - xs[lo])
-  return ys[lo] + t * (ys[hi] - ys[lo])
-}
 
 /**
  * The reference lap is the loaded driver with the smallest final cumulative

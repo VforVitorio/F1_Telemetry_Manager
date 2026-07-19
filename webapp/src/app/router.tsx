@@ -7,6 +7,8 @@ import { DashboardPage } from '@/features/dashboard/DashboardPage'
 import { validateDashboardSearch } from '@/features/dashboard/search'
 import { StrategyPage } from '@/features/strategy/StrategyPage'
 import { validateStrategySearch } from '@/features/strategy/search'
+import { ComparisonPage } from '@/features/comparison/ComparisonPage'
+import { validateComparisonSearch } from '@/features/comparison/search'
 
 // Route tree wiring (#33). Root renders the app shell (acrylic rail + routed
 // content plane, see Shell.tsx); the shell's <Outlet/> renders whichever leaf
@@ -74,13 +76,14 @@ const labRoute = createRoute({
   component: () => <ComingSoon title="Lab" />,
 })
 
-// Comparison shares the Dashboard's selection shape so the "Go to comparison"
-// cross-link can carry year/gp/session/drivers forward (wired up in #36).
+// Comparison (#36) — the flagship time-clock replay. Shares the Dashboard's
+// year/gp/session/drivers selection shape (so "Go to comparison" carries context)
+// but caps drivers at 2 and adds the `compare` gate + optional `t` moment-link.
 const comparisonRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/comparison',
-  validateSearch: validateDashboardSearch,
-  component: () => <ComingSoon title="Comparison" />,
+  validateSearch: validateComparisonSearch,
+  component: ComparisonPage,
 })
 
 const chatRoute = createRoute({
