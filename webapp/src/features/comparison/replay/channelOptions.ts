@@ -18,9 +18,14 @@ import type {
   LineSeriesOption,
   TooltipComponentFormatterCallbackParams,
 } from 'echarts'
-import { F1_LIGHT_THEME } from '@/charts/echartsTheme'
-import { getDriverColor } from '@/lib/drivers'
+import { getDriverColor, resolvePilotColor } from '@/lib/drivers'
 import type { PilotModel, ReplayModel } from './types'
+
+/** The app's light/dark mode — threaded into the builders below so identity
+ *  colours (`resolvePilotColor`) and the theme-only ink (markLine, delta
+ *  curve) can be resolved from one value, without the builders reaching into
+ *  `useUiStore` themselves (they stay pure — see the module docstring). */
+export type UiTheme = 'dark' | 'light'
 
 const LINE_WIDTH = 2
 const MONO = "'JetBrains Mono Variable', ui-monospace, monospace"
@@ -32,9 +37,13 @@ const GRID = { top: 16, left: 8, right: 20, bottom: 8, containLabel: true } as c
 const MARK_LINE_COLOR_DARK = 'rgba(255,255,255,0.35)'
 const MARK_LINE_COLOR_LIGHT = 'rgba(20,18,31,0.35)'
 
-/** The delta CURVE itself — the brand accent purple, distinct from both driver
- *  colours (which tint the sign-split fills), readable on light and dark. */
-const DELTA_LINE_COLOR = '#6c5ce7'
+/** The delta CURVE itself — a neutral fg-2 tone (mirrors echartsTheme.ts's own
+ *  DARK/LIGHT_PALETTE.fg2), not the brand accent purple: the accent already
+ *  means "the moving cursor" (CursorOverlay's `bg-accent` playhead line), and
+ *  two unrelated meanings on one hue collide (Fable UI audit, finding P1). The
+ *  sign-split fills below carry the driver-identity colour instead. */
+const DELTA_LINE_COLOR_DARK = 'rgba(255,255,255,0.72)'
+const DELTA_LINE_COLOR_LIGHT = 'rgba(20,18,31,0.75)'
 
 /** Area fill under the split-sign delta line — faint enough that the y=0
  *  markLine and the line itself stay the primary read (spec §4.5: "who
@@ -61,15 +70,22 @@ const LINE_CHANNELS: Record<LineChannel, ChannelSpec> = {
 /** Stable render order for the grid + the source for each pane's title. */
 export const LINE_CHANNEL_KEYS: readonly LineChannel[] = ['speed', 'brake', 'throttle']
 
-/** "Speed (km/h)" — the channel's title, unit inline (the pane header carries
- *  it; the option itself drops a redundant y-axis name, per ChannelChart's
- *  own convention). */
-export function lineChannelTitle(channel: LineChannel): string {
-  const spec = LINE_CHANNELS[channel]
-  return `${spec.title} (${spec.unit})`
+/** "Speed" — the uppercase-styled part of the pane header. Split from the
+ *  unit (below) so ChannelPane can render the label `uppercase` while the
+ *  unit stays as-typed: CSS `uppercase` on a combined "Speed (km/h)" string
+ *  smashed "(s)" into "(S)" (Fable UI audit, P3). */
+export function lineChannelLabel(channel: LineChannel): string {
+  return LINE_CHANNELS[channel].title
 }
 
-export const DELTA_TITLE = 'Delta (s)'
+/** "(km/h)" — rendered in a `normal-case` span so the unit's own casing
+ *  (lowercase "s", "km/h") survives the label's `uppercase` styling. */
+export function lineChannelUnit(channel: LineChannel): string {
+  return `(${LINE_CHANNELS[channel].unit})`
+}
+
+export const DELTA_LABEL = 'Delta'
+export const DELTA_UNIT = '(s)'
 
 /** [distance, value] pairs sharing the model's common distance grid — same
  *  point count as `distance` for every channel (all baked onto the same grid
@@ -80,23 +96,29 @@ function toPoints(distance: Float64Array, values: ArrayLike<number>): Array<[num
 
 /** Team colour for a pilot: the payload's own `color` first, `getDriverColor`
  *  only as a fallback for a missing/empty value ("team colours come from the
- *  payload; getDriverColor/getDriverTextColor are fallbacks only"). */
-function pilotColor(pilot: PilotModel, year: number | undefined): string {
+ *  payload; getDriverColor/getDriverTextColor are fallbacks only"). Exported
+ *  so ChannelPane's header chips (P1: team-coloured chips replacing the
+ *  in-plot legend) resolve identity colour the same way as the series do,
+ *  rather than duplicating the fallback. */
+export function pilotColor(pilot: PilotModel, year: number | undefined): string {
   return pilot.color || getDriverColor(pilot.code, year)
 }
 
 /** One tooltip row per hovered series, the name in its resolved colour and
  *  the value right-aligned in mono — clones ChannelChart.tsx's
  *  `buildTooltipFormatter`, keyed here by an explicit colour map since this
- *  grid's series names are pilot codes, not arbitrary driver strings. */
-function buildTooltipFormatter(colorByName: Record<string, string>) {
+ *  grid's series names are pilot codes, not arbitrary driver strings.
+ *  `decimals` is per-channel (P3): delta reads to 3dp (the verdict itself is
+ *  a sub-second gap, e.g. 0.831s — 1dp rounded it to a misleading "0.8"),
+ *  the plain telemetry channels round to whole units. */
+function buildTooltipFormatter(colorByName: Record<string, string>, decimals: number) {
   return (params: TooltipComponentFormatterCallbackParams): string => {
     const items: DefaultLabelFormatterCallbackParams[] = Array.isArray(params) ? params : [params]
     return items
       .map(({ seriesName, value }) => {
         if (!seriesName) return ''
         const raw = Array.isArray(value) ? value[value.length - 1] : value
-        const display = typeof raw === 'number' ? raw.toFixed(1) : String(raw ?? '')
+        const display = typeof raw === 'number' ? raw.toFixed(decimals) : String(raw ?? '')
         return `<div style="display:flex;justify-content:space-between;gap:20px;">
   <span style="color:${colorByName[seriesName] ?? 'inherit'}">${seriesName}</span>
   <span style="font-family:${MONO}">${display}</span>
@@ -106,14 +128,15 @@ function buildTooltipFormatter(colorByName: Record<string, string>) {
   }
 }
 
-/** Shared chrome for all 4 panes: tooltip, legend (hidden below 2 entries —
- *  Delta has none, since it's one cross-pilot series, not one per pilot),
- *  grid, and the distance x-axis. Mirrors ChannelChart.tsx's `baseOption`. */
+/** Shared chrome for all 4 panes: tooltip, grid, and the distance x-axis.
+ *  Mirrors ChannelChart.tsx's `baseOption`. No in-plot ECharts legend — it
+ *  used to sit at `top: 0` inside the grid and collide with the data itself
+ *  (P1 Fable finding: "VER — LEC" drawn on top of 100% brake/throttle
+ *  lines); driver identity now lives in ChannelPane's header chips instead,
+ *  one pattern for all 4 panes. */
 function baseChannelOption(
-  legend: Array<{ name: string; color: string }>,
   tooltipFormatter: (params: TooltipComponentFormatterCallbackParams) => string,
 ): EChartsOption {
-  const showLegend = legend.length > 1
   return {
     tooltip: {
       trigger: 'axis',
@@ -121,15 +144,7 @@ function baseChannelOption(
       extraCssText: 'border-radius:12px;padding:10px 12px',
       formatter: tooltipFormatter,
     },
-    legend: showLegend
-      ? {
-          data: legend.map(({ name, color }) => ({ name, textStyle: { color } })),
-          icon: 'roundRect',
-          itemWidth: 10,
-          itemHeight: 3,
-          top: 0,
-        }
-      : { show: false },
+    legend: { show: false },
     grid: GRID,
     xAxis: {
       type: 'value',
@@ -151,17 +166,20 @@ function baseChannelOption(
 }
 
 /** One line series per pilot, x = distance, y = the given channel's baked
- *  values, coloured by team. Static — a fresh option per (model, channel);
- *  the caller never calls `setOption` again once it's mounted. */
+ *  values, coloured by team. Static — a fresh option per (model, channel,
+ *  theme); the caller never calls `setOption` again once it's mounted.
+ *  Colours pass through `resolvePilotColor` (P2: a team colour that's too
+ *  dark for the dark cards, e.g. Red Bull's navy, otherwise recedes to
+ *  near-invisible next to a saturated rival like Ferrari red). */
 export function buildLineOption(
   model: ReplayModel,
   channel: LineChannel,
   year?: number,
+  theme: UiTheme = 'dark',
 ): EChartsOption {
   const spec = LINE_CHANNELS[channel]
-  const colors = model.pilots.map((pilot) => pilotColor(pilot, year))
-  const legend = model.pilots.map((pilot, i) => ({ name: pilot.code, color: colors[i] }))
-  const colorByName = Object.fromEntries(legend.map(({ name, color }) => [name, color]))
+  const colors = model.pilots.map((pilot) => resolvePilotColor(pilotColor(pilot, year), theme))
+  const colorByName = Object.fromEntries(model.pilots.map((pilot, i) => [pilot.code, colors[i]]))
 
   const series: LineSeriesOption[] = model.pilots.map((pilot, i) => ({
     name: pilot.code,
@@ -172,13 +190,18 @@ export function buildLineOption(
     data: toPoints(model.distance, spec.read(pilot)),
   }))
 
-  return { ...baseChannelOption(legend, buildTooltipFormatter(colorByName)), series }
+  return { ...baseChannelOption(buildTooltipFormatter(colorByName, 0)), series }
 }
 
 /** One zero-anchored area fill carrying one sign of the delta: `keepPositive`
- *  clamps to `max(v,0)` (pilot1-slower region, tinted pilot1), otherwise
- *  `min(v,0)` (pilot2-slower, tinted pilot2). `origin: 0` fills to the zero
+ *  clamps to `max(v,0)`, otherwise `min(v,0)`. `origin: 0` fills to the zero
  *  baseline, not the axis floor. Silent + unnamed so it adds no tooltip row.
+ *  `animation: false` — this is a decorative background cue (not the
+ *  headline read), so it paints at its full extent immediately rather than
+ *  playing ECharts' default left-to-right entrance sweep; that sweep is what
+ *  made the fill look like it "terminated early" when captured mid-animation
+ *  (Fable UI audit, P2 — the underlying delta data already spans the full
+ *  distance grid, see buildReplayModel's `computeDelta`).
  *
  *  This replaces a piecewise `visualMap` (spec §4.5's original suggestion),
  *  which in filter mode silently drops the whole line — verified in the browser.
@@ -192,6 +215,7 @@ function buildSignFill(
     type: 'line',
     silent: true,
     showSymbol: false,
+    animation: false,
     lineStyle: { width: 0 },
     areaStyle: { color, opacity: DELTA_AREA_ALPHA, origin: 0 },
     data: points.map(([d, v]) => [d, keepPositive ? Math.max(v, 0) : Math.min(v, 0)]),
@@ -200,18 +224,27 @@ function buildSignFill(
 }
 
 /** The delta chart: a solid delta CURVE (`model.delta`, already scaled to the
- *  real lap-time gap — positive = pilot1 slower), a dashed y=0 reference line,
- *  and two sign-tinted area fills that show "who gains where" while stopped. */
-export function buildDeltaOption(model: ReplayModel, chartTheme?: string): EChartsOption {
+ *  real lap-time gap — positive = pilot1 slower, i.e. pilot2 AHEAD there), a
+ *  dashed y=0 reference line, and two sign-tinted area fills that show "who
+ *  gains where" while stopped. Each fill is tinted by the driver GAINING /
+ *  AHEAD in that region, not the one falling behind — the original build
+ *  tinted the positive (pilot1-slower) region in pilot1's own colour, i.e.
+ *  the pane glowed the LOSING driver's hue with no way to decode + vs −
+ *  (Fable UI audit, P1: "the chart contradicts the banner at first glance").
+ *  ChannelPane's header sign-key spells out the same convention in words. */
+export function buildDeltaOption(model: ReplayModel, theme: UiTheme = 'dark'): EChartsOption {
   const [pilot1, pilot2] = model.pilots
-  const markLineColor = chartTheme === F1_LIGHT_THEME ? MARK_LINE_COLOR_LIGHT : MARK_LINE_COLOR_DARK
+  const markLineColor = theme === 'light' ? MARK_LINE_COLOR_LIGHT : MARK_LINE_COLOR_DARK
+  const deltaLineColor = theme === 'light' ? DELTA_LINE_COLOR_LIGHT : DELTA_LINE_COLOR_DARK
+  const aheadColor1 = resolvePilotColor(pilotColor(pilot1, undefined), theme) // pilot1 AHEAD (delta < 0)
+  const aheadColor2 = resolvePilotColor(pilotColor(pilot2, undefined), theme) // pilot2 AHEAD (delta > 0)
   const points = toPoints(model.distance, model.delta)
 
   const line: LineSeriesOption = {
     name: 'Δ',
     type: 'line',
     showSymbol: false,
-    lineStyle: { width: LINE_WIDTH, color: DELTA_LINE_COLOR },
+    lineStyle: { width: LINE_WIDTH, color: deltaLineColor },
     data: points,
     markLine: {
       symbol: 'none',
@@ -224,12 +257,12 @@ export function buildDeltaOption(model: ReplayModel, chartTheme?: string): EChar
   }
 
   return {
-    // Delta's own legend is hidden (see `baseChannelOption` — one conceptual
-    // series); the tooltip colour map keeps a hover over "Δ" legible.
-    ...baseChannelOption([], buildTooltipFormatter({ Δ: DELTA_LINE_COLOR })),
+    // Delta's own legend is hidden (see `baseChannelOption`); the tooltip
+    // colour map keeps a hover over "Δ" legible, at 3dp (see buildTooltipFormatter).
+    ...baseChannelOption(buildTooltipFormatter({ Δ: deltaLineColor }, 3)),
     series: [
-      buildSignFill(points, true, pilot1.color),
-      buildSignFill(points, false, pilot2.color),
+      buildSignFill(points, true, aheadColor2),
+      buildSignFill(points, false, aheadColor1),
       line,
     ],
   }

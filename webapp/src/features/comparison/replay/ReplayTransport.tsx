@@ -1,4 +1,5 @@
-import { Pause, Play, Repeat, RotateCcw, Share2 } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { Keyboard, Pause, Play, Repeat, RotateCcw, Share2 } from 'lucide-react'
 import { Button } from '@/components/Button'
 import { Tooltip } from '@/components/Tooltip'
 import { cn } from '@/lib/cn'
@@ -6,6 +7,51 @@ import { REPLAY_SPEEDS, type ReplaySpeed } from '../store'
 import { ReplayScrubber } from './ReplayScrubber'
 import { LiveGapReadout } from './LiveGapReadout'
 import type { ReplayClock, ReplayModel, ReplayStatus, TrackMode } from './types'
+
+// The "ready" pulse (M3, spec §3: name the primary action without a redesign)
+// follows the same hand-rolled-`@keyframes` + `.f1-anim` convention as
+// Modal/Toast/Tooltip (see Tooltip.tsx's file banner) — `.f1-anim` collapses
+// the animation to ~0 under reduced motion instead of skipping it outright,
+// so `onAnimationEnd` still fires and clears the one-shot state.
+const PLAY_PULSE_KEYFRAMES = `
+@keyframes f1-play-ready-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(108, 92, 231, 0.55); }
+  70% { box-shadow: 0 0 0 10px rgba(108, 92, 231, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(108, 92, 231, 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .f1-anim { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; }
+}
+`
+
+/** Groups controls with intent (P2 "parking lot" fix): tight `gap-1` inside a
+ *  cluster, a hairline divider between clusters. */
+const GROUP_CLASSNAME = 'flex items-center gap-1'
+const DIVIDER_CLASSNAME = 'hidden h-6 w-px shrink-0 bg-hairline sm:inline-block'
+
+const KEYBOARD_SHORTCUTS: { keys: string; action: string }[] = [
+  { keys: 'Space / K', action: 'Play · pause' },
+  { keys: '← / →', action: 'Seek ±0.5s (Shift ±5s)' },
+  { keys: 'J / L', action: 'Speed down · up' },
+  { keys: 'Home / End', action: 'Jump to start · end' },
+  { keys: 'R', action: 'Restart' },
+]
+
+/** Tooltip content for the keyboard-hint button (H10: the shortcut map
+ *  previously lived only in an aria-label, so sighted keyboard users had no
+ *  way to discover it). */
+function KeyboardShortcutsHint() {
+  return (
+    <dl className="grid grid-cols-[auto_1fr] items-baseline gap-x-3 gap-y-1 whitespace-nowrap">
+      {KEYBOARD_SHORTCUTS.map(({ keys, action }) => (
+        <div key={keys} className="contents">
+          <dt className="font-mono text-[11px] font-medium text-fg-1">{keys}</dt>
+          <dd className="text-[11px] text-fg-3">{action}</dd>
+        </div>
+      ))}
+    </dl>
+  )
+}
 
 // Real HTML transport controls for the replay (spec §4.6, fixes dossier #33 —
 // Playwright/axe must be able to click Play and drive the scrubber directly).
@@ -93,11 +139,15 @@ function buildAriaValueText(model: ReplayModel) {
 }
 
 /**
- * Transport bar for the replay card: restart / play-pause / scrubber / speed /
- * loop / track-mode / share, plus the live gap readout. Every control is a
- * real HTML `<button>` so Playwright and axe can drive and inspect it
- * directly. Tab order follows visual (left-to-right) order: restart → play →
- * scrubber → speed → loop/track-mode/share (spec §4.6).
+ * Transport bar for the replay card, grouped with intent rather than one flat
+ * row (P2 "parking lot" fix): `[restart · play]` · scrubber · speed · a
+ * hairline divider · track-mode · a hairline divider · `[loop · share ·
+ * keyboard-hint]` · the live gap readout. Play is the one filled/primary
+ * control — everything else is `ghost` — and pulses once the instant the
+ * replay first reaches `ready` (M3). Every control is a real HTML `<button>`
+ * so Playwright and axe can drive and inspect it directly. Tab order still
+ * follows visual (left-to-right) order: restart → play → scrubber → speed →
+ * track-mode → loop → share → keyboard-hint (spec §4.6).
  */
 export function ReplayTransport({
   model,
@@ -117,28 +167,49 @@ export function ReplayTransport({
     label: `${s}×`,
   }))
 
-  return (
-    <div className="flex flex-wrap items-center gap-2">
-      <Tooltip content="Restart">
-        <Button variant="ghost" size="sm" aria-label="Restart" onClick={() => clock.restart()}>
-          <RotateCcw className="size-4" aria-hidden="true" />
-        </Button>
-      </Tooltip>
+  // One-shot pulse the instant the replay first becomes `ready` (spec §3, M3)
+  // — fires on the ready TRANSITION, not on every render, and self-clears via
+  // `onAnimationEnd` so it never replays on a later ready (e.g. a fresh
+  // compare remounts this component, so `prevStatusRef` starts `null` again).
+  const prevStatusRef = useRef<ReplayStatus | null>(null)
+  const [showReadyPulse, setShowReadyPulse] = useState(false)
+  useEffect(() => {
+    if (status === 'ready' && prevStatusRef.current !== 'ready') {
+      setShowReadyPulse(true)
+    }
+    prevStatusRef.current = status
+  }, [status])
 
-      <Button
-        variant="ghost"
-        size="sm"
-        aria-label={isPlaying ? 'Pause' : 'Play'}
-        aria-pressed={isPlaying}
-        className="h-11 min-w-11"
-        onClick={() => clock.toggle()}
-      >
-        {isPlaying ? (
-          <Pause className="size-5" aria-hidden="true" />
-        ) : (
-          <Play className="size-5" aria-hidden="true" />
-        )}
-      </Button>
+  return (
+    <div className="flex flex-wrap items-center gap-4">
+      <style>{PLAY_PULSE_KEYFRAMES}</style>
+
+      <div className={GROUP_CLASSNAME}>
+        <Tooltip content="Restart">
+          <Button variant="ghost" size="sm" aria-label="Restart" onClick={() => clock.restart()}>
+            <RotateCcw className="size-4" aria-hidden="true" />
+          </Button>
+        </Tooltip>
+
+        <Button
+          variant="primary"
+          size="sm"
+          aria-label={isPlaying ? 'Pause' : 'Play'}
+          aria-pressed={isPlaying}
+          className={cn(
+            'h-11 min-w-11',
+            showReadyPulse && 'f1-anim animate-[f1-play-ready-pulse_900ms_ease-out]',
+          )}
+          onClick={() => clock.toggle()}
+          onAnimationEnd={() => setShowReadyPulse(false)}
+        >
+          {isPlaying ? (
+            <Pause className="size-5" aria-hidden="true" />
+          ) : (
+            <Play className="size-5" aria-hidden="true" />
+          )}
+        </Button>
+      </div>
 
       <div className="min-w-48 flex-1">
         <ReplayScrubber
@@ -156,17 +227,7 @@ export function ReplayTransport({
         onChange={onSpeedChange}
       />
 
-      <Tooltip content={loop ? 'Loop on' : 'Loop off'}>
-        <Button
-          variant="ghost"
-          size="sm"
-          aria-label="Toggle loop"
-          aria-pressed={loop}
-          onClick={onToggleLoop}
-        >
-          <Repeat className="size-4" aria-hidden="true" />
-        </Button>
-      </Tooltip>
+      <span aria-hidden="true" className={DIVIDER_CLASSNAME} />
 
       <SegmentedControl
         ariaLabel="Track color mode"
@@ -175,11 +236,33 @@ export function ReplayTransport({
         onChange={onTrackModeChange}
       />
 
-      <Tooltip content="Copy a link to this moment">
-        <Button variant="ghost" size="sm" aria-label="Share this moment" onClick={onShareMoment}>
-          <Share2 className="size-4" aria-hidden="true" />
-        </Button>
-      </Tooltip>
+      <span aria-hidden="true" className={DIVIDER_CLASSNAME} />
+
+      <div className={GROUP_CLASSNAME}>
+        <Tooltip content={loop ? 'Loop on' : 'Loop off'}>
+          <Button
+            variant="ghost"
+            size="sm"
+            aria-label="Toggle loop"
+            aria-pressed={loop}
+            onClick={onToggleLoop}
+          >
+            <Repeat className="size-4" aria-hidden="true" />
+          </Button>
+        </Tooltip>
+
+        <Tooltip content="Copy a link to this moment">
+          <Button variant="ghost" size="sm" aria-label="Share this moment" onClick={onShareMoment}>
+            <Share2 className="size-4" aria-hidden="true" />
+          </Button>
+        </Tooltip>
+
+        <Tooltip content={<KeyboardShortcutsHint />}>
+          <Button variant="ghost" size="sm" aria-label="Keyboard shortcuts">
+            <Keyboard className="size-4" aria-hidden="true" />
+          </Button>
+        </Tooltip>
+      </div>
 
       <LiveGapReadout model={model} clock={clock} status={status} />
     </div>

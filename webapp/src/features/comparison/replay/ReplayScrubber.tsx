@@ -51,6 +51,13 @@ function sectorPercent(sectorTime: number, duration: number): string {
   return `${Math.min(Math.max(fraction, 0), 1) * 100}%`
 }
 
+/** Shared hover title for a sector tick/label — honestly discloses that the
+ *  split is the 25/50/75%-of-duration placeholder (`buildReplayModel`'s
+ *  `sectorTimes`), not an official S1/S2/S3 boundary (P3, spec §4.6). */
+function sectorTitle(index: number): string {
+  return `S${index + 1} split (est.)`
+}
+
 export function ReplayScrubber({
   duration,
   clock,
@@ -84,7 +91,7 @@ export function ReplayScrubber({
     <div className="flex w-full flex-col gap-1">
       <div className="flex items-center justify-between font-mono text-xs">
         <span className="tabular-nums text-fg-2">{formatClock(displayTime)}</span>
-        <span className="tabular-nums text-fg-4">{formatClock(duration)}</span>
+        <span className="tabular-nums text-fg-3">{formatClock(duration)}</span>
       </div>
 
       <SliderPrimitive.Root
@@ -99,11 +106,12 @@ export function ReplayScrubber({
       >
         <SliderPrimitive.Track className={TRACK_CLASSNAME}>
           <SliderPrimitive.Range className={RANGE_CLASSNAME} />
-          {sectorTimes.map((t) => (
+          {sectorTimes.map((t, i) => (
             <span
               key={t}
               aria-hidden="true"
-              className="absolute top-0 h-full w-px bg-fg-4/50"
+              title={sectorTitle(i)}
+              className="absolute top-0 h-full w-0.5 bg-fg-3"
               style={{ left: sectorPercent(t, duration) }}
             />
           ))}
@@ -119,7 +127,8 @@ export function ReplayScrubber({
         {sectorTimes.map((t, i) => (
           <span
             key={t}
-            className="absolute -translate-x-1/2 font-mono text-[10px] text-fg-4"
+            title={sectorTitle(i)}
+            className="absolute -translate-x-1/2 font-mono text-[11px] text-fg-3"
             style={{ left: sectorPercent(t, duration) }}
           >
             S{i + 1}

@@ -5,6 +5,7 @@
 
 import type { LineSeriesOption } from 'echarts'
 import { describe, expect, it } from 'vitest'
+import { resolvePilotColor } from '@/lib/drivers'
 import { buildDeltaOption, buildLineOption } from './channelOptions'
 // Vite `?raw`: the module's own source as a string (typed by vite/client) — lets
 // the guard below assert on it without node:fs.
@@ -82,11 +83,11 @@ function fakeModel(): ReplayModel {
 describe('buildLineOption', () => {
   const model = fakeModel()
 
-  it('returns one line series per pilot, coloured from the payload', () => {
-    const series = buildLineOption(model, 'speed').series as LineSeriesOption[]
+  it('returns one line series per pilot, coloured via resolvePilotColor(theme)', () => {
+    const series = buildLineOption(model, 'speed', undefined, 'dark').series as LineSeriesOption[]
     expect(series).toHaveLength(2)
-    expect(series[0]?.lineStyle).toMatchObject({ color: PILOT_1_COLOR })
-    expect(series[1]?.lineStyle).toMatchObject({ color: PILOT_2_COLOR })
+    expect(series[0]?.lineStyle).toMatchObject({ color: resolvePilotColor(PILOT_1_COLOR, 'dark') })
+    expect(series[1]?.lineStyle).toMatchObject({ color: resolvePilotColor(PILOT_2_COLOR, 'dark') })
   })
 
   it('carries one [distance, value] point per model sample, for every channel', () => {
@@ -94,6 +95,11 @@ describe('buildLineOption', () => {
       const series = buildLineOption(model, channel).series as LineSeriesOption[]
       for (const s of series) expect(s.data).toHaveLength(POINT_COUNT)
     }
+  })
+
+  it('shows no in-plot ECharts legend (driver identity moved to ChannelPane header chips)', () => {
+    const option = buildLineOption(model, 'speed')
+    expect(option.legend).toMatchObject({ show: false })
   })
 })
 
@@ -110,15 +116,45 @@ describe('buildDeltaOption', () => {
     expect(line?.lineStyle?.color).toBeTruthy()
   })
 
-  it('tints the two zero-anchored area fills by each pilot colour', () => {
-    const fills = (buildDeltaOption(model).series as LineSeriesOption[]).filter((s) => !s.name)
+  it('tints each sign region by the driver AHEAD there, not the one falling behind', () => {
+    // delta[i] > 0 means pilot1 is SLOWER, i.e. pilot2 is ahead — so the
+    // positive fill must carry pilot2's colour and the negative fill
+    // pilot1's (the original build had this inverted: it tinted the
+    // positive/pilot1-slower region in pilot1's OWN colour, glowing the
+    // losing driver's hue — Fable UI audit, P1).
+    const fills = (buildDeltaOption(model, 'dark').series as LineSeriesOption[]).filter(
+      (s) => !s.name,
+    )
     expect(fills).toHaveLength(2)
-    const fillColors = fills.map((s) => s.areaStyle?.color)
-    expect(fillColors).toContain(PILOT_1_COLOR)
-    expect(fillColors).toContain(PILOT_2_COLOR)
-    // Fills clamp to one sign each: positive fill never dips below 0.
-    const positiveFill = fills[0]?.data as Array<[number, number]>
-    expect(positiveFill.every(([, v]) => v >= 0)).toBe(true)
+    const [positiveFill, negativeFill] = fills as [LineSeriesOption, LineSeriesOption]
+
+    // Fills clamp to one sign each: positive fill never dips below 0, negative
+    // fill never rises above 0.
+    const positiveData = positiveFill.data as Array<[number, number]>
+    const negativeData = negativeFill.data as Array<[number, number]>
+    expect(positiveData.every(([, v]) => v >= 0)).toBe(true)
+    expect(negativeData.every(([, v]) => v <= 0)).toBe(true)
+
+    expect(positiveFill.areaStyle?.color).toBe(resolvePilotColor(PILOT_2_COLOR, 'dark'))
+    expect(negativeFill.areaStyle?.color).toBe(resolvePilotColor(PILOT_1_COLOR, 'dark'))
+  })
+
+  it('paints the sign fills without an entrance animation, so they never look truncated mid-sweep', () => {
+    const fills = (buildDeltaOption(model).series as LineSeriesOption[]).filter((s) => !s.name)
+    for (const fill of fills) expect(fill.animation).toBe(false)
+  })
+
+  it('uses a neutral (non-accent-purple) colour for the delta curve itself', () => {
+    const line = (buildDeltaOption(model).series as LineSeriesOption[]).find((s) => s.name === 'Δ')
+    expect(line?.lineStyle?.color).not.toBe('#6c5ce7')
+  })
+
+  it('reports the delta value at 3 decimal places in the tooltip (a 3dp verdict, not "0.8")', () => {
+    const option = buildDeltaOption(model)
+    const tooltip = option.tooltip as { formatter?: (params: unknown) => string }
+    const formatter = tooltip.formatter as (params: unknown) => string
+    const html = formatter([{ seriesName: 'Δ', value: [0, 0.831] }])
+    expect(html).toContain('0.831')
   })
 })
 

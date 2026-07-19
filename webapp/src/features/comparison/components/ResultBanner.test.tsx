@@ -1,11 +1,27 @@
 // Unit tests for the pure `formatLapTime` helper (the one thing worth a
 // runnable check independent of rendering) plus a light render smoke test
-// that the winner headline and microsector tally actually reach the DOM.
+// that the verdict hero, lap times, and microsector tally actually reach the
+// DOM. The render tests force `prefers-reduced-motion: reduce` so the hero's
+// count-up (see ResultBanner's `useCountUp`) resolves to its final value
+// synchronously — jsdom's own `matchMedia` defaults `matches` to `false` for
+// this query, which would otherwise leave the assertion racing a rAF loop.
 
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { formatLapTime, ResultBanner } from './ResultBanner'
 import type { PilotModel, ReplayModel } from '../replay/types'
+
+function stubReducedMotion(matches: boolean) {
+  vi.stubGlobal(
+    'matchMedia',
+    vi.fn().mockReturnValue({
+      matches,
+      media: '',
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    }),
+  )
+}
 
 function buildFakePilot(code: string, color: string, lapTime: number): PilotModel {
   return {
@@ -82,9 +98,21 @@ describe('formatLapTime', () => {
 })
 
 describe('ResultBanner', () => {
-  it('shows the winner headline and the per-driver microsector tally', () => {
+  beforeEach(() => {
+    stubReducedMotion(true)
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('shows the verdict hero, both lap times, and the per-driver microsector tally', () => {
     render(<ResultBanner model={buildFakeModel()} />)
-    expect(screen.getByText(/first by 1\.482s/)).toBeInTheDocument()
+    expect(screen.getByText('first by')).toBeInTheDocument()
+    expect(screen.getByText('+1.482s')).toBeInTheDocument()
+    // The winner's code appears twice: once in the hero, once in the lap-time pair.
+    expect(screen.getAllByText('VER')).toHaveLength(2)
+    expect(screen.getByText('lap time')).toBeInTheDocument()
     expect(screen.getByText('VER 9')).toBeInTheDocument()
     expect(screen.getByText('LEC 16')).toBeInTheDocument()
   })

@@ -116,6 +116,17 @@ export function ComparisonPage() {
   const apiError = comparison.error instanceof ComparisonApiError ? comparison.error : null
   const showError = shouldFetch(search) && comparison.isError
 
+  // Screen-reader announcement of the replay lifecycle (spec §4.4): a keyboard/SR
+  // user pressing Space gets silence otherwise. aria-live fires only on change.
+  const replayAnnouncement =
+    !model || status === 'ready'
+      ? ''
+      : status === 'finished'
+        ? `Replay finished — ${model.winner.winnerCode} first by ${model.winner.gapSeconds.toFixed(3)} seconds`
+        : status === 'playing'
+          ? 'Replay playing'
+          : 'Replay paused'
+
   /** Single-key selector patch → cascade + navigate (like Dashboard/Strategy). */
   const handleChange = (patch: Partial<ComparisonSearch>) => {
     if (applyComparisonPatch(search, patch) === search) return
@@ -168,6 +179,9 @@ export function ComparisonPage() {
           <ComparingSkeleton onCancel={handleCancel} />
         ) : model ? (
           <div className="flex flex-col gap-6">
+            <div className="sr-only" role="status" aria-live="polite">
+              {replayAnnouncement}
+            </div>
             <ResultBanner model={model} />
 
             {/* The ONE glow card: the replay instrument. */}
@@ -186,7 +200,7 @@ export function ComparisonPage() {
                   reducedMotion={reducedMotion}
                   className="relative min-h-[360px] w-full"
                 />
-                <ChannelGrid model={model} clock={clock} paused={status !== 'playing'} />
+                <ChannelGrid model={model} clock={clock} status={status} />
               </div>
               <ReplayTransport
                 model={model}

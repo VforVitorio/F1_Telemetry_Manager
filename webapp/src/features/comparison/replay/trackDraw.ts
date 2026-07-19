@@ -9,29 +9,60 @@
 // convention) — buildReplayModel flips both TrackGeometry (outline/segments) AND
 // PilotModel.x/y at build time, so dots/trails and the ribbon share one frame.
 // `toPilotPx` is therefore a straight `fit.toPx`, no per-point flip.
+//
+// Theme: `drawStaticLayer`/`drawDynamicLayer` take a `CanvasTheme` so the ONE
+// canvas surface in the app stops being theme-blind (Fable UI audit, Comparison
+// #36, finding P1) — the base ribbon, gap-link and gap label were hardcoded
+// dark-theme ink and became a near-invisible ghost in light mode. Pilot identity
+// colours (dots, trails, gain-mode segment tints, the gap label) are additionally
+// passed through `resolvePilotColor` (P2: a too-dark team colour recedes on the
+// dark cards) — same helper `channelOptions.ts` already uses, so a driver reads
+// with equal visual weight whether they're a chart line or a canvas dot.
 
 import type { CanvasFit } from '@/features/dashboard/components/circuitDraw'
+import { resolvePilotColor } from '@/lib/drivers'
 import type { PilotModel, ReplayFrame, ReplayModel, TrackMode, TrackSegment } from './types'
+
+/** The app's light/dark mode. Kept as a local literal union (not imported from
+ *  `useUiStore` or `channelOptions.ts`) so this module stays dependency-free of
+ *  React/the store — see the file header. Structurally identical to
+ *  `useUiStore`'s `Theme`, so callers can pass either without casting. */
+export type CanvasTheme = 'dark' | 'light'
 
 // ── Static ribbon ────────────────────────────────────────────────────────────
 
-const BASE_RIBBON_COLOR = '#94a3b8'
-const BASE_RIBBON_ALPHA = 0.28
+/** The faint un-revealed course preview, per theme. Dark keeps the original
+ *  slate tone; light swaps to ink at a lower alpha — the dark value sat at
+ *  ~1.15:1 against a white card (Fable UI audit P1). */
+const BASE_RIBBON_PALETTE: Record<CanvasTheme, { color: string; alpha: number }> = {
+  dark: { color: '#94a3b8', alpha: 0.28 },
+  light: { color: '#14121f', alpha: 0.25 },
+}
 const BASE_RIBBON_WIDTH_PX = 9
 
 // ── Segment reveal / colour modes ───────────────────────────────────────────
 
 const SEGMENT_STROKE_WIDTH_PX = 5
 
-/** Slow end of the speed heatmap (blue-500-ish). */
-const SPEED_COLOR_SLOW = { r: 59, g: 130, b: 246 }
-/** Fast end of the speed heatmap (red-500-ish). */
-const SPEED_COLOR_FAST = { r: 239, g: 68, b: 68 }
+/** Slow end of the speed heatmap — a desaturated blue-grey, deliberately NOT a
+ *  saturated identity blue: the previous blue(slow)->red(fast) ramp collided
+ *  with VER's Red Bull blue and LEC's Ferrari red, so "speed mode" and
+ *  "dominance mode" read as the same thing at a glance (Fable UI audit P2). */
+const SPEED_COLOR_SLOW = { r: 100, g: 116, b: 139 } // slate-500
+/** Fast end of the speed heatmap — amber, clear of both team colours above. */
+const SPEED_COLOR_FAST = { r: 245, g: 158, b: 11 } // amber-500
 
-/** Below this local delta-derivative (seconds) a stretch reads as a dead heat
- *  — not worth tinting toward either pilot, so `gain` mode falls back to the
- *  segment's dominance colour instead of a near-invisible tint. */
+/** Below this local delta-derivative (seconds) a stretch reads as a dead heat.
+ *  `gain` mode tints it with `NEUTRAL_GAIN_COLOR` rather than either pilot's
+ *  colour, or — as it did before — the segment's dominance colour, which
+ *  silently implied a "winner" on ground that is actually level (Fable UI
+ *  audit P2). */
 const GAIN_NEUTRAL_THRESHOLD_S = 1e-3
+
+/** Dead-heat tint for `gain` mode. Deliberately mid-luminance (~0.24) so it
+ *  reads on both the dark and light data cards without per-theme resolution —
+ *  a genuinely neutral grey, not tuned toward either pilot. */
+export const NEUTRAL_GAIN_COLOR = '#7c8798'
 
 // ── Trails ───────────────────────────────────────────────────────────────────
 
@@ -45,6 +76,9 @@ const TRAIL_MAX_ALPHA = 0.5
 
 const DOT_RADIUS_PX = 7
 const DOT_RING_WIDTH_PX = 2
+/** Stays white in BOTH themes — the ring frames the fill, which already
+ *  carries the (theme-resolved) team colour + glow; the ring itself never
+ *  needs to compete for legibility (Fable UI audit P1). */
 const DOT_RING_COLOR = '#ffffff'
 const DOT_GLOW_BLUR_PX = 14
 /** Breathing amplitude around DOT_GLOW_BLUR_PX (±35%), not an on/off flicker. */
@@ -59,8 +93,13 @@ const DOT_GLOW_PULSE_HZ = 0.8
 const GAP_LINK_THRESHOLD_RATIO = 0.08
 const GAP_LINK_DASH: [number, number] = [5, 4]
 const GAP_LINK_WIDTH_PX = 1.5
-const GAP_LINK_COLOR = 'rgba(226,232,240,0.7)'
-const GAP_LABEL_COLOR = '#e2e8f0'
+/** Dashed line between the two cars, per theme — the dark value was already
+ *  fine; light swaps to an ink-based tone at the same alpha (Fable UI audit
+ *  P1: it was invisible-ish on a white card). */
+const GAP_LINK_COLOR: Record<CanvasTheme, string> = {
+  dark: 'rgba(226,232,240,0.7)',
+  light: 'rgba(20,18,31,0.7)',
+}
 const GAP_LABEL_FONT_SIZE_PX = 11
 const GAP_LABEL_OFFSET_PX = 6
 const MONO_FONT_STACK =
@@ -106,7 +145,7 @@ export function computeSpeedRange(segments: TrackSegment[]): SpeedRange {
 }
 
 /**
- * Maps a speed onto a blue(slow) → red(fast) heatmap, linearly interpolated
+ * Maps a speed onto the slow(grey) → fast(amber) heatmap, linearly interpolated
  * per RGB channel across `[min, max]`. A degenerate range (min === max, e.g. a
  * single-segment track) clamps to the slow end rather than dividing by zero.
  */
@@ -144,30 +183,45 @@ export function shouldShowGapLink(separationMeters: number, trackLengthMeters: n
   return separationMeters < GAP_LINK_THRESHOLD_RATIO * trackLengthMeters
 }
 
+/** On-track gap-link label: the leader's code + the on-track time gap — e.g.
+ *  "LEC ▲ +0.15s" — so the canvas agrees with the transport's own readout
+ *  ("● LEC ▲ 0.15s") instead of showing an unattributed "▲ +0.15s" (Fable UI
+ *  audit P3). */
+export function buildGapLabel(leaderCode: string, gapSeconds: number): string {
+  return `${leaderCode} ▲ +${gapSeconds.toFixed(2)}s`
+}
+
 export interface GainContext {
   /** `localDeltaGain(model.delta, segmentIndex)` for this segment. */
   localGain: number
+  /** Pilot 1/2's RAW team colour — resolved for the theme inside
+   *  `pickGainColor`, same as `pickSegmentColor` resolves the dominance
+   *  colour, so both branches apply the legibility floor exactly once. */
   pilot1Color: string
   pilot2Color: string
 }
 
-function pickGainColor(gain: GainContext, fallbackColor: string): string {
-  if (Math.abs(gain.localGain) < GAIN_NEUTRAL_THRESHOLD_S) return fallbackColor
-  return gain.localGain > 0 ? gain.pilot2Color : gain.pilot1Color
+function pickGainColor(gain: GainContext, theme: CanvasTheme): string {
+  if (Math.abs(gain.localGain) < GAIN_NEUTRAL_THRESHOLD_S) return NEUTRAL_GAIN_COLOR
+  const rawColor = gain.localGain > 0 ? gain.pilot2Color : gain.pilot1Color
+  return resolvePilotColor(rawColor, theme)
 }
 
 /** Resolves one segment's stroke colour for the active track mode: its own
  *  microsector-dominance colour, a speed-heatmap colour, or a tint toward
- *  whichever pilot gained time across it. */
+ *  whichever pilot gained time across it. Dominance and gain both carry pilot
+ *  identity, so both pass through `resolvePilotColor` for the given theme
+ *  (speed doesn't — its ramp is theme-invariant data colour, not identity). */
 export function pickSegmentColor(
   segment: TrackSegment,
   trackMode: TrackMode,
   speedRange: SpeedRange,
   gain: GainContext,
+  theme: CanvasTheme,
 ): string {
   if (trackMode === 'speed') return speedHeatColor(segment.speed, speedRange.min, speedRange.max)
-  if (trackMode === 'gain') return pickGainColor(gain, segment.color)
-  return segment.color // 'dominance'
+  if (trackMode === 'gain') return pickGainColor(gain, theme)
+  return resolvePilotColor(segment.color, theme) // 'dominance'
 }
 
 // ── Canvas drawing (not unit-tested — see trackDraw.test.ts header) ─────────
@@ -187,14 +241,20 @@ function clearCanvas(ctx: CanvasRenderingContext2D, fit: CanvasFit): void {
   ctx.clearRect(0, 0, cssWidth, cssHeight)
 }
 
-function strokeBaseRibbon(ctx: CanvasRenderingContext2D, model: ReplayModel, fit: CanvasFit): void {
+function strokeBaseRibbon(
+  ctx: CanvasRenderingContext2D,
+  model: ReplayModel,
+  fit: CanvasFit,
+  theme: CanvasTheme,
+): void {
   const outline = model.circuit.outline
   const pointCount = outline.length / 2
   if (pointCount < 2) return
 
+  const { color, alpha } = BASE_RIBBON_PALETTE[theme]
   ctx.save()
-  ctx.globalAlpha = BASE_RIBBON_ALPHA
-  ctx.strokeStyle = BASE_RIBBON_COLOR
+  ctx.globalAlpha = alpha
+  ctx.strokeStyle = color
   ctx.lineWidth = BASE_RIBBON_WIDTH_PX
   ctx.lineJoin = 'round'
   ctx.lineCap = 'round'
@@ -210,15 +270,16 @@ function strokeBaseRibbon(ctx: CanvasRenderingContext2D, model: ReplayModel, fit
 }
 
 /** Clears and repaints the faint grey base ribbon. Called on mount, resize,
- *  and whenever `model` changes — never on a per-tick basis (the dynamic
- *  layer below owns everything that changes with the playhead). */
+ *  and whenever `model` or `theme` changes — never on a per-tick basis (the
+ *  dynamic layer below owns everything that changes with the playhead). */
 export function drawStaticLayer(
   ctx: CanvasRenderingContext2D,
   model: ReplayModel,
   fit: CanvasFit,
+  theme: CanvasTheme,
 ): void {
   clearCanvas(ctx, fit)
-  strokeBaseRibbon(ctx, model, fit)
+  strokeBaseRibbon(ctx, model, fit, theme)
 }
 
 function drawRevealedSegments(
@@ -228,6 +289,7 @@ function drawRevealedSegments(
   fit: CanvasFit,
   trackMode: TrackMode,
   speedRange: SpeedRange,
+  theme: CanvasTheme,
 ): void {
   const segments = model.circuit.segments
   const [pilot1, pilot2] = model.pilots
@@ -242,7 +304,7 @@ function drawRevealedSegments(
       pilot1Color: pilot1.color,
       pilot2Color: pilot2.color,
     }
-    ctx.strokeStyle = pickSegmentColor(segment, trackMode, speedRange, gain)
+    ctx.strokeStyle = pickSegmentColor(segment, trackMode, speedRange, gain, theme)
     ctx.beginPath()
     const [x1, y1] = fit.toPx(segment.x1, segment.y1)
     const [x2, y2] = fit.toPx(segment.x2, segment.y2)
@@ -258,6 +320,7 @@ function drawPilotTrail(
   pilot: PilotModel,
   t: number,
   fit: CanvasFit,
+  color: string,
 ): void {
   const endIndex = pilot.indexAtTime(t)
   const startIndex = pilot.indexAtTime(Math.max(0, t - TRAIL_DURATION_S))
@@ -267,7 +330,7 @@ function drawPilotTrail(
   ctx.save()
   ctx.lineWidth = TRAIL_WIDTH_PX
   ctx.lineCap = 'round'
-  ctx.strokeStyle = pilot.color
+  ctx.strokeStyle = color
   for (let i = startIndex; i < endIndex; i++) {
     const progress = (i - startIndex) / span // 0 at the tail, ~1 at the dot
     ctx.globalAlpha = lerp(TRAIL_MIN_ALPHA, TRAIL_MAX_ALPHA, progress)
@@ -286,8 +349,9 @@ function drawTrails(
   model: ReplayModel,
   t: number,
   fit: CanvasFit,
+  pilotColors: [string, string],
 ): void {
-  for (const pilot of model.pilots) drawPilotTrail(ctx, pilot, t, fit)
+  model.pilots.forEach((pilot, i) => drawPilotTrail(ctx, pilot, t, fit, pilotColors[i]))
 }
 
 function drawDot(
@@ -321,11 +385,12 @@ function drawDots(
   t: number,
   fit: CanvasFit,
   reducedMotion: boolean,
+  pilotColors: [string, string],
 ): void {
-  for (const pilot of model.pilots) {
+  model.pilots.forEach((pilot, i) => {
     const [px, py] = toPilotPx(fit, pilot.xAtTime(t), pilot.yAtTime(t))
-    drawDot(ctx, px, py, pilot.color, t, reducedMotion)
-  }
+    drawDot(ctx, px, py, pilotColors[i], t, reducedMotion)
+  })
 }
 
 function drawGapLink(
@@ -333,6 +398,8 @@ function drawGapLink(
   model: ReplayModel,
   frame: ReplayFrame,
   fit: CanvasFit,
+  theme: CanvasTheme,
+  pilotColors: [string, string],
 ): void {
   const trackLength = model.distance[model.distance.length - 1]
   if (!shouldShowGapLink(frame.separationMeters, trackLength)) return
@@ -343,7 +410,7 @@ function drawGapLink(
 
   ctx.save()
   ctx.setLineDash(GAP_LINK_DASH)
-  ctx.strokeStyle = GAP_LINK_COLOR
+  ctx.strokeStyle = GAP_LINK_COLOR[theme]
   ctx.lineWidth = GAP_LINK_WIDTH_PX
   ctx.beginPath()
   ctx.moveTo(x1, y1)
@@ -353,14 +420,23 @@ function drawGapLink(
 
   const midX = (x1 + x2) / 2
   const midY = (y1 + y2) / 2
-  const label = `▲ +${frame.gapSeconds.toFixed(2)}s`
+  const leaderCode = model.pilots[frame.leaderIndex].code
+  const label = buildGapLabel(leaderCode, frame.gapSeconds)
   ctx.save()
   ctx.font = `${GAP_LABEL_FONT_SIZE_PX}px ${MONO_FONT_STACK}`
-  ctx.fillStyle = GAP_LABEL_COLOR
+  ctx.fillStyle = pilotColors[frame.leaderIndex] // attributes the label to the leader (P3)
   ctx.textAlign = 'center'
   ctx.textBaseline = 'bottom'
   ctx.fillText(label, midX, midY - GAP_LABEL_OFFSET_PX)
   ctx.restore()
+}
+
+/** Both pilots' identity colour, resolved once per frame for the given theme —
+ *  shared by the dots, the trails, and the gap label so a driver's colour
+ *  never drifts between the three (Fable UI audit P2). */
+function resolvePilotColors(model: ReplayModel, theme: CanvasTheme): [string, string] {
+  const [pilot1, pilot2] = model.pilots
+  return [resolvePilotColor(pilot1.color, theme), resolvePilotColor(pilot2.color, theme)]
 }
 
 /**
@@ -378,11 +454,13 @@ export function drawDynamicLayer(
   trackMode: TrackMode,
   reducedMotion: boolean,
   speedRange: SpeedRange,
+  theme: CanvasTheme,
 ): void {
   clearCanvas(ctx, fit)
   const frame = model.frameAt(t)
-  drawRevealedSegments(ctx, model, frame.leaderDistance, fit, trackMode, speedRange)
-  if (!reducedMotion) drawTrails(ctx, model, t, fit)
-  drawDots(ctx, model, t, fit, reducedMotion)
-  drawGapLink(ctx, model, frame, fit)
+  const pilotColors = resolvePilotColors(model, theme)
+  drawRevealedSegments(ctx, model, frame.leaderDistance, fit, trackMode, speedRange, theme)
+  if (!reducedMotion) drawTrails(ctx, model, t, fit, pilotColors)
+  drawDots(ctx, model, t, fit, reducedMotion, pilotColors)
+  drawGapLink(ctx, model, frame, fit, theme, pilotColors)
 }

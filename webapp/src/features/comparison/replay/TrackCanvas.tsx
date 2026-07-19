@@ -14,6 +14,7 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { fitCanvas, type CanvasFit } from '@/features/dashboard/components/circuitDraw'
 import { cn } from '@/lib/cn'
+import { useUiStore } from '@/stores/ui'
 import { computeSpeedRange, drawDynamicLayer, drawStaticLayer } from './trackDraw'
 import type { ReplayClock, ReplayModel, TrackMode } from './types'
 
@@ -75,12 +76,19 @@ export function TrackCanvas({
   const dynamicCtxRef = useRef<CanvasRenderingContext2D | null>(null)
   const fitRef = useRef<CanvasFit | null>(null)
 
-  // Latest trackMode/reducedMotion, read fresh inside the rAF-driven
+  // Read internally rather than via a prop (spec: keep TrackCanvasProps
+  // unchanged) — the canvas is the one surface that used to hardcode dark-
+  // theme ink regardless of `data-theme` (Fable UI audit P1).
+  const theme = useUiStore((state) => state.theme)
+
+  // Latest trackMode/reducedMotion/theme, read fresh inside the rAF-driven
   // subscription below without re-subscribing to the clock on every change.
   const trackModeRef = useRef(trackMode)
   trackModeRef.current = trackMode
   const reducedMotionRef = useRef(reducedMotion)
   reducedMotionRef.current = reducedMotion
+  const themeRef = useRef(theme)
+  themeRef.current = theme
 
   // Segments don't change frame-to-frame — scan their speed range once per
   // model instead of on every tick (trackDraw.ts's speed heatmap needs it).
@@ -99,6 +107,7 @@ export function TrackCanvas({
         trackModeRef.current,
         reducedMotionRef.current,
         speedRange,
+        themeRef.current,
       )
     },
     [model, speedRange],
@@ -132,7 +141,7 @@ export function TrackCanvas({
 
       configureCanvas(staticCanvas, staticCtx, cssWidth, cssHeight, fit.dpr)
       configureCanvas(dynamicCanvas, dynamicCtx, cssWidth, cssHeight, fit.dpr)
-      drawStaticLayer(staticCtx, model, fit)
+      drawStaticLayer(staticCtx, model, fit, themeRef.current)
       renderFrame(clock.getTime())
     }
 
@@ -141,12 +150,17 @@ export function TrackCanvas({
     return () => observer.disconnect()
   }, [model, clock, renderFrame])
 
-  // A trackMode/reducedMotion change should redraw the CURRENT frame right
-  // away — otherwise a paused replay would only reflect the new mode once
-  // the clock ticks again (never, while paused).
+  // A trackMode/reducedMotion/theme change should redraw the CURRENT frame
+  // right away — otherwise a paused replay would only reflect the new mode
+  // once the clock ticks again (never, while paused). A theme change also
+  // repaints the static ribbon in place (using the already-computed `fit` —
+  // no need to remeasure or recreate the ResizeObserver just to swap ink).
   useEffect(() => {
+    const staticCtx = staticCtxRef.current
+    const fit = fitRef.current
+    if (staticCtx && fit) drawStaticLayer(staticCtx, model, fit, theme)
     renderFrame(clock.getTime())
-  }, [trackMode, reducedMotion, clock, renderFrame])
+  }, [trackMode, reducedMotion, theme, model, clock, renderFrame])
 
   // The one rAF-driven subscription: fires every frame while playing, and on
   // every seek (spec: ReplayClock.subscribe fires on seek too).

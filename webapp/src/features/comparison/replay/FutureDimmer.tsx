@@ -7,11 +7,26 @@
 
 import { useEffect, useRef } from 'react'
 import type { ECharts } from 'echarts'
-import type { ReplayClock, ReplayModel } from './types'
+import { cn } from '@/lib/cn'
+import type { ReplayClock, ReplayModel, ReplayStatus } from './types'
+
+// Vertical inset approximating the plot's own reserved chrome (mirrors
+// channelOptions.ts's `GRID.top`, and the axis-label band ECharts'
+// `containLabel: true` reserves at the bottom) so the veil covers the DATA
+// only — the original `inset-y-0` also dimmed the x-axis label row into
+// unreadability (Fable UI audit, P1).
+const PLOT_TOP_INSET = 16
+const PLOT_BOTTOM_INSET = 28
 
 export interface FutureDimmerProps {
   model: ReplayModel
   clock: ReplayClock
+  /** At `ready` (t=0, nothing has played yet) the veil is invisible — the
+   *  spec's own framing is "a complete static analysis screen", not a dimmed
+   *  one. It fades in over `~250ms` the moment the replay leaves `ready`,
+   *  turning the fix into a designed beat: "the future veils itself when the
+   *  clock starts" (Fable UI audit, P1 / motion idea M4). */
+  status: ReplayStatus
   /** Resolves the live ECharts instance. The caller (ChannelPane) only mounts
    *  this component once the chart has fired `onChartReady`, so this always
    *  returns non-null for the overlay's lifetime. */
@@ -37,8 +52,9 @@ function mapDistanceToPixel(chart: ECharts, dMin: number, dMax: number): Distanc
  *  edge. Resizing a DOM element's `width` is a cheaper repaint than any
  *  ECharts redraw, and it stays a plain per-frame style write — no
  *  `setOption` ever runs after the chart mounts. */
-export function FutureDimmer({ model, clock, getChart }: FutureDimmerProps) {
+export function FutureDimmer({ model, clock, status, getChart }: FutureDimmerProps) {
   const panelRef = useRef<HTMLDivElement>(null)
+  const isReady = status === 'ready'
 
   useEffect(() => {
     const chart = getChart()
@@ -75,8 +91,15 @@ export function FutureDimmer({ model, clock, getChart }: FutureDimmerProps) {
     <div
       ref={panelRef}
       aria-hidden="true"
-      className="pointer-events-none absolute inset-y-0 left-0 bg-bg-2/50"
-      style={{ willChange: 'transform, width' }}
+      className={cn(
+        'pointer-events-none absolute left-0 bg-bg-2/50 transition-opacity duration-250',
+        isReady ? 'opacity-0' : 'opacity-100',
+      )}
+      style={{
+        top: PLOT_TOP_INSET,
+        bottom: PLOT_BOTTOM_INSET,
+        willChange: 'transform, width, opacity',
+      }}
     />
   )
 }

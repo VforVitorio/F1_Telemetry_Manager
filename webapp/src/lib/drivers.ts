@@ -161,6 +161,30 @@ export function getDriverTextColor(code: string, year?: number): string {
   return mixToward(rgb, 255, 0.5)
 }
 
+// --- Chart/canvas identity colour, theme-aware ------------------------------
+// A pilot's raw team colour is used as a thick CHART LINE / canvas dot, not text.
+// Some team colours vanish on one theme: Red Bull's dark blue recedes on the dark
+// cards (~2.2:1), Mercedes' cyan washes out on the light ones. `resolvePilotColor`
+// lifts a too-dark colour toward white on dark, and deepens a too-light colour
+// toward ink on light, so BOTH drivers carry equal visual weight in every chart
+// (broadcast graphics do the same; the hue identity survives). One helper shared
+// by channelOptions.ts and trackDraw.ts so the two never drift.
+
+/** Below this luminance a colour recedes on the dark data cards. */
+const CHART_DARK_FLOOR = 0.22
+/** Above this luminance a colour washes out on the light data cards. */
+const CHART_LIGHT_CEIL = 0.5
+
+/** A pilot's identity colour adjusted for legibility on the given theme's data
+ *  surface. Returns the original hex when it already carries enough contrast. */
+export function resolvePilotColor(hex: string, theme: 'dark' | 'light'): string {
+  const rgb = hexToRgb(hex)
+  const lum = relativeLuminance(rgb)
+  if (theme === 'dark' && lum < CHART_DARK_FLOOR) return mixToward(rgb, 255, 0.45)
+  if (theme === 'light' && lum > CHART_LIGHT_CEIL) return mixToward(rgb, 20, 0.4)
+  return hex
+}
+
 /** Build a `{ driver: colour }` map for the selected drivers. */
 export function driverColorMap(drivers: string[], year?: number): Record<string, string> {
   const map: Record<string, string> = {}

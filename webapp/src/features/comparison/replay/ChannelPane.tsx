@@ -17,7 +17,10 @@ import * as echarts from 'echarts'
 import type { ECharts, EChartsOption } from 'echarts'
 import { registerF1Theme, useChartTheme } from '@/charts/registerEcharts'
 import { useFirstPaintAnimation } from '@/charts/useFirstPaintAnimation'
-import type { ReplayClock, ReplayModel } from './types'
+import { resolvePilotColor } from '@/lib/drivers'
+import { useUiStore } from '@/stores/ui'
+import { pilotColor } from './channelOptions'
+import type { ReplayClock, ReplayModel, ReplayStatus } from './types'
 import { CursorOverlay } from './CursorOverlay'
 import { FutureDimmer } from './FutureDimmer'
 
@@ -32,25 +35,45 @@ const CHART_HEIGHT = 220
 const CROSSHAIR_GROUP = 'comparison-replay-crosshair'
 
 export interface ChannelPaneProps {
-  title: string
+  /** Uppercase-styled channel name, e.g. "Speed", "Delta" — kept separate
+   *  from `unit` so the unit's own casing (lowercase "s", "km/h") survives
+   *  the label's `uppercase` styling (P3: "Delta (s)" was rendering as
+   *  "DELTA (S)" because `uppercase` applied to the whole combined title). */
+  label: string
+  /** Parenthesised unit, e.g. "(km/h)", "(s)" — rendered `normal-case`. */
+  unit: string
   /** Built once by the caller (channelOptions.ts) — only changes when the
    *  underlying data or theme changes, never per clock tick. */
   option: EChartsOption
   model: ReplayModel
   clock: ReplayClock
-  /** True while the replay is paused/ready/finished — enables native
-   *  axisPointer hover + the crosshair group; false while playing, when the
-   *  DOM overlays alone drive the cursor. */
-  paused: boolean
+  status: ReplayStatus
+  /** Only the Delta pane sets this: renders a team-coloured sign key
+   *  ("▲ LEC ahead · ▼ VER ahead") in the header so the fill's +/− tinting
+   *  is decodable at a glance (P1 — previously there was no key anywhere). */
+  showSignKey?: boolean
 }
 
 /** One channel of the 4-chart grid: a static ECharts pane inside a titled
  *  card, with its two DOM-overlay layers mounted only once the chart
  *  instance exists (so they can assume a non-null `getChart()`). */
-export function ChannelPane({ title, option, model, clock, paused }: ChannelPaneProps) {
+export function ChannelPane({
+  label,
+  unit,
+  option,
+  model,
+  clock,
+  status,
+  showSignKey,
+}: ChannelPaneProps) {
   const chartTheme = useChartTheme()
+  const uiTheme = useUiStore((state) => state.theme)
   const chartRef = useRef<ECharts | null>(null)
   const [ready, setReady] = useState(false)
+
+  // Paused/ready/finished enables native axisPointer hover + the crosshair
+  // group; only while playing do the DOM overlays alone drive the cursor.
+  const paused = status !== 'playing'
 
   const handleChartReady = useCallback((instance: ECharts) => {
     chartRef.current = instance
@@ -65,11 +88,43 @@ export function ChannelPane({ title, option, model, clock, paused }: ChannelPane
 
   const paintedOption = useFirstPaintAnimation(option)
 
+  const [pilot1, pilot2] = model.pilots
+  const chips = [pilot1, pilot2].map((pilot) => ({
+    code: pilot.code,
+    color: resolvePilotColor(pilotColor(pilot, undefined), uiTheme),
+  }))
+
   return (
     <div className="rounded-2xl border border-hairline bg-bg-3 p-3">
-      <h3 className="mb-2 font-display text-xs font-medium uppercase tracking-wide text-fg-3">
-        {title}
-      </h3>
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <h3 className="font-display text-xs font-medium uppercase tracking-wide text-fg-3">
+          {label} <span className="normal-case">{unit}</span>
+        </h3>
+        <div className="flex items-center gap-3">
+          {showSignKey && (
+            <span className="flex items-center gap-1.5 whitespace-nowrap font-mono text-[10px] text-fg-3">
+              <span style={{ color: chips[1]?.color }}>▲ {pilot2.code} ahead</span>
+              <span className="text-fg-4">·</span>
+              <span style={{ color: chips[0]?.color }}>▼ {pilot1.code} ahead</span>
+            </span>
+          )}
+          <span className="flex items-center gap-2">
+            {chips.map((chip) => (
+              <span
+                key={chip.code}
+                className="flex items-center gap-1 font-mono text-[10px] text-fg-3"
+              >
+                <span
+                  aria-hidden="true"
+                  className="size-1.5 rounded-full"
+                  style={{ backgroundColor: chip.color }}
+                />
+                {chip.code}
+              </span>
+            ))}
+          </span>
+        </div>
+      </div>
       <div className="relative" style={{ height: CHART_HEIGHT }}>
         <div style={{ pointerEvents: paused ? 'auto' : 'none' }}>
           <ReactECharts
@@ -83,7 +138,7 @@ export function ChannelPane({ title, option, model, clock, paused }: ChannelPane
         </div>
         {ready && (
           <>
-            <FutureDimmer model={model} clock={clock} getChart={getChart} />
+            <FutureDimmer model={model} clock={clock} status={status} getChart={getChart} />
             <CursorOverlay model={model} clock={clock} getChart={getChart} />
           </>
         )}
