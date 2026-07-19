@@ -100,14 +100,17 @@ export function ChannelPane({
         <h3 className="font-display text-xs font-medium uppercase tracking-wide text-fg-3">
           {label} <span className="normal-case">{unit}</span>
         </h3>
-        <div className="flex items-center gap-3">
-          {showSignKey && (
-            <span className="flex items-center gap-1.5 whitespace-nowrap font-mono text-[10px] text-fg-3">
-              <span style={{ color: chips[1]?.color }}>▲ {pilot2.code} ahead</span>
-              <span className="text-fg-4">·</span>
-              <span style={{ color: chips[0]?.color }}>▼ {pilot1.code} ahead</span>
-            </span>
-          )}
+        {/* Delta pane: the sign key already names BOTH drivers (team-coloured,
+            with ▲/▼ for who's ahead), so it stands alone — showing the chips too
+            overflowed the ~240px header and truncated a code. The line panes
+            show the chips (their traces need a colour→driver legend). */}
+        {showSignKey ? (
+          <span className="flex items-center gap-1.5 whitespace-nowrap font-mono text-[10px] text-fg-3">
+            <span style={{ color: chips[1]?.color }}>▲ {pilot2.code} ahead</span>
+            <span className="text-fg-4">·</span>
+            <span style={{ color: chips[0]?.color }}>▼ {pilot1.code} ahead</span>
+          </span>
+        ) : (
           <span className="flex items-center gap-2">
             {chips.map((chip) => (
               <span
@@ -123,7 +126,7 @@ export function ChannelPane({
               </span>
             ))}
           </span>
-        </div>
+        )}
       </div>
       <div className="relative" style={{ height: CHART_HEIGHT }}>
         <div style={{ pointerEvents: paused ? 'auto' : 'none' }}>

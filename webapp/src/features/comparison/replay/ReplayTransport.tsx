@@ -251,8 +251,13 @@ export function ReplayTransport({
           </Button>
         </Tooltip>
 
-        <Tooltip content="Copy a link to this moment">
-          <Button variant="ghost" size="sm" aria-label="Share this moment" onClick={onShareMoment}>
+        <Tooltip content="Copy a link that reopens the replay paused at this exact moment (adds &t= to the URL)">
+          <Button
+            variant="ghost"
+            size="sm"
+            aria-label="Copy a link to this paused moment"
+            onClick={onShareMoment}
+          >
             <Share2 className="size-4" aria-hidden="true" />
           </Button>
         </Tooltip>

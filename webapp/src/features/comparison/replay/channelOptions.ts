@@ -128,6 +128,45 @@ function buildTooltipFormatter(colorByName: Record<string, string>, decimals: nu
   }
 }
 
+/** Below this |delta| (s) the two cars are level — the tooltip says so instead
+ *  of attributing a lead to whoever is a thousandth ahead. */
+const DELTA_TIE_THRESHOLD = 0.005
+
+/** Delta pane's OWN tooltip: the delta chart is one cross-pilot curve plus two
+ *  zero-anchored sign fills, so the generic per-series formatter above would
+ *  print the unnamed fills as raw "series0 / series1" rows (and never name a
+ *  driver). Instead read the Δ value at the hovered point and render a single
+ *  row naming the driver AHEAD there — team-coloured dot + code + the gap — the
+ *  same convention as the header sign-key and the LiveGapReadout. */
+function buildDeltaTooltipFormatter(
+  p1Code: string,
+  p1Color: string,
+  p2Code: string,
+  p2Color: string,
+) {
+  return (params: TooltipComponentFormatterCallbackParams): string => {
+    const items: DefaultLabelFormatterCallbackParams[] = Array.isArray(params) ? params : [params]
+    const deltaItem = items.find((it) => it.seriesName === 'Δ')
+    if (!deltaItem) return ''
+    const raw = Array.isArray(deltaItem.value)
+      ? deltaItem.value[deltaItem.value.length - 1]
+      : deltaItem.value
+    const delta = typeof raw === 'number' ? raw : 0
+    if (Math.abs(delta) < DELTA_TIE_THRESHOLD) {
+      return `<div style="font-family:${MONO};color:inherit">Level</div>`
+    }
+    // delta > 0 ⇒ pilot1 slower ⇒ pilot2 ahead here.
+    const aheadCode = delta > 0 ? p2Code : p1Code
+    const aheadColor = delta > 0 ? p2Color : p1Color
+    const gap = Math.abs(delta).toFixed(3)
+    return `<div style="display:flex;align-items:center;gap:7px;">
+  <span style="width:8px;height:8px;border-radius:50%;background:${aheadColor};display:inline-block"></span>
+  <span style="color:${aheadColor};font-weight:600">${aheadCode}</span>
+  <span style="font-family:${MONO}">&#9650; +${gap}s</span>
+</div>`
+  }
+}
+
 /** Shared chrome for all 4 panes: tooltip, grid, and the distance x-axis.
  *  Mirrors ChannelChart.tsx's `baseOption`. No in-plot ECharts legend — it
  *  used to sit at `top: 0` inside the grid and collide with the data itself
@@ -257,9 +296,12 @@ export function buildDeltaOption(model: ReplayModel, theme: UiTheme = 'dark'): E
   }
 
   return {
-    // Delta's own legend is hidden (see `baseChannelOption`); the tooltip
-    // colour map keeps a hover over "Δ" legible, at 3dp (see buildTooltipFormatter).
-    ...baseChannelOption(buildTooltipFormatter({ Δ: deltaLineColor }, 3)),
+    // Delta gets its OWN tooltip (names the driver ahead + gap, ignores the
+    // unnamed sign fills) — the generic per-series one would print "series0 /
+    // series1" and never a driver name/colour.
+    ...baseChannelOption(
+      buildDeltaTooltipFormatter(pilot1.code, aheadColor1, pilot2.code, aheadColor2),
+    ),
     series: [
       buildSignFill(points, true, aheadColor2),
       buildSignFill(points, false, aheadColor1),

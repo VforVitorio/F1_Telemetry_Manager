@@ -149,12 +149,27 @@ describe('buildDeltaOption', () => {
     expect(line?.lineStyle?.color).not.toBe('#6c5ce7')
   })
 
-  it('reports the delta value at 3 decimal places in the tooltip (a 3dp verdict, not "0.8")', () => {
+  it('tooltip names the driver AHEAD (team-coloured) + gap at 3dp, ignoring the raw fill series', () => {
     const option = buildDeltaOption(model)
     const tooltip = option.tooltip as { formatter?: (params: unknown) => string }
     const formatter = tooltip.formatter as (params: unknown) => string
-    const html = formatter([{ seriesName: 'Δ', value: [0, 0.831] }])
-    expect(html).toContain('0.831')
+    // delta > 0 ⇒ pilot1 slower ⇒ pilot2 (LEC) ahead. The unnamed sign fills
+    // arrive as "series0"/"series1" on the axis trigger and must NOT leak.
+    const html = formatter([
+      { seriesName: 'series0', value: [0, 0.831] },
+      { seriesName: 'series1', value: [0, 0] },
+      { seriesName: 'Δ', value: [0, 0.831] },
+    ])
+    expect(html).toContain('LEC') // the driver ahead is named
+    expect(html).toContain('0.831') // gap at 3dp
+    expect(html).not.toContain('series0')
+    expect(html).not.toContain('series1')
+  })
+
+  it('tooltip says "Level" when the two cars are within a few thousandths', () => {
+    const option = buildDeltaOption(model)
+    const formatter = (option.tooltip as { formatter: (p: unknown) => string }).formatter
+    expect(formatter([{ seriesName: 'Δ', value: [0, 0.001] }])).toContain('Level')
   })
 })
 
