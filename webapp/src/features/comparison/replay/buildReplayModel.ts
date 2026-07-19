@@ -102,7 +102,11 @@ function computeDelta(
 function buildPilot(raw: ComparisonPayload['pilot1'], sharedDistance: Float64Array): PilotModel {
   const distance = sharedDistance
   const x = toF32(raw.x)
-  const y = toF32(raw.y)
+  // Flip y into the SAME frame as the track geometry (outline/segments are
+  // y-flipped for canvas drawing). Keeping the whole model in one coordinate
+  // frame means every consumer — dots, trails, a future ghost dot — aligns with
+  // the ribbon without re-flipping. x is not flipped (track flips y only).
+  const y = Float32Array.from(raw.y, flipY)
   const speed = toF32(raw.speed)
   const throttle = toF32(raw.throttle)
   const brake = toF32(raw.brake)
