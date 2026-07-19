@@ -17,7 +17,7 @@ from backend.services.telemetry_service import (
     get_driver_qualifying_phases
 )
 from backend.core.driver_colors import get_driver_color
-import fastf1
+from backend.services.telemetry.session_cache import get_loaded_session
 
 logger = logging.getLogger(__name__)
 
@@ -87,9 +87,12 @@ async def compare_drivers(
         if session == 'Q':
             logger.info("Qualifying session detected - using phase-specific logic")
 
-            # Load session to access phase data
-            fastf1_session = fastf1.get_session(year, gp, session)
-            fastf1_session.load()
+            # Load session to access phase data — via the shared in-process
+            # session cache (same one telemetry_service + prewarmTelemetry use),
+            # not a raw fastf1.get_session().load(): the qualifying path is the
+            # common case, and a raw load here threw away the warm cache and
+            # re-parsed from disk (~10s+), the real cause of the slow cold compare.
+            fastf1_session = get_loaded_session(year, gp, session)
 
             # Get highest common qualifying phase
             highest_phase = get_highest_common_q_phase(
