@@ -64,6 +64,16 @@ const GAIN_NEUTRAL_THRESHOLD_S = 1e-3
  *  a genuinely neutral grey, not tuned toward either pilot. */
 export const NEUTRAL_GAIN_COLOR = '#7c8798'
 
+// ── Mode-transition sweep (T3 — dominance draw-on) ──────────────────────────
+
+/** Minimum feather width in metres — floors the soft leading edge so a switch
+ *  right after the start line (small leaderDistance) doesn't collapse the
+ *  sweep into a hard, steppy cut. ~2-3 segment lengths of softness. */
+const SWEEP_FEATHER_MIN_M = 30
+/** Feather as a fraction of the leader's current distance, floored by
+ *  SWEEP_FEATHER_MIN_M above. */
+const SWEEP_FEATHER_RATIO = 0.04
+
 // ── Trails ───────────────────────────────────────────────────────────────────
 
 /** How far back each pilot's racing-line trail extends, in seconds. */
@@ -107,12 +117,19 @@ const MONO_FONT_STACK =
 
 // ── Small numeric helpers ────────────────────────────────────────────────────
 
-function clamp01(value: number): number {
+export function clamp01(value: number): number {
   return Math.min(1, Math.max(0, value))
 }
 
 function lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t
+}
+
+/** `p*p*(3−2p)` — eases 0→1 with a soft entry/exit. Used for the T2 mode-
+ *  switch alpha crossfade: a raw linear alpha ramp reads as a flash at the
+ *  start/end, smoothstep reads as a smooth blend instead. */
+function smoothstep(p: number): number {
+  return p * p * (3 - 2 * p)
 }
 
 function toHexByte(value: number): string {
@@ -163,6 +180,35 @@ export function speedHeatColor(speed: number, min: number, max: number): string 
  *  the COLOUR differs by mode; visibility is the same everywhere). */
 export function isSegmentRevealed(segment: TrackSegment, leaderDistance: number): boolean {
   return segment.endDistance < leaderDistance
+}
+
+/** `1 − (1−p)³` — a fast launch off the start line that settles into the
+ *  target distance. Private to `sweepFrontier` below (T3's dominance
+ *  draw-on) — never used or exported on its own. */
+function easeOutCubic(p: number): number {
+  return 1 - (1 - p) ** 3
+}
+
+/**
+ * Where the T3 "dominance draw-on" sweep has reached along the track, in
+ * metres — an eased fraction of the leader's OWN (growing) distance, so the
+ * frontier can never outrun the leader it's chasing (monotone, no pop, even
+ * while playing). `progress` is the raw (un-eased) 0→1 fraction of the
+ * transition window; the easing lives here rather than in the caller so it
+ * travels with the metre-space math it shapes.
+ */
+export function sweepFrontier(progress: number, leaderDistance: number): number {
+  return easeOutCubic(progress) * leaderDistance
+}
+
+/**
+ * A segment's alpha during the T3 sweep: 0 once fully ahead of the frontier,
+ * 1 once fully behind it (already swept), ramping linearly across `feather`
+ * metres in between — the soft leading edge that reads as a wipe rather than
+ * a hard cut.
+ */
+export function sweepSegmentAlpha(endDistance: number, frontier: number, feather: number): number {
+  return clamp01((frontier - endDistance) / feather)
 }
 
 /**
@@ -282,6 +328,63 @@ export function drawStaticLayer(
   strokeBaseRibbon(ctx, model, fit, theme)
 }
 
+/** A short (T2 ~220ms / T3 ~400ms) mode-switch beat, threaded optionally
+ *  through `drawDynamicLayer` → `drawRevealedSegments`. Pass 1 repaints the
+ *  OUTGOING mode (`fromMode`) at full alpha; pass 2 blends the LIVE mode on
+ *  top. `progress` is the raw 0→1 fraction of the transition window — each
+ *  branch inside `drawRevealedSegments` applies its own easing (`smoothstep`
+ *  for a plain crossfade, `sweepFrontier`'s `easeOutCubic` for the dominance
+ *  sweep), so easing stays a drawing decision rather than something the
+ *  caller has to get right per target mode. */
+export interface ModeTransition {
+  fromMode: TrackMode
+  /** 0→1, raw (un-eased) — see the type-level note above. */
+  progress: number
+}
+
+/** Strokes one revealed segment in the given mode's colour — the shared body
+ *  behind today's single pass AND both T2/T3 transition passes, so a colour
+ *  decision never has to be written (or drift) three times. Caller owns
+ *  `ctx.globalAlpha` before calling this (a uniform crossfade alpha or a
+ *  per-segment sweep alpha, depending on the pass). */
+function strokeSegment(
+  ctx: CanvasRenderingContext2D,
+  model: ReplayModel,
+  segment: TrackSegment,
+  index: number,
+  fit: CanvasFit,
+  mode: TrackMode,
+  speedRange: SpeedRange,
+  theme: CanvasTheme,
+): void {
+  const [pilot1, pilot2] = model.pilots
+  const gain: GainContext = {
+    localGain: localDeltaGain(model.delta, index),
+    pilot1Color: pilot1.color,
+    pilot2Color: pilot2.color,
+  }
+  ctx.strokeStyle = pickSegmentColor(segment, mode, speedRange, gain, theme)
+  ctx.beginPath()
+  const [x1, y1] = fit.toPx(segment.x1, segment.y1)
+  const [x2, y2] = fit.toPx(segment.x2, segment.y2)
+  ctx.moveTo(x1, y1)
+  ctx.lineTo(x2, y2)
+  ctx.stroke()
+}
+
+/**
+ * Draws the progressive dominance/speed/gain reveal. With no `modeTransition`
+ * this is a single pass in the live `trackMode` (today's behaviour, unchanged
+ * — every existing caller keeps working since the param is optional). With
+ * one, it's a two-pass crossfade (T2): pass 1 repaints `fromMode` at full
+ * alpha, pass 2 blends the live `trackMode` on top — identical geometry means
+ * pass 2 progressively COVERS pass 1, reading as a per-segment colour
+ * crossfade with zero hex-string interpolation (both passes reuse
+ * `pickSegmentColor` as-is). When the live mode is `dominance`, pass 2
+ * becomes T3's feathered distance-frontier sweep instead of a uniform alpha —
+ * switching AWAY from dominance stays a plain crossfade (a reverse-wipe would
+ * read as the track emptying, the wrong metaphor).
+ */
 function drawRevealedSegments(
   ctx: CanvasRenderingContext2D,
   model: ReplayModel,
@@ -290,28 +393,53 @@ function drawRevealedSegments(
   trackMode: TrackMode,
   speedRange: SpeedRange,
   theme: CanvasTheme,
+  modeTransition?: ModeTransition | null,
 ): void {
   const segments = model.circuit.segments
-  const [pilot1, pilot2] = model.pilots
   ctx.save()
   ctx.lineWidth = SEGMENT_STROKE_WIDTH_PX
   ctx.lineCap = 'round'
+
+  if (!modeTransition) {
+    for (let i = 0; i < segments.length; i++) {
+      const segment = segments[i]
+      if (!isSegmentRevealed(segment, leaderDistance)) continue
+      strokeSegment(ctx, model, segment, i, fit, trackMode, speedRange, theme)
+    }
+    ctx.restore()
+    return
+  }
+
+  // Pass 1 — the outgoing mode, full alpha (exactly today's single-pass draw,
+  // just with `fromMode` instead of the live mode).
+  ctx.globalAlpha = 1
   for (let i = 0; i < segments.length; i++) {
     const segment = segments[i]
     if (!isSegmentRevealed(segment, leaderDistance)) continue
-    const gain: GainContext = {
-      localGain: localDeltaGain(model.delta, i),
-      pilot1Color: pilot1.color,
-      pilot2Color: pilot2.color,
-    }
-    ctx.strokeStyle = pickSegmentColor(segment, trackMode, speedRange, gain, theme)
-    ctx.beginPath()
-    const [x1, y1] = fit.toPx(segment.x1, segment.y1)
-    const [x2, y2] = fit.toPx(segment.x2, segment.y2)
-    ctx.moveTo(x1, y1)
-    ctx.lineTo(x2, y2)
-    ctx.stroke()
+    strokeSegment(ctx, model, segment, i, fit, modeTransition.fromMode, speedRange, theme)
   }
+
+  // Pass 2 — the incoming (live) mode, blended on top.
+  if (trackMode === 'dominance') {
+    const frontier = sweepFrontier(modeTransition.progress, leaderDistance)
+    const feather = Math.max(SWEEP_FEATHER_RATIO * leaderDistance, SWEEP_FEATHER_MIN_M)
+    for (let i = 0; i < segments.length; i++) {
+      const segment = segments[i]
+      if (!isSegmentRevealed(segment, leaderDistance)) continue
+      const alpha = sweepSegmentAlpha(segment.endDistance, frontier, feather)
+      if (alpha <= 0) continue // not reached by the sweep yet
+      ctx.globalAlpha = alpha
+      strokeSegment(ctx, model, segment, i, fit, trackMode, speedRange, theme)
+    }
+  } else {
+    ctx.globalAlpha = smoothstep(modeTransition.progress)
+    for (let i = 0; i < segments.length; i++) {
+      const segment = segments[i]
+      if (!isSegmentRevealed(segment, leaderDistance)) continue
+      strokeSegment(ctx, model, segment, i, fit, trackMode, speedRange, theme)
+    }
+  }
+
   ctx.restore()
 }
 
@@ -445,6 +573,10 @@ function resolvePilotColors(model: ReplayModel, theme: CanvasTheme): [string, st
  * `reducedMotion`), their dots, and the gap-link when they're racing close.
  * `model.frameAt(t)` is resolved exactly once and threaded through every
  * layer below — cheap, but no reason to pay it twice in one frame.
+ *
+ * `modeTransition` (optional, T2/T3) blends `drawRevealedSegments`'s reveal
+ * between two track-colour modes over a short window — see `ModeTransition`.
+ * Every existing caller that omits it keeps today's single-pass draw.
  */
 export function drawDynamicLayer(
   ctx: CanvasRenderingContext2D,
@@ -455,11 +587,21 @@ export function drawDynamicLayer(
   reducedMotion: boolean,
   speedRange: SpeedRange,
   theme: CanvasTheme,
+  modeTransition?: ModeTransition | null,
 ): void {
   clearCanvas(ctx, fit)
   const frame = model.frameAt(t)
   const pilotColors = resolvePilotColors(model, theme)
-  drawRevealedSegments(ctx, model, frame.leaderDistance, fit, trackMode, speedRange, theme)
+  drawRevealedSegments(
+    ctx,
+    model,
+    frame.leaderDistance,
+    fit,
+    trackMode,
+    speedRange,
+    theme,
+    modeTransition,
+  )
   if (!reducedMotion) drawTrails(ctx, model, t, fit, pilotColors)
   drawDots(ctx, model, t, fit, reducedMotion, pilotColors)
   drawGapLink(ctx, model, frame, fit, theme, pilotColors)

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Keyboard, Pause, Play, Repeat, RotateCcw, Share2 } from 'lucide-react'
 import { Button } from '@/components/Button'
 import { Tooltip } from '@/components/Tooltip'
@@ -90,8 +90,21 @@ interface SegmentOption<T extends string | number> {
   label: string
 }
 
+/** Position + width of the sliding thumb, in CSS pixels — measured from the
+ *  active button's own box, so content-sized labels ("Dominance" vs "Gain")
+ *  each get an exact-fit pill rather than a fixed-width one. */
+interface ThumbStyle {
+  transform: string
+  width: string
+}
+
 /** Small pressed-state button row — the shared shape behind the speed and
- *  track-mode selectors (see the file banner for why this isn't Radix Tabs). */
+ *  track-mode selectors (see the file banner for why this isn't Radix Tabs).
+ *  T1 (Comparison #36 backlog M7): an absolutely-positioned `bg-purple-600`
+ *  pill slides/resizes under the active button via CSS `transform`+`width`
+ *  instead of the background jumping between buttons — the buttons themselves
+ *  keep only the text-colour swap, which `transition-colors` already
+ *  crossfades in sync with the slide. */
 function SegmentedControl<T extends string | number>({
   value,
   options,
@@ -103,22 +116,71 @@ function SegmentedControl<T extends string | number>({
   ariaLabel: string
   onChange: (next: T) => void
 }) {
+  const groupRef = useRef<HTMLDivElement | null>(null)
+  // Persists across renders without re-triggering the measurement effect —
+  // callback refs below keep it in sync with whichever buttons are mounted.
+  const buttonRefs = useRef(new Map<T, HTMLButtonElement>())
+  const [thumbStyle, setThumbStyle] = useState<ThumbStyle | null>(null)
+
+  // Read fresh by the (stable) measurer below without forcing it to depend on
+  // — and re-create itself whenever — `value` changes.
+  const valueRef = useRef(value)
+  valueRef.current = value
+
+  const measureThumb = useCallback(() => {
+    const activeButton = buttonRefs.current.get(valueRef.current)
+    if (!activeButton) return
+    setThumbStyle({
+      transform: `translateX(${activeButton.offsetLeft}px)`,
+      width: `${activeButton.offsetWidth}px`,
+    })
+  }, [])
+
+  // Re-measure whenever the active option (or the option set/labels) changes.
+  // The group div is `relative`, so `offsetLeft` is exactly the thumb's target
+  // translateX (it already accounts for the group's own `p-0.5` padding).
+  useLayoutEffect(() => {
+    measureThumb()
+  }, [value, options, measureThumb])
+
+  // Catches box changes the value/options deps above can't see — a webfont
+  // (JetBrains Mono) finishing its load, or the group's container resizing.
+  useEffect(() => {
+    const group = groupRef.current
+    if (!group) return
+    const observer = new ResizeObserver(measureThumb)
+    observer.observe(group)
+    return () => observer.disconnect()
+  }, [measureThumb])
+
   return (
     <div
+      ref={groupRef}
       role="group"
       aria-label={ariaLabel}
-      className="flex items-center gap-0.5 rounded-lg bg-bg-3 p-0.5"
+      className="relative flex items-center gap-0.5 rounded-lg bg-bg-3 p-0.5"
     >
+      {thumbStyle && (
+        <span
+          aria-hidden="true"
+          className="absolute inset-y-0.5 left-0 z-0 rounded-md bg-purple-600 transition-[transform,width] duration-200 ease-out motion-reduce:transition-none"
+          style={thumbStyle}
+        />
+      )}
       {options.map((option) => (
         <button
           key={option.value}
+          ref={(el) => {
+            if (el) buttonRefs.current.set(option.value, el)
+            else buttonRefs.current.delete(option.value)
+          }}
           type="button"
           aria-pressed={option.value === value}
           onClick={() => onChange(option.value)}
           className={cn(
-            'rounded-md px-2.5 py-1 font-mono text-xs font-medium transition-colors',
+            'relative z-10 rounded-md px-2.5 py-1 font-mono text-xs font-medium transition-colors',
             'focus-visible:ring-2 focus-visible:ring-purple-400 focus-visible:ring-offset-2 focus-visible:ring-offset-bg-0 focus-visible:outline-none',
-            option.value === value ? 'bg-purple-600 text-fg-1' : 'text-fg-3 hover:text-fg-2',
+            option.value === value ? 'text-fg-1' : 'text-fg-3 hover:text-fg-2',
           )}
         >
           {option.label}
@@ -251,8 +313,13 @@ export function ReplayTransport({
           </Button>
         </Tooltip>
 
-        <Tooltip content="Copy a link to this moment">
-          <Button variant="ghost" size="sm" aria-label="Share this moment" onClick={onShareMoment}>
+        <Tooltip content="Copy a link that reopens the replay paused at this exact moment (adds &t= to the URL)">
+          <Button
+            variant="ghost"
+            size="sm"
+            aria-label="Copy a link to this paused moment"
+            onClick={onShareMoment}
+          >
             <Share2 className="size-4" aria-hidden="true" />
           </Button>
         </Tooltip>
