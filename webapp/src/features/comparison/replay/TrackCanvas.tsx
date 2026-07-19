@@ -15,8 +15,31 @@ import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { fitCanvas, type CanvasFit } from '@/features/dashboard/components/circuitDraw'
 import { cn } from '@/lib/cn'
 import { useUiStore } from '@/stores/ui'
-import { computeSpeedRange, drawDynamicLayer, drawStaticLayer } from './trackDraw'
+import {
+  clamp01,
+  computeSpeedRange,
+  drawDynamicLayer,
+  drawStaticLayer,
+  type ModeTransition,
+} from './trackDraw'
 import type { ReplayClock, ReplayModel, TrackMode } from './types'
+
+/** T2 circuit-crossfade window (ms) — the plain mode-to-mode blend. */
+const MODE_TRANSITION_DURATION_MS = 220
+/** T3 dominance draw-on sweep window (ms) — longer than T2 so the feathered
+ *  distance frontier has room to read as a wipe instead of a flash. */
+const DOMINANCE_SWEEP_DURATION_MS = 400
+
+/** One armed mode-switch beat, timestamp-driven (never React state — see the
+ *  file header). `durationMs` is captured at arm time so T2 and T3 can each
+ *  run their own window without sharing one constant; `toDominance` records
+ *  which duration applies (kept alongside for clarity when debugging). */
+interface ArmedModeTransition {
+  fromMode: TrackMode
+  toDominance: boolean
+  startMs: number
+  durationMs: number
+}
 
 export interface TrackCanvasProps {
   model: ReplayModel
@@ -90,6 +113,16 @@ export function TrackCanvas({
   const themeRef = useRef(theme)
   themeRef.current = theme
 
+  // T2/T3 mode-switch beat: the in-flight transition (if any), the previous
+  // trackMode (to detect a real change vs. mount/persisted-mode reload), the
+  // previous model (to detect a fresh comparison), and the self-rAF id that
+  // drives repaints while the clock is paused. All refs — a mode-switch beat
+  // is a per-frame value like the playhead itself, never React state.
+  const modeTransitionRef = useRef<ArmedModeTransition | null>(null)
+  const prevTrackModeRef = useRef<TrackMode | null>(null)
+  const modelRef = useRef(model)
+  const transitionRafRef = useRef<number | null>(null)
+
   // Segments don't change frame-to-frame — scan their speed range once per
   // model instead of on every tick (trackDraw.ts's speed heatmap needs it).
   const speedRange = useMemo(() => computeSpeedRange(model.circuit.segments), [model])
@@ -99,6 +132,21 @@ export function TrackCanvas({
       const fit = fitRef.current
       const dynamicCtx = dynamicCtxRef.current
       if (!fit || !dynamicCtx) return
+
+      // Resolve the armed transition (if any) into this frame's blend amount
+      // purely from wall-clock timestamps — so play/pause mid-transition Just
+      // Works, and a slow/fast tab never skews the blend.
+      let modeTransition: ModeTransition | null = null
+      const transition = modeTransitionRef.current
+      if (transition) {
+        const progress = clamp01((performance.now() - transition.startMs) / transition.durationMs)
+        if (progress >= 1) {
+          modeTransitionRef.current = null
+        } else {
+          modeTransition = { fromMode: transition.fromMode, progress }
+        }
+      }
+
       drawDynamicLayer(
         dynamicCtx,
         model,
@@ -108,10 +156,29 @@ export function TrackCanvas({
         reducedMotionRef.current,
         speedRange,
         themeRef.current,
+        modeTransition,
       )
     },
     [model, speedRange],
   )
+
+  /** Drives repaints while the transition is in flight AND the clock is
+   *  paused (the clock's own subscription already repaints every frame while
+   *  playing — see the arming effect below). `isPlaying()` is checked fresh
+   *  every tick, so play/pause toggling mid-transition never leaves a gap:
+   *  whichever loop is authoritative paints, the other just no-ops. */
+  const startTransitionLoop = useCallback(() => {
+    if (transitionRafRef.current !== null) return // already running
+    const tick = () => {
+      if (modeTransitionRef.current === null) {
+        transitionRafRef.current = null
+        return // finished — stop scheduling
+      }
+      if (!clock.isPlaying()) renderFrame(clock.getTime())
+      transitionRafRef.current = requestAnimationFrame(tick)
+    }
+    transitionRafRef.current = requestAnimationFrame(tick)
+  }, [clock, renderFrame])
 
   // Sizing: measure the container, fit the track's bounds into it, resize
   // both canvases, repaint the static ribbon, and refresh the current frame
@@ -155,12 +222,48 @@ export function TrackCanvas({
   // once the clock ticks again (never, while paused). A theme change also
   // repaints the static ribbon in place (using the already-computed `fit` —
   // no need to remeasure or recreate the ResizeObserver just to swap ink).
+  //
+  // T2/T3: this is also the ONLY place a mode-switch beat gets armed. A REAL
+  // trackMode change (not the first mount, not a persisted-mode reload, not a
+  // reduced-motion session) on the SAME model starts a short crossfade —
+  // dominance-target beats get the longer T3 sweep duration, everything else
+  // gets T2's plain crossfade. A fresh comparison (new model) resets the
+  // "last seen mode" bookkeeping instead of crossfading from the old circuit.
   useEffect(() => {
     const staticCtx = staticCtxRef.current
     const fit = fitRef.current
     if (staticCtx && fit) drawStaticLayer(staticCtx, model, fit, theme)
+
+    const modelChanged = modelRef.current !== model
+    modelRef.current = model
+    if (modelChanged) prevTrackModeRef.current = null
+
+    const prevMode = prevTrackModeRef.current
+    prevTrackModeRef.current = trackMode
+    // `prevMode === null` covers first mount AND the persisted-mode reload
+    // (store.ts persists trackMode — a session that reopens in Speed must
+    // not crossfade on load).
+    if (!modelChanged && prevMode !== null && prevMode !== trackMode && !reducedMotion) {
+      const toDominance = trackMode === 'dominance'
+      modeTransitionRef.current = {
+        fromMode: prevMode,
+        toDominance,
+        startMs: performance.now(),
+        durationMs: toDominance ? DOMINANCE_SWEEP_DURATION_MS : MODE_TRANSITION_DURATION_MS,
+      }
+      startTransitionLoop()
+    }
+
     renderFrame(clock.getTime())
-  }, [trackMode, reducedMotion, theme, model, clock, renderFrame])
+
+    return () => {
+      if (transitionRafRef.current !== null) {
+        cancelAnimationFrame(transitionRafRef.current)
+        transitionRafRef.current = null
+      }
+      modeTransitionRef.current = null
+    }
+  }, [trackMode, reducedMotion, theme, model, clock, renderFrame, startTransitionLoop])
 
   // The one rAF-driven subscription: fires every frame while playing, and on
   // every seek (spec: ReplayClock.subscribe fires on seek too).

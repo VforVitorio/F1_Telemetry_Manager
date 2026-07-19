@@ -14,6 +14,8 @@ import {
   pickSegmentColor,
   shouldShowGapLink,
   speedHeatColor,
+  sweepFrontier,
+  sweepSegmentAlpha,
   type GainContext,
 } from './trackDraw'
 import type { TrackSegment } from './types'
@@ -167,6 +169,54 @@ describe('pickSegmentColor', () => {
     // implied a "winner" on a stretch that is actually level (Fable UI audit P2).
     const seg = segment({ color: '#abcdef' })
     expect(pickSegmentColor(seg, 'gain', speedRange, gain(0), 'dark')).toBe(NEUTRAL_GAIN_COLOR)
+  })
+})
+
+describe('sweepFrontier', () => {
+  it('starts at 0 at the beginning of the transition window', () => {
+    expect(sweepFrontier(0, 1200)).toBe(0)
+  })
+
+  it('reaches the leader distance at the end of the transition window', () => {
+    expect(sweepFrontier(1, 1200)).toBeCloseTo(1200, 9)
+  })
+
+  it('never outruns the leader distance it is chasing, mid-transition', () => {
+    expect(sweepFrontier(0.5, 1200)).toBeLessThan(1200)
+    expect(sweepFrontier(0.5, 1200)).toBeGreaterThan(0)
+  })
+
+  it('advances monotonically as progress increases', () => {
+    const samples = [0, 0.25, 0.5, 0.75, 1].map((p) => sweepFrontier(p, 1200))
+    for (let i = 1; i < samples.length; i++) {
+      expect(samples[i]).toBeGreaterThanOrEqual(samples[i - 1])
+    }
+  })
+})
+
+describe('sweepSegmentAlpha', () => {
+  const FRONTIER = 500
+  const FEATHER = 50
+
+  it('is 0 for a segment the sweep has not reached yet', () => {
+    expect(sweepSegmentAlpha(600, FRONTIER, FEATHER)).toBe(0)
+  })
+
+  it('is 1 for a segment a full feather-width behind the frontier', () => {
+    expect(sweepSegmentAlpha(FRONTIER - FEATHER, FRONTIER, FEATHER)).toBe(1)
+  })
+
+  it('stays clamped at 1 further behind the frontier still', () => {
+    expect(sweepSegmentAlpha(0, FRONTIER, FEATHER)).toBe(1)
+  })
+
+  it('ramps monotonically (non-increasing as distance grows) inside the feather band', () => {
+    const samples = [450, 460, 475, 490, 500].map((endDistance) =>
+      sweepSegmentAlpha(endDistance, FRONTIER, FEATHER),
+    )
+    for (let i = 1; i < samples.length; i++) {
+      expect(samples[i]).toBeLessThanOrEqual(samples[i - 1])
+    }
   })
 })
 
