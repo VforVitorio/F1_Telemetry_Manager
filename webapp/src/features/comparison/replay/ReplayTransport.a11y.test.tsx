@@ -1,8 +1,8 @@
-// Regression test named after migration dossier #33: in Streamlit the replay's
-// Play control was a canvas element Playwright/axe could not click. The migrated
-// transport must expose Play as a REAL, accessible, enabled HTML button wired to
-// the clock — this asserts that contract at the unit level (the live Playwright
-// run proves it end-to-end; this keeps it from regressing in CI).
+// Regression test for the transport's accessibility contract: in Streamlit the
+// replay's Play control was a canvas element Playwright/axe could not click. The
+// migrated transport must expose Play as a REAL, accessible, enabled HTML button
+// wired to the clock — this asserts that contract at the unit level (the live
+// Playwright run proves it end-to-end; this keeps it from regressing in CI).
 
 import { render, screen, fireEvent } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
@@ -81,7 +81,7 @@ function renderTransport(clock: ReplayClock) {
   )
 }
 
-describe('dossier #33 — Play is a real, clickable HTML button', () => {
+describe('Play is a real, clickable HTML button', () => {
   it('exposes an enabled Play button with an accessible name', () => {
     renderTransport(fakeClock())
     const play = screen.getByRole('button', { name: /play/i })

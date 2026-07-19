@@ -2,16 +2,16 @@
 // compare payload into the ReplayModel (baked Float32 channels, per-driver
 // time-domain samplers, delta, track geometry, winner) the whole replay renders
 // from. No React, no DOM, no allocation in the per-frame samplers → unit-testable
-// against a Python golden fixture (buildReplayModel.test.ts, spec §6).
+// against a Python golden fixture (buildReplayModel.test.ts).
 //
 // The two ported bits of thesis-validated maths (both from
 // comparison_service.py) and their SIGN/UNIT contracts:
-//   1. Per-driver time synthesis (spec §4.1): tᵢ[k] = Σ Δd/(vᵢ/3.6), then scale
-//      so tᵢ[last] == real lap_time. Units: v is km/h → ÷3.6 = m/s; Δd in m.
+//   1. Per-driver time synthesis: tᵢ[k] = Σ Δd/(vᵢ/3.6), then scale so
+//      tᵢ[last] == real lap_time. Units: v is km/h → ÷3.6 = m/s; Δd in m.
 //   2. Delta (calculate_delta_time): cumsum(t1−t2) scaled by (lap_time1−lap_time2).
-//      POSITIVE = pilot1 SLOWER (the backend docstring is wrong; the math and
-//      spec §6 agree on this sign). We recompute it here so the golden test pins
-//      the port to the backend output to 1e-6 — the app then uses this value.
+//      POSITIVE = pilot1 SLOWER — the backend docstring is wrong; the math is
+//      the source of truth. We recompute it here so the golden test pins the
+//      port to the backend output to 1e-6 — the app then uses this value.
 
 import { interp } from '@/lib/interp'
 import { flipY } from '@/features/dashboard/components/circuitDraw'
@@ -41,7 +41,7 @@ function toF64(a: number[]): Float64Array {
 
 /**
  * Per-driver cumulative elapsed time on the distance grid, scaled to the real
- * lap time (spec §4.1). Strictly increasing for a monotone distance grid with
+ * lap time. Strictly increasing for a monotone distance grid with
  * positive speeds. Returns a length-N array (t[0] = 0, t[last] = lapTime).
  * Float64 — cumulative + lap-scale, so Float32 rounding (~1e-5 s) would show up.
  */

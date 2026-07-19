@@ -1,12 +1,12 @@
-// Frozen cross-worker contracts for the Comparison replay engine. buildReplayModel
+// Frozen cross-module contracts for the Comparison replay engine. buildReplayModel
 // produces the ReplayModel (pure, unit-tested); the clock, canvas, channel grid,
 // transport and readouts all consume THESE types — nothing imports another
-// worker's component. Keep this file free of React and of comparison-specific UI
-// so `useReplayClock` + `ReplayTransport` stay reusable seams (spec §5).
+// module's component. Keep this file free of React and of comparison-specific UI
+// so `useReplayClock` + `ReplayTransport` stay reusable seams.
 
 import type { ComparisonMetadata } from '@/lib/api/comparison'
 
-/** Track colour mode (spec §7 rank 2). `dominance` = microsector parity. */
+/** Track colour mode. `dominance` = microsector parity. */
 export type TrackMode = 'dominance' | 'speed' | 'gain'
 
 /** Replay lifecycle inside a loaded comparison (page adds idle/comparing/error). */
@@ -14,7 +14,7 @@ export type ReplayStatus = 'ready' | 'playing' | 'paused' | 'finished'
 
 /** One driver, baked to Float32Arrays with time-domain samplers. All arrays share
  *  the common 500-pt distance grid; `timeAtDistance` is strictly increasing and
- *  scaled to the real lap time (spec §4.1). */
+ *  scaled to the real lap time. */
 export interface PilotModel {
   code: string
   name: string
@@ -102,7 +102,7 @@ export interface ReplayModel {
   /** Shared distance grid (m). */
   distance: Float64Array
   pilots: [PilotModel, PilotModel]
-  /** Speed-integrated, lap-time-scaled delta; + = pilot1 slower (spec §6). */
+  /** Speed-integrated, lap-time-scaled delta; + = pilot1 slower. */
   delta: Float64Array
   circuit: TrackGeometry
   /** Microsectors won: [pilot1, pilot2]. Sums to nMicrosectors. */
@@ -111,7 +111,7 @@ export interface ReplayModel {
   winner: WinnerMeta
   metadata: ComparisonMetadata
   /** Times (s) of sector boundaries for scrubber ticks. Placeholder 25/50/75% of
-   *  duration when official splits are absent (spec §4.6). */
+   *  duration when official splits are absent. */
   sectorTimes: number[]
   /** Resolve the render frame at elapsed time `t`. */
   frameAt(t: number): ReplayFrame

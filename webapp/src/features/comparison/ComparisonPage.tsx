@@ -1,6 +1,6 @@
-// Comparison page (#36) — the flagship time-clock replay. Owns the URL search, the
+// Comparison page — the flagship time-clock replay. Owns the URL search, the
 // (explicit, cancellable) compare fetch, the pure replay model, and the ONE clock;
-// children are dumb consumers of `model`/`clock`. The state machine (spec §3):
+// children are dumb consumers of `model`/`clock`. The state machine:
 //   idle       — selection incomplete OR COMPARE not yet armed
 //   comparing  — fetch in flight (staged skeleton, cancellable via AbortController)
 //   error      — 404 (driver/lap not found) or generic, Retry keeps the selection
@@ -8,7 +8,7 @@
 //   playing / paused / finished — the replay lifecycle, driven by the clock
 //
 // The replay card is the ONE glow surface; the toolbar + banner frame it (solid,
-// no glow). Playhead time lives in the clock's ref, never React state (§4.2).
+// no glow). Playhead time lives in the clock's ref, never React state.
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { getRouteApi } from '@tanstack/react-router'
@@ -44,7 +44,7 @@ import {
 
 const routeApi = getRouteApi('/comparison')
 
-/** Matches the OS "reduce motion" preference (spec §4.6: no autoplay/trails). */
+/** Matches the OS "reduce motion" preference (no autoplay/trails). */
 function usePrefersReducedMotion(): boolean {
   const [reduced, setReduced] = useState(false)
   useEffect(() => {
@@ -101,7 +101,7 @@ export function ComparisonPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [model, comparison.dataUpdatedAt])
 
-  // Keyboard transport, scoped to the focused replay card (dossier #33).
+  // Keyboard transport, scoped to the focused replay card.
   const cardRef = useRef<HTMLDivElement>(null)
   useReplayKeyboard(cardRef, {
     clock,
@@ -116,8 +116,8 @@ export function ComparisonPage() {
   const apiError = comparison.error instanceof ComparisonApiError ? comparison.error : null
   const showError = shouldFetch(search) && comparison.isError
 
-  // Screen-reader announcement of the replay lifecycle (spec §4.4): a keyboard/SR
-  // user pressing Space gets silence otherwise. aria-live fires only on change.
+  // Screen-reader announcement of the replay lifecycle: a keyboard/SR user
+  // pressing Space gets silence otherwise. aria-live fires only on change.
   const replayAnnouncement =
     !model || status === 'ready'
       ? ''

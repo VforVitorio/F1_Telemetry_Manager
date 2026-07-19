@@ -1,5 +1,5 @@
-// The 60fps track map for the Comparison replay (spec §4.4, issue #36). Two
-// stacked canvases split the work by how often it changes: a STATIC layer
+// The 60fps track map for the Comparison replay. Two stacked canvases split
+// the work by how often it changes: a STATIC layer
 // (the faint grey ribbon) repaints only on resize/model change, and a DYNAMIC
 // layer (dominance reveal, trails, dots, gap-link) repaints every clock tick.
 // Splitting them means the expensive-relative-to-nothing static ribbon never
@@ -24,16 +24,16 @@ import {
 } from './trackDraw'
 import type { ReplayClock, ReplayModel, TrackMode } from './types'
 
-/** T2 circuit-crossfade window (ms) — the plain mode-to-mode blend. */
+/** Circuit-crossfade window (ms) — the plain mode-to-mode blend. */
 const MODE_TRANSITION_DURATION_MS = 220
-/** T3 dominance draw-on sweep window (ms) — longer than T2 so the feathered
- *  distance frontier has room to read as a wipe instead of a flash. */
+/** Dominance draw-on sweep window (ms) — longer than the plain crossfade so the
+ *  feathered distance frontier has room to read as a wipe instead of a flash. */
 const DOMINANCE_SWEEP_DURATION_MS = 400
 
 /** One armed mode-switch beat, timestamp-driven (never React state — see the
- *  file header). `durationMs` is captured at arm time so T2 and T3 can each
- *  run their own window without sharing one constant; `toDominance` records
- *  which duration applies (kept alongside for clarity when debugging). */
+ *  file header). `durationMs` is captured at arm time so the plain crossfade
+ *  and the dominance sweep can each run their own window without sharing one
+ *  constant; `toDominance` records which duration applies. */
 interface ArmedModeTransition {
   fromMode: TrackMode
   toDominance: boolean
@@ -99,9 +99,9 @@ export function TrackCanvas({
   const dynamicCtxRef = useRef<CanvasRenderingContext2D | null>(null)
   const fitRef = useRef<CanvasFit | null>(null)
 
-  // Read internally rather than via a prop (spec: keep TrackCanvasProps
-  // unchanged) — the canvas is the one surface that used to hardcode dark-
-  // theme ink regardless of `data-theme` (Fable UI audit P1).
+  // Read internally rather than via a prop, so TrackCanvasProps stays unchanged
+  // — the canvas is the one surface that used to hardcode dark-theme ink
+  // regardless of light/dark mode.
   const theme = useUiStore((state) => state.theme)
 
   // Latest trackMode/reducedMotion/theme, read fresh inside the rAF-driven
@@ -113,7 +113,7 @@ export function TrackCanvas({
   const themeRef = useRef(theme)
   themeRef.current = theme
 
-  // T2/T3 mode-switch beat: the in-flight transition (if any), the previous
+  // Mode-switch beat: the in-flight transition (if any), the previous
   // trackMode (to detect a real change vs. mount/persisted-mode reload), the
   // previous model (to detect a fresh comparison), and the self-rAF id that
   // drives repaints while the clock is paused. All refs — a mode-switch beat
@@ -223,12 +223,12 @@ export function TrackCanvas({
   // repaints the static ribbon in place (using the already-computed `fit` —
   // no need to remeasure or recreate the ResizeObserver just to swap ink).
   //
-  // T2/T3: this is also the ONLY place a mode-switch beat gets armed. A REAL
+  // This is also the ONLY place a mode-switch beat gets armed. A REAL
   // trackMode change (not the first mount, not a persisted-mode reload, not a
   // reduced-motion session) on the SAME model starts a short crossfade —
-  // dominance-target beats get the longer T3 sweep duration, everything else
-  // gets T2's plain crossfade. A fresh comparison (new model) resets the
-  // "last seen mode" bookkeeping instead of crossfading from the old circuit.
+  // dominance-target beats get the longer sweep duration, everything else gets
+  // the plain crossfade. A fresh comparison (new model) resets the "last seen
+  // mode" bookkeeping instead of crossfading from the old circuit.
   useEffect(() => {
     const staticCtx = staticCtxRef.current
     const fit = fitRef.current

@@ -1,6 +1,6 @@
-// Sticky context bar for the Comparison tab (design spec §3, row 1: "[2024▾]
-// [Monaco GP▾][Q▾][VER✕ LEC✕ ▾(max 2)]  [⚑ fastest laps]  [COMPARE▸]"). Same
-// cascading Year → GP → Session → Drivers grammar as the Dashboard's
+// Sticky context bar for the Comparison tab: "[2024▾][Monaco GP▾][Q▾][VER✕
+// LEC✕ ▾(max 2)]  [⚑ fastest laps]  [COMPARE▸]". Same cascading Year → GP →
+// Session → Drivers grammar as the Dashboard's
 // `SelectorsToolbar`, capped at MAX_DRIVERS=2, plus the "fastest laps only"
 // info chip and the explicit COMPARE action that gates the (expensive) fetch.
 //

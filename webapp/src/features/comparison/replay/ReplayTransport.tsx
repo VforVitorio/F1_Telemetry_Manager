@@ -8,11 +8,11 @@ import { ReplayScrubber } from './ReplayScrubber'
 import { LiveGapReadout } from './LiveGapReadout'
 import type { ReplayClock, ReplayModel, ReplayStatus, TrackMode } from './types'
 
-// The "ready" pulse (M3, spec §3: name the primary action without a redesign)
-// follows the same hand-rolled-`@keyframes` + `.f1-anim` convention as
-// Modal/Toast/Tooltip (see Tooltip.tsx's file banner) — `.f1-anim` collapses
-// the animation to ~0 under reduced motion instead of skipping it outright,
-// so `onAnimationEnd` still fires and clears the one-shot state.
+// The "ready" pulse (a one-shot glow that names the primary action) follows the
+// same hand-rolled-`@keyframes` + `.f1-anim` convention as Modal/Toast/Tooltip
+// (see Tooltip.tsx's file banner) — `.f1-anim` collapses the animation to ~0
+// under reduced motion instead of skipping it outright, so `onAnimationEnd`
+// still fires and clears the one-shot state.
 const PLAY_PULSE_KEYFRAMES = `
 @keyframes f1-play-ready-pulse {
   0% { box-shadow: 0 0 0 0 rgba(108, 92, 231, 0.55); }
@@ -24,8 +24,8 @@ const PLAY_PULSE_KEYFRAMES = `
 }
 `
 
-/** Groups controls with intent (P2 "parking lot" fix): tight `gap-1` inside a
- *  cluster, a hairline divider between clusters. */
+/** Groups controls with intent: tight `gap-1` inside a cluster, a hairline
+ *  divider between clusters. */
 const GROUP_CLASSNAME = 'flex items-center gap-1'
 const DIVIDER_CLASSNAME = 'hidden h-6 w-px shrink-0 bg-hairline sm:inline-block'
 
@@ -53,10 +53,10 @@ function KeyboardShortcutsHint() {
   )
 }
 
-// Real HTML transport controls for the replay (spec §4.6, fixes dossier #33 —
-// Playwright/axe must be able to click Play and drive the scrubber directly).
-// Speed and track-mode selectors are hand-rolled button rows rather than
-// Radix `Tabs`: Tabs' roving-tabindex arrow-key navigation would fight
+// Real HTML transport controls for the replay — Playwright/axe must be able to
+// click Play and drive the scrubber directly, so these are real buttons, not
+// clickable divs. Speed and track-mode selectors are hand-rolled button rows
+// rather than Radix `Tabs`: Tabs' roving-tabindex arrow-key navigation would fight
 // `useReplayKeyboard`'s own ←/→ seek shortcut the instant focus lands inside
 // one (both would fire on the same keypress). Plain buttons have no built-in
 // arrow-key behaviour, so there is nothing to collide with.
@@ -100,11 +100,10 @@ interface ThumbStyle {
 
 /** Small pressed-state button row — the shared shape behind the speed and
  *  track-mode selectors (see the file banner for why this isn't Radix Tabs).
- *  T1 (Comparison #36 backlog M7): an absolutely-positioned `bg-purple-600`
- *  pill slides/resizes under the active button via CSS `transform`+`width`
- *  instead of the background jumping between buttons — the buttons themselves
- *  keep only the text-colour swap, which `transition-colors` already
- *  crossfades in sync with the slide. */
+ *  An absolutely-positioned `bg-purple-600` pill slides/resizes under the
+ *  active button via CSS `transform`+`width` instead of the background jumping
+ *  between buttons — the buttons themselves keep only the text-colour swap,
+ *  which `transition-colors` already crossfades in sync with the slide. */
 function SegmentedControl<T extends string | number>({
   value,
   options,
@@ -202,14 +201,13 @@ function buildAriaValueText(model: ReplayModel) {
 
 /**
  * Transport bar for the replay card, grouped with intent rather than one flat
- * row (P2 "parking lot" fix): `[restart · play]` · scrubber · speed · a
- * hairline divider · track-mode · a hairline divider · `[loop · share ·
- * keyboard-hint]` · the live gap readout. Play is the one filled/primary
- * control — everything else is `ghost` — and pulses once the instant the
- * replay first reaches `ready` (M3). Every control is a real HTML `<button>`
- * so Playwright and axe can drive and inspect it directly. Tab order still
- * follows visual (left-to-right) order: restart → play → scrubber → speed →
- * track-mode → loop → share → keyboard-hint (spec §4.6).
+ * row: `[restart · play]` · scrubber · speed · a hairline divider · track-mode
+ * · a hairline divider · `[loop · share · keyboard-hint]` · the live gap
+ * readout. Play is the one filled/primary control — everything else is `ghost`
+ * — and pulses once the instant the replay first reaches `ready`. Every control
+ * is a real HTML `<button>` so Playwright and axe can drive and inspect it
+ * directly. Tab order follows visual (left-to-right) order: restart → play →
+ * scrubber → speed → track-mode → loop → share → keyboard-hint.
  */
 export function ReplayTransport({
   model,
@@ -229,8 +227,8 @@ export function ReplayTransport({
     label: `${s}×`,
   }))
 
-  // One-shot pulse the instant the replay first becomes `ready` (spec §3, M3)
-  // — fires on the ready TRANSITION, not on every render, and self-clears via
+  // One-shot pulse the instant the replay first becomes `ready` — fires on the
+  // ready TRANSITION, not on every render, and self-clears via
   // `onAnimationEnd` so it never replays on a later ready (e.g. a fresh
   // compare remounts this component, so `prevStatusRef` starts `null` again).
   const prevStatusRef = useRef<ReplayStatus | null>(null)

@@ -1,12 +1,10 @@
-// Calm result banner (design spec §3, row "RESULT BANNER"): the one-glance
-// verdict shown before the replay card even plays. Fable P1 fix (2026-07-19):
-// the original banner typeset the verdict at the same 14px as the lap times
-// ("three identical boxes, no focal point") — now the winner code + gap is
-// the HERO (mono, 24px, semibold, team-coloured), "first by" is demoted to a
-// tracked eyebrow, and both lap times + the microsector tally step down to
-// secondary/tertiary. Hierarchy comes from type, not glow — this stays a
-// resting `Card` (glow is reserved for the single replay card, spec §1/§3).
-// The hero gap also counts up on mount (M2), a tiny rAF loop with no new deps.
+// Calm result banner: the one-glance verdict shown before the replay card even
+// plays. The winner code + gap is the HERO (mono, 24px, semibold,
+// team-coloured), "first by" is a tracked eyebrow, and both lap times + the
+// microsector tally step down to secondary/tertiary — hierarchy comes from
+// type, not glow, so this stays a resting `Card` (glow is reserved for the
+// single replay card). The hero gap also counts up on mount, a tiny rAF loop
+// with no new deps.
 
 import { useEffect, useState } from 'react'
 import { Card } from '@/components/Card'
@@ -34,8 +32,8 @@ function prefersReducedMotion(): boolean {
 
 /**
  * Animates a display value from 0 up to `target` over `durationMs` via
- * requestAnimationFrame (M2 "banner count-up" — the gap number *arrives*
- * instead of popping in flat). Tabular-nums on the caller keeps the digits
+ * requestAnimationFrame — the gap number *arrives* instead of popping in flat.
+ * Tabular-nums on the caller keeps the digits
  * from shifting width mid-count. Resolves straight to `target` under
  * `prefersReducedMotion()`, both for accessibility and so the value is
  * assertable synchronously in tests.

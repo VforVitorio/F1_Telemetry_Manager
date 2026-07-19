@@ -2,18 +2,18 @@ import { useMemo } from 'react'
 import { useReplayTime } from './useReplayClock'
 import type { ReplayClock, ReplayModel, ReplayStatus } from './types'
 
-// Compact "who's ahead, by how much" readout (spec §4.6). While the replay is
-// running or paused mid-lap, this tracks the live on-track leader and gap
-// (`frameAt`); once it finishes, `frameAt`'s live gap has decayed to 0 (both
-// cars share the finish distance), so the frozen `WinnerMeta` — the real
-// lap-time delta — is the number worth showing instead.
+// Compact "who's ahead, by how much" readout. While the replay is running or
+// paused mid-lap, this tracks the live on-track leader and gap (`frameAt`);
+// once it finishes, `frameAt`'s live gap has decayed to 0 (both cars share the
+// finish distance), so the frozen `WinnerMeta` — the real lap-time delta — is
+// the number worth showing instead.
 
 const READOUT_HZ = 10
 
-// Below this on-track separation, calling either car "leader" is a coin-flip
-// tie-break dressed up as a claim (P3: at t=0 the gap is exactly 0, so the
-// old code always named pilot 0 the "leader" of a race that hadn't started).
-const GAP_TIE_THRESHOLD_SECONDS = 0.05
+// Below this on-track separation the cars are genuinely level (mainly t=0, where
+// the gap is exactly 0). A 0.05s gap is a real lead in F1, not a tie; 0.01s is
+// the true "too close to call" floor.
+const GAP_TIE_THRESHOLD_SECONDS = 0.01
 
 export interface LiveGapReadoutProps {
   model: ReplayModel
@@ -59,17 +59,28 @@ export function LiveGapReadout({ model, clock, status }: LiveGapReadoutProps) {
   )
   const isTie = code === null
 
+  // Fixed width + right-justified so the text swapping (leader code ↔ "Level",
+  // gap value ticking) never reflows the transport row — the scrubber sits on
+  // the same flex line and was jittering a pixel as this readout changed size.
   return (
-    <div className="flex items-center gap-2 font-mono text-sm" title="Leader and on-track gap">
+    <div
+      className="flex w-32 shrink-0 items-center justify-end gap-2 font-mono text-sm whitespace-nowrap"
+      title="Leader and on-track gap"
+    >
       <span
         aria-hidden="true"
         className="size-1.5 shrink-0 rounded-full ring-1 ring-inset ring-hairline"
         style={{ backgroundColor: color }}
       />
       <span className="font-medium text-fg-1">{isTie ? 'Level' : code}</span>
-      <span className="tabular-nums text-fg-2">
-        <span aria-hidden="true">{isTie ? '=' : '▲'}</span> {gapText}
-      </span>
+      {/* When level there is no meaningful gap to show — a "Level" with a value
+          next to it reads as a contradiction. Only render the gap when a leader
+          is named. */}
+      {!isTie && (
+        <span className="tabular-nums text-fg-2">
+          <span aria-hidden="true">▲</span> {gapText}
+        </span>
+      )}
     </div>
   )
 }
