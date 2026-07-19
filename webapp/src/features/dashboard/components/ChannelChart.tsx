@@ -157,21 +157,12 @@ function baseOption(
       splitLine: { show: false },
     },
     yAxis: yAxisStyled,
-    // Drag-pan + Shift+wheel zoom, inline (no visible slider). Plain wheel
-    // stays page scroll on purpose — 7-8 tall charts stacked in a column
-    // make unconditional wheel-capture a scroll trap. `filterMode: 'none'`
-    // keeps each chart's own y range stable while panning, so 8 charts
-    // synced on the same x don't rescale-jitter against each other.
-    dataZoom: [
-      {
-        type: 'inside',
-        xAxisIndex: 0,
-        filterMode: 'none',
-        zoomOnMouseWheel: 'shift',
-        moveOnMouseMove: true,
-        moveOnMouseWheel: false,
-      },
-    ],
+    // No `inside` dataZoom on purpose. It captures the mouse wheel even with
+    // wheel-zoom disabled, so a plain wheel over one of these 7-8 stacked
+    // charts gets swallowed instead of scrolling the page — a scroll trap.
+    // Zoom stays available through the toolbox box-zoom below (drag a box),
+    // which does not touch the wheel.
+    //
     // Toolbox box-zoom (x-only, via `yAxisIndex: 'none'`) is the
     // click-drag-a-box gesture that matches the Streamlit/Plotly original;
     // `restore` resets it. Both actions propagate through `CROSSHAIR_GROUP`
@@ -214,6 +205,55 @@ function buildDriverSeries(
   }))
 }
 
+/**
+ * Every loaded driver's telemetry samples distance at its own cadence (a
+ * different lap, a different FastF1 interpolation grid), so on a
+ * `type:'value'` x-axis each series' points rarely land on the same x. ECharts'
+ * axis tooltip only reports a series if it has a point at the snapped x, so
+ * with per-driver grids it silently shows just one driver instead of all of
+ * them. Resampling every driver onto ONE shared grid — the densest loaded
+ * driver's own distance array, chosen once per option build to minimise
+ * resampling error — gives every series identical x sample points, so the
+ * axis tooltip always finds a value from each driver at that distance. Same
+ * approach the Comparison tab already uses (`buildReplayModel`, both pilots
+ * resampled onto `model.distance`).
+ */
+function findDensestDistanceGrid(
+  byDriver: Record<string, LapTelemetry>,
+  drivers: string[],
+): number[] {
+  let densest: number[] = []
+  for (const driver of drivers) {
+    const distance = byDriver[driver].distance
+    if (distance.length > densest.length) densest = distance
+  }
+  return densest
+}
+
+/**
+ * Carry-forward lookup for stepped channels (gear, DRS): between two of a
+ * driver's own samples, the value doesn't blend into a fraction the way a
+ * continuous quantity would — a gear is 3 or 4, never 3.5, and DRS is open or
+ * closed. Returns the value at the largest sample distance <= x, matching the
+ * `step: 'end'` line rendering (a stepped line already holds each y until the
+ * next x, so the shared-grid lookup should agree with what's drawn).
+ */
+function stepLookup(x: number, xs: number[], ys: number[]): number {
+  const last = xs.length - 1
+  if (last < 0) return 0
+  if (x <= xs[0]) return ys[0]
+  if (x >= xs[last]) return ys[last]
+
+  let lo = 0
+  let hi = last
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >> 1
+    if (xs[mid] <= x) lo = mid
+    else hi = mid
+  }
+  return ys[lo]
+}
+
 function buildChannelOption(
   byDriver: Record<string, LapTelemetry>,
   drivers: string[],
@@ -225,10 +265,18 @@ function buildChannelOption(
     name: driver,
     color: getDriverTextColor(driver, year),
   }))
+  const sharedGrid = findDensestDistanceGrid(byDriver, loaded)
+  // Stepped channels (gear, DRS) carry-forward instead of interpolating —
+  // see `stepLookup`'s docstring for why a fractional gear would be wrong.
+  const valueAt = (distance: number, xs: number[], ys: number[]): number =>
+    channel.stepped ? stepLookup(distance, xs, ys) : interp(distance, xs, ys)
   const series = buildDriverSeries(loaded, year, channel.stepped, channel.band, (driver) => {
     const telemetry = byDriver[driver]
     const values = channel.transform(telemetry)
-    return telemetry.distance.map((distance, i): [number, number] => [distance, values[i]])
+    return sharedGrid.map((distance): [number, number] => [
+      distance,
+      valueAt(distance, telemetry.distance, values),
+    ])
   })
 
   return {
@@ -370,11 +418,13 @@ function buildDeltaOption(
     name: driver,
     color: getDriverTextColor(driver, year),
   }))
+  const sharedGrid = findDensestDistanceGrid(byDriver, loaded)
   const series = buildDriverSeries(loaded, year, false, false, (driver) => {
     const telemetry = byDriver[driver]
-    return telemetry.distance.map((distance, i): [number, number] => {
+    return sharedGrid.map((distance): [number, number] => {
+      const driverTime = interp(distance, telemetry.distance, telemetry.time)
       const refTime = interp(distance, refTelemetry.distance, refTelemetry.time)
-      return [distance, telemetry.time[i] - refTime]
+      return [distance, driverTime - refTime]
     })
   })
 
