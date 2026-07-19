@@ -1,14 +1,35 @@
-import { createRootRoute, createRoute, createRouter } from '@tanstack/react-router'
+import {
+  createRootRoute,
+  createRoute,
+  createRouter,
+  lazyRouteComponent,
+} from '@tanstack/react-router'
 import { Header } from './Header'
 import { Shell } from './Shell'
-import { HomePage } from '@/features/home/HomePage'
-import { ThemePreview } from '@/features/dev/ThemePreview'
-import { DashboardPage } from '@/features/dashboard/DashboardPage'
 import { validateDashboardSearch } from '@/features/dashboard/search'
-import { StrategyPage } from '@/features/strategy/StrategyPage'
 import { validateStrategySearch } from '@/features/strategy/search'
-import { ComparisonPage } from '@/features/comparison/ComparisonPage'
 import { validateComparisonSearch } from '@/features/comparison/search'
+
+// Each feature page is a LAZY route component so the first paint of a light tab
+// (Home) doesn't download every other tab's code — the chart-heavy pages
+// (Dashboard/Strategy/Comparison, all pulling ECharts) split into their own
+// chunks that load on navigation (perf: the app used to ship as one ~1.9MB
+// chunk). `validateSearch` stays eager — it's a tiny sync function the route
+// tree needs at definition time, and importing it doesn't pull the page body.
+const HomePage = lazyRouteComponent(() => import('@/features/home/HomePage'), 'HomePage')
+const DashboardPage = lazyRouteComponent(
+  () => import('@/features/dashboard/DashboardPage'),
+  'DashboardPage',
+)
+const StrategyPage = lazyRouteComponent(
+  () => import('@/features/strategy/StrategyPage'),
+  'StrategyPage',
+)
+const ComparisonPage = lazyRouteComponent(
+  () => import('@/features/comparison/ComparisonPage'),
+  'ComparisonPage',
+)
+const ThemePreview = lazyRouteComponent(() => import('@/features/dev/ThemePreview'), 'ThemePreview')
 
 // Route tree wiring (#33). Root renders the app shell (acrylic rail + routed
 // content plane, see Shell.tsx); the shell's <Outlet/> renders whichever leaf
@@ -103,7 +124,17 @@ const routeTree = rootRoute.addChildren([
   devThemeRoute,
 ])
 
-export const router = createRouter({ routeTree })
+/** Shown for the brief moment a lazily-loaded page chunk is fetching. Kept
+ *  dependency-free (no heavy loader import) so it can't itself delay the split. */
+function PageFallback() {
+  return (
+    <div className="flex flex-1 items-center justify-center py-24">
+      <span className="size-6 animate-spin rounded-full border-2 border-hairline border-t-accent" />
+    </div>
+  )
+}
+
+export const router = createRouter({ routeTree, defaultPendingComponent: PageFallback })
 
 declare module '@tanstack/react-router' {
   interface Register {
