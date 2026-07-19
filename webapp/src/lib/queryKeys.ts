@@ -18,6 +18,11 @@ export const queryKeys = {
     health: () => ['chat', 'health'] as const,
     models: () => ['chat', 'models'] as const,
   },
+  comparison: {
+    // Driver ORDER matters (pilot1 vs pilot2), so it is NOT sorted into the key.
+    compare: (year: number, gp: string, session: string, driver1: string, driver2: string) =>
+      ['comparison', 'compare', year, gp, session, driver1, driver2] as const,
+  },
   strategy: {
     gps: () => ['strategy', 'gps'] as const,
     drivers: (gp: string) => ['strategy', 'drivers', gp] as const,

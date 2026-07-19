@@ -119,3 +119,57 @@ export function buildSegments(x: number[], y: number[], colors: string[]): Segme
   }
   return segments
 }
+
+// ── Canvas fit (issue #36 Comparison TrackCanvas) ────────────────────────────
+// The SVG path above relies on the browser's `viewBox` to fit + centre without
+// distortion. A <canvas> has no viewBox, so the TrackCanvas needs the same
+// aspect-locked track-units→pixel mapping computed explicitly. `fitCanvas`
+// returns that transform plus a capped device-pixel ratio (retina sharpness
+// without the 3-4× fill cost of a high-DPR phone).
+
+/** Aspect-locked mapping from (already y-flipped) track units to CSS pixels. */
+export interface CanvasFit {
+  /** Uniform scale (px per track unit) — same on both axes so the track keeps shape. */
+  scale: number
+  offsetX: number
+  offsetY: number
+  /** Device-pixel ratio to render at (capped). */
+  dpr: number
+  /** Map a track-unit point to a CSS-pixel point. */
+  toPx: (x: number, y: number) => [number, number]
+}
+
+const FIT_PADDING_RATIO = 0.06
+const MAX_DPR = 2
+
+/**
+ * Fit a track's flipped bounds into a `cssWidth × cssHeight` canvas with the
+ * aspect ratio locked (no stretch) and a small margin, centred. `devicePixelRatio`
+ * is read from the environment and capped at 2. Degenerate bounds fall back to a
+ * unit box so the scale math never divides by zero.
+ */
+export function fitCanvas(
+  bounds: Bounds,
+  cssWidth: number,
+  cssHeight: number,
+  devicePixelRatio = typeof window !== 'undefined' ? window.devicePixelRatio : 1,
+): CanvasFit {
+  const rangeX = Math.max(bounds.maxX - bounds.minX, 1e-6)
+  const rangeY = Math.max(bounds.maxY - bounds.minY, 1e-6)
+  const usableW = cssWidth * (1 - 2 * FIT_PADDING_RATIO)
+  const usableH = cssHeight * (1 - 2 * FIT_PADDING_RATIO)
+  const scale = Math.min(usableW / rangeX, usableH / rangeY)
+
+  // Centre the scaled track in the full canvas.
+  const offsetX = (cssWidth - rangeX * scale) / 2 - bounds.minX * scale
+  const offsetY = (cssHeight - rangeY * scale) / 2 - bounds.minY * scale
+  const dpr = Math.min(Math.max(devicePixelRatio || 1, 1), MAX_DPR)
+
+  return {
+    scale,
+    offsetX,
+    offsetY,
+    dpr,
+    toPx: (x, y) => [x * scale + offsetX, y * scale + offsetY],
+  }
+}
