@@ -35,7 +35,11 @@ function fakeModel(): ReplayModel {
       { code: 'LEC', color: '#E8002D' },
     ] as unknown as ReplayModel['pilots'],
     delta: Float64Array.from([0, 0.5]),
-    circuit: { bounds: { minX: 0, maxX: 1, minY: 0, maxY: 1 }, outline: new Float32Array(), segments: [] },
+    circuit: {
+      bounds: { minX: 0, maxX: 1, minY: 0, maxY: 1 },
+      outline: new Float32Array(),
+      segments: [],
+    },
     microsectorTally: [1, 1],
     nMicrosectors: 25,
     winner: {
@@ -48,7 +52,13 @@ function fakeModel(): ReplayModel {
     },
     metadata: { rotation: 0, aspect_ratio: 1 },
     sectorTimes: [23, 46],
-    frameAt: () => ({ t: 0, leaderIndex: 1, leaderDistance: 0, gapSeconds: 0, separationMeters: 0 }),
+    frameAt: () => ({
+      t: 0,
+      leaderIndex: 1,
+      leaderDistance: 0,
+      gapSeconds: 0,
+      separationMeters: 0,
+    }),
   }
 }
 
