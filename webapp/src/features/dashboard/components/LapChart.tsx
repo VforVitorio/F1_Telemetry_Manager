@@ -170,18 +170,55 @@ function compoundDotHtml(compound: string): string {
   return `<span style="display:inline-block;width:8px;height:8px;border-radius:9999px;background:${hex};margin-right:4px;"></span>`
 }
 
-/** Tooltip HTML: team-coloured driver name — Lap N — M:SS.mmm — compound dot + label. */
+/** One hovered series' point, as `trigger:'axis'` hands it to the formatter —
+ *  same `seriesName`/`data` shape the tooltip already read under
+ *  `trigger:'item'`, just arriving as one entry per driver instead of one
+ *  entry total. */
+interface AxisTooltipParam {
+  seriesName?: string
+  data?: unknown
+}
+
+/** Narrows one raw axis-tooltip param down to a `LapPoint`-carrying entry, or
+ *  `null` if this driver has no lap plotted at the hovered lap number (a
+ *  driver can be short a lap, e.g. it retired, so not every series has data
+ *  at every x position). */
+function toAxisTooltipParam(raw: unknown): AxisTooltipParam | null {
+  if (!raw || typeof raw !== 'object') return null
+  const { seriesName, data } = raw as { seriesName?: string; data?: unknown }
+  if (!isLapPoint(data)) return null
+  return { seriesName, data }
+}
+
+/** One tooltip row: team-coloured driver code — M:SS.mmm — compound dot + label. */
+function formatDriverRow(param: AxisTooltipParam, year: number | undefined): string {
+  const point = param.data as LapPoint
+  const [, lapTime] = point.value
+  const driverName = param.seriesName ?? ''
+  const driverHtml = param.seriesName
+    ? `<b style="color:${getDriverTextColor(param.seriesName, year)}">${driverName}</b>`
+    : `<b>${driverName}</b>`
+  return `${driverHtml} — ${formatLapTime(lapTime)} — ${compoundDotHtml(point.compound)}${compoundLabel(point.compound)}`
+}
+
+/** Tooltip HTML for the shared lap-number axis: a "Lap N" header followed by
+ *  one row per hovered driver. `trigger:'axis'` hands the formatter every
+ *  series at that lap number (normalized to an array here since ECharts
+ *  calls with a single object when only one series is plotted), which is
+ *  what lets every driver show up together instead of only the one under
+ *  the cursor. */
 function formatLapTooltip(year: number | undefined) {
   return (raw: unknown): string => {
-    if (!raw || typeof raw !== 'object') return ''
-    const { seriesName, data } = raw as { seriesName?: string; data?: unknown }
-    if (!isLapPoint(data)) return ''
-    const [lapNumber, lapTime] = data.value
-    const driverName = seriesName ?? ''
-    const driverHtml = seriesName
-      ? `<b style="color:${getDriverTextColor(seriesName, year)}">${driverName}</b>`
-      : `<b>${driverName}</b>`
-    return `${driverHtml} — Lap ${lapNumber} — ${formatLapTime(lapTime)} — ${compoundDotHtml(data.compound)}${compoundLabel(data.compound)}`
+    const paramsArray = Array.isArray(raw) ? raw : [raw]
+    const validParams = paramsArray
+      .map(toAxisTooltipParam)
+      .filter((param): param is AxisTooltipParam => param !== null)
+    if (validParams.length === 0) return ''
+
+    const [lapNumber] = (validParams[0].data as LapPoint).value
+    const header = `<div style="margin-bottom:4px;">Lap ${lapNumber}</div>`
+    const rows = validParams.map((param) => formatDriverRow(param, year)).join('<br/>')
+    return header + rows
   }
 }
 
@@ -195,7 +232,14 @@ function buildLapChartOption(
     // Entrance paint animation on (ECharts default). The old double-paint was
     // React StrictMode double-mounting in dev, not the animation — dropped in
     // main.tsx, so the line-draw now plays exactly once.
-    tooltip: { trigger: 'item', formatter: formatLapTooltip(year) },
+    // `trigger:'axis'` collects every driver's point at the hovered lap
+    // number (the shared x-axis) instead of only the single point under the
+    // cursor, so the formatter can render one row per driver.
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: { type: 'line' },
+      formatter: formatLapTooltip(year),
+    },
     legend: {
       data: buildLegendData(seriesList, year),
       icon: 'roundRect',
@@ -224,23 +268,13 @@ function buildLapChartOption(
       scale: true,
     },
     series: seriesList,
-    // Drag-to-zoom (item 5): inside = click-drag pan + Shift+wheel zoom;
-    // plain wheel stays page scroll. `filterMode: 'none'` keeps zoom/pan from
-    // rescaling the y-axis. `x = lap number` here (unlike the telemetry
-    // charts' `x = distance`), so this chart is NOT joined to their
-    // `echarts.connect` crosshair group — its zoom stays independent.
-    dataZoom: [
-      {
-        type: 'inside',
-        xAxisIndex: 0,
-        filterMode: 'none',
-        zoomOnMouseWheel: 'shift',
-        moveOnMouseMove: true,
-        moveOnMouseWheel: false,
-      },
-    ],
+    // No `inside` dataZoom on purpose: ECharts' inside-roam captures the mouse
+    // wheel even with wheel-zoom disabled, which would trap the page scroll
+    // when the cursor is over this chart. Zoom stays available through the
+    // toolbox box-zoom below (drag a box), which does not touch the wheel.
+    //
     // Toolbox box-zoom (Plotly-style, x-only via `yAxisIndex: 'none'`) + a
-    // reset button — the discoverable alternative to the shift-drag gesture.
+    // reset button — the way to zoom now that the wheel is left alone.
     toolbox: {
       right: 8,
       top: 0,
