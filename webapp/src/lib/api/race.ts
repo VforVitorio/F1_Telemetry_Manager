@@ -219,11 +219,21 @@ export interface RadioCorrection {
   span: string
   reason: string
 }
+/** A Race Control Message the Radio Agent parsed (N23): a flag/category event
+ *  the pit wall would see on the timing screen. The Streamlit tab dropped these
+ *  on the floor; the Lab (and Race) surface them as flag-coloured rows. */
+export interface RcmEvent {
+  message: string
+  flag: string
+  category: string
+  lap: number | null
+}
 export interface RadioResult {
   radio_events: RadioEvent[]
   alerts: RadioAlert[]
   reasoning: string
   corrections: RadioCorrection[]
+  rcm_events: RcmEvent[]
 }
 
 /** A radio message to analyse: the transcript text goes IN — the whole point of
@@ -239,6 +249,7 @@ function toRadioResult(raw: unknown): RadioResult {
   const events = Array.isArray(d.radio_events) ? d.radio_events : []
   const alerts = Array.isArray(d.alerts) ? d.alerts : []
   const corrections = Array.isArray(d.corrections) ? d.corrections : []
+  const rcmEvents = Array.isArray(d.rcm_events) ? d.rcm_events : []
   return {
     radio_events: events.map((e) => {
       const r = asRecord(e)
@@ -277,6 +288,15 @@ function toRadioResult(raw: unknown): RadioResult {
         suggested_intent: str(r.suggested_intent),
         span: str(r.span),
         reason: str(r.reason),
+      }
+    }),
+    rcm_events: rcmEvents.map((e) => {
+      const r = asRecord(e)
+      return {
+        message: str(r.message),
+        flag: str(r.flag),
+        category: str(r.category),
+        lap: numOrNull(r.lap),
       }
     }),
   }

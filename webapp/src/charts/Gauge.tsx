@@ -57,6 +57,29 @@ interface GaugeOptionInput {
   label: string | undefined
   formatValue: (value: number) => string
   palette: GaugePalette
+  threshold: number | undefined
+}
+
+/** Axis-line colour stops for the track. With a `threshold` set, a short
+ *  high-contrast tick is stamped at that fraction of the scale so a probability
+ *  can be read against the model's real decision line, no extra series needed.
+ *  The tick shows through until the progress arc passes it; the numeric caption
+ *  below the gauge carries the threshold value at all times. */
+function trackColorStops(
+  palette: GaugePalette,
+  threshold: number | undefined,
+  max: number,
+): Array<[number, string]> {
+  if (threshold == null || max <= 0) return [[1, palette.hairline]]
+  const at = Math.min(Math.max(threshold / max, 0), 1)
+  const eps = 0.01
+  const lo = Math.max(at - eps, 0)
+  const hi = Math.min(at + eps, 1)
+  return [
+    [lo, palette.hairline],
+    [hi, palette.fg1],
+    [1, palette.hairline],
+  ]
 }
 
 /** Build the ECharts gauge option: hairline full-circle track, purple
@@ -69,6 +92,7 @@ function buildGaugeOption({
   label,
   formatValue,
   palette,
+  threshold,
 }: GaugeOptionInput): EChartsOption {
   return {
     series: [
@@ -88,7 +112,7 @@ function buildGaugeOption({
         axisLine: {
           lineStyle: {
             width: 10,
-            color: [[1, palette.hairline]],
+            color: trackColorStops(palette, threshold, max),
           },
         },
         axisTick: { show: false },
@@ -127,6 +151,12 @@ export interface GaugeProps {
   formatValue?: (value: number) => string
   /** Chart height in px. Defaults to 200. */
   height?: number
+  /** The model's decision threshold on the same scale as `value`. When set, a
+   *  tick marks it on the track and a caption states it, so a probability reads
+   *  against the line the model actually acts on (e.g. 0.80 for overtake). */
+  threshold?: number
+  /** Caption under the gauge. Defaults to "Action threshold <formatted>". */
+  thresholdLabel?: string
 }
 
 /** Radial gauge (ECharts, token-themed) for a bounded metric such as an
@@ -137,15 +167,30 @@ export function Gauge({
   label,
   formatValue = defaultFormatValue,
   height = DEFAULT_HEIGHT_PX,
+  threshold,
+  thresholdLabel,
 }: GaugeProps) {
   const chartTheme = useChartTheme()
   const palette = chartTheme === F1_LIGHT_THEME ? LIGHT_GAUGE_PALETTE : DARK_GAUGE_PALETTE
   const option = useMemo(
-    () => buildGaugeOption({ value, max, label, formatValue, palette }),
-    [value, max, label, formatValue, palette],
+    () => buildGaugeOption({ value, max, label, formatValue, palette, threshold }),
+    [value, max, label, formatValue, palette, threshold],
   )
 
   return (
-    <ReactECharts theme={chartTheme} key={chartTheme} option={option} style={{ height }} notMerge />
+    <div className="flex flex-col items-center">
+      <ReactECharts
+        theme={chartTheme}
+        key={chartTheme}
+        option={option}
+        style={{ height, width: '100%' }}
+        notMerge
+      />
+      {threshold != null ? (
+        <p className="-mt-2 text-xs text-fg-3">
+          {thresholdLabel ?? `Action threshold ${formatValue(threshold)}`}
+        </p>
+      ) : null}
+    </div>
   )
 }

@@ -3,18 +3,22 @@ import {
   ArrowUpRight,
   CircleCheck,
   CircleHelp,
+  Siren,
   TriangleAlert,
   Wrench,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/cn'
-import type { StrategyAction } from '@/lib/api/strategy'
 
 // The strategy action vocabulary as a badge, at two sizes: `hero` for the
 // Decision Card headline, `sm` for inline use (contingency playbook rows). Each
-// v2 action gets an icon + tone; ALERT pulses (motion-safe) to read as urgent.
-// An unknown action string falls back to a neutral badge, so a schema drift or
-// a sparse response never renders a blank or crashes.
+// action gets an icon + tone; ALERT and REACTIVE_SC pulse (motion-safe) to read
+// as urgent. An unknown action string falls back to a neutral badge, so a schema
+// drift or a sparse response never renders a blank or crashes.
+//
+// The map is keyed on plain strings, not the orchestrator's StrategyAction
+// union, because it also carries the Pit agent's own REACTIVE_SC action, which
+// is not an orchestrator action and must not widen that union.
 
 type Tone = 'success' | 'danger' | 'warning' | 'info' | 'neutral'
 
@@ -25,12 +29,13 @@ interface ActionConfig {
   pulse?: boolean
 }
 
-const ACTIONS: Record<StrategyAction, ActionConfig> = {
+const ACTIONS: Record<string, ActionConfig> = {
   STAY_OUT: { label: 'STAY OUT', icon: CircleCheck, tone: 'success' },
   PIT_NOW: { label: 'PIT NOW', icon: Wrench, tone: 'danger' },
   UNDERCUT: { label: 'UNDERCUT', icon: ArrowDownRight, tone: 'warning' },
   OVERCUT: { label: 'OVERCUT', icon: ArrowUpRight, tone: 'info' },
   ALERT: { label: 'ALERT', icon: TriangleAlert, tone: 'danger', pulse: true },
+  REACTIVE_SC: { label: 'REACTIVE SC', icon: Siren, tone: 'danger', pulse: true },
 }
 
 const UNKNOWN: ActionConfig = { label: 'UNKNOWN', icon: CircleHelp, tone: 'neutral' }
@@ -51,7 +56,7 @@ export interface ActionBadgeProps {
 
 /** Render a strategy action as an icon + label badge, tone-coded by action. */
 export function ActionBadge({ action, size = 'sm', className }: ActionBadgeProps) {
-  const config = (ACTIONS as Record<string, ActionConfig>)[action] ?? UNKNOWN
+  const config = ACTIONS[action] ?? UNKNOWN
   const Icon = config.icon
   const isHero = size === 'hero'
   return (

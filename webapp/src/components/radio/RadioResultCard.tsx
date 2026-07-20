@@ -11,6 +11,7 @@
 
 import {
   CircleAlert,
+  Flag,
   HelpCircle,
   Info,
   Megaphone,
@@ -26,6 +27,7 @@ import type {
   RadioEntity,
   RadioEvent,
   RadioResult,
+  RcmEvent,
 } from '@/lib/api/race'
 
 const REVEAL_KEYFRAMES = `
@@ -200,11 +202,56 @@ function ReasoningDisclosure({ reasoning, index }: { reasoning: string; index: n
   )
 }
 
+/** Tone for a race-control flag: green is all-clear, yellow/double-yellow are
+ *  caution, red is stop. Anything else (informational messages) reads neutral. */
+function flagTone(flag: string): 'success' | 'warning' | 'danger' | 'neutral' {
+  const f = flag.toUpperCase()
+  if (f === 'GREEN') return 'success'
+  if (f.includes('YELLOW')) return 'warning'
+  if (f === 'RED') return 'danger'
+  return 'neutral'
+}
+
+const FLAG_ROW_CLASS: Record<'success' | 'warning' | 'danger' | 'neutral', string> = {
+  success: 'border-success/30 bg-success/10',
+  warning: 'border-warning/30 bg-warning/10',
+  danger: 'border-danger/30 bg-danger/10',
+  neutral: 'border-hairline bg-bg-2',
+}
+
+/** Race Control Messages the agent parsed, as flag-coloured rows. These were
+ *  dropped by the Streamlit tab; showing them puts the on-track flag context
+ *  next to the radio the driver keyed in the same window. */
+function RcmEventsSection({ events, index }: { events: RcmEvent[]; index: number }) {
+  if (events.length === 0) return null
+  return (
+    <div
+      className="f1-anim flex flex-col gap-1.5 animate-[f1-radio-reveal_400ms_ease-out_both]"
+      style={{ animationDelay: revealDelay(index) }}
+    >
+      <span className="text-xs font-medium tracking-wide text-fg-3 uppercase">Race control</span>
+      {events.map((e, i) => (
+        <div
+          key={i}
+          className={`flex items-start gap-2 rounded-lg border px-3 py-2 text-sm text-fg-1 ${FLAG_ROW_CLASS[flagTone(e.flag)]}`}
+        >
+          <Flag className="mt-0.5 size-3.5 shrink-0 text-fg-3" aria-hidden="true" />
+          <span className="wrap-break-word">
+            {e.lap != null ? <span className="font-mono text-xs text-fg-3">L{e.lap} </span> : null}
+            {e.message || e.category || e.flag}
+          </span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export function RadioResultCard({ result }: { result: RadioResult }) {
   const isEmpty =
     result.alerts.length === 0 &&
     result.radio_events.length === 0 &&
     result.corrections.length === 0 &&
+    result.rcm_events.length === 0 &&
     !result.reasoning
 
   if (isEmpty) {
@@ -222,11 +269,12 @@ export function RadioResultCard({ result }: { result: RadioResult }) {
       {result.radio_events.map((event, i) => (
         <EventBlock key={i} event={event} index={i + 1} />
       ))}
+      <RcmEventsSection events={result.rcm_events} index={result.radio_events.length + 1} />
       <CorrectionsFootnote
         corrections={result.corrections}
-        index={result.radio_events.length + 1}
+        index={result.radio_events.length + 2}
       />
-      <ReasoningDisclosure reasoning={result.reasoning} index={result.radio_events.length + 2} />
+      <ReasoningDisclosure reasoning={result.reasoning} index={result.radio_events.length + 3} />
     </Card>
   )
 }
