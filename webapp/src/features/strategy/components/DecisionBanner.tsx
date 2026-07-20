@@ -7,7 +7,7 @@ import { ConfidenceDial } from '@/components/ConfidenceDial'
 import { Pill } from '@/components/Pill'
 import { getDriverTextColor } from '@/lib/drivers'
 import type { LapState, RiskPosture, StrategyRecommendation } from '@/lib/api/strategy'
-import { ScoresPlot } from './ScenarioScoresChart'
+import { ScoresPlot } from '@/charts/ScenarioScoresChart'
 
 // The Decision Banner is the Strategy tab's HERO surface: the headline call
 // (action + confidence + pace/risk instruction + pit plan) co-located with its
