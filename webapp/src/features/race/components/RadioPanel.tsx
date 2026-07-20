@@ -1,9 +1,11 @@
 // Radio tab — a browser (driver rail → message list with transcript previews)
 // feeding an NLP result card, plus a free-text composer. The corpus fetch and
 // the message-select flow are separate concerns: selecting a message only
-// updates the URL (`rdriver`/`rlap`, so it's shareable); running the Radio
-// Agent needs an explicit "Analyse" press, same as the old Streamlit lookup —
-// a lap selection alone shouldn't fire the NLP pipeline.
+// updates the URL (`rdriver`/`rlap`/`rmsg`, so it's shareable); running the
+// Radio Agent needs an explicit "Analyse" press, same as the old Streamlit
+// lookup — a lap selection alone shouldn't fire the NLP pipeline. `rmsg` is
+// the index of the message within that driver's laps, since a lap can carry
+// more than one radio call and `rlap` alone can't tell them apart.
 
 import { useEffect, useMemo, useState } from 'react'
 import { Play } from 'lucide-react'
@@ -21,10 +23,16 @@ export interface RadioPanelProps {
   gp: string
   /** Driver codes selected in the context bar (seeds the browser). */
   drivers: string[]
-  /** The selected radio message (URL-bound). */
+  /** The selected radio message (URL-bound): driver code, lap number (display
+   *  only), and the index of the message within that driver's `laps[]` — the
+   *  part that actually disambiguates two messages sharing the same lap. */
   rdriver?: string
   rlap?: number
-  onSelect: (rdriver: string | undefined, rlap: number | undefined) => void
+  rmsg?: number
+  /** RacePage maps this to `patch({ rdriver, rlap, rmsg })`. Widened from the
+   *  previous 2-arg (`rdriver`, `rlap`) signature to also carry the message
+   *  index. */
+  onSelect: (rdriver?: string, rlap?: number, rmsg?: number) => void
 }
 
 /** Prefer a `RaceApiError`'s own message (already unwrapped from the FastAPI
@@ -34,7 +42,7 @@ function errorDescription(error: unknown, fallback: string): string {
   return error instanceof RaceApiError ? error.message : fallback
 }
 
-export function RadioPanel({ gp, drivers, rdriver, rlap, onSelect }: RadioPanelProps) {
+export function RadioPanel({ gp, drivers, rdriver, rlap, rmsg, onSelect }: RadioPanelProps) {
   const { toast } = useToast()
   const radioLaps = useRadioLaps(gp, true)
 
@@ -52,18 +60,24 @@ export function RadioPanel({ gp, drivers, rdriver, rlap, onSelect }: RadioPanelP
 
   const selectedTranscript = useMemo(() => {
     const driver = radioDrivers.find((d) => d.driver === rdriver)
-    return driver?.laps.find((l) => l.lap === rlap)?.text ?? ''
-  }, [radioDrivers, rdriver, rlap])
+    if (!driver) return ''
+    // `rmsg` is the precise identity (an index into `laps[]`); without one
+    // (an older deep link) fall back to the first message on that lap, same
+    // as the previous behaviour.
+    if (rmsg != null) return driver.laps[rmsg]?.text ?? ''
+    return driver.laps.find((l) => l.lap === rlap)?.text ?? ''
+  }, [radioDrivers, rdriver, rlap, rmsg])
 
   // A message selection ALONE never triggers analysis — only pressing
   // "Analyse" does, by stamping the current selection into `analysedKey`.
   // Picking a different message naturally invalidates it (the key no longer
-  // matches), so there is no separate reset step to keep in sync.
-  const selectionKey = rdriver && rlap != null ? `${rdriver}:${rlap}` : null
+  // matches), so there is no separate reset step to keep in sync. `rmsg` is
+  // folded in so two messages sharing a lap get distinct keys.
+  const selectionKey = rdriver && rlap != null ? `${rdriver}:${rlap}:${rmsg ?? ''}` : null
   const [analysedKey, setAnalysedKey] = useState<string | null>(null)
   const analysisEnabled = analysedKey !== null && analysedKey === selectionKey
 
-  const analysis = useRadioAnalysis(gp, rdriver, rlap, selectedTranscript, analysisEnabled)
+  const analysis = useRadioAnalysis(gp, rdriver, rlap, rmsg, selectedTranscript, analysisEnabled)
 
   useEffect(() => {
     if (!analysis.isError) return
@@ -88,6 +102,7 @@ export function RadioPanel({ gp, drivers, rdriver, rlap, onSelect }: RadioPanelP
           contextDrivers={drivers}
           selectedDriver={rdriver}
           selectedLap={rlap}
+          selectedMsg={rmsg}
           onSelect={onSelect}
           onRetry={() => void radioLaps.refetch()}
         />
@@ -105,7 +120,7 @@ export function RadioPanel({ gp, drivers, rdriver, rlap, onSelect }: RadioPanelP
           <Button
             size="sm"
             onClick={() => setAnalysedKey(selectionKey)}
-            disabled={analysis.isFetching}
+            disabled={analysis.isFetching || !selectedTranscript.trim()}
           >
             <Play className="size-3.5" aria-hidden="true" />
             {analysis.isFetching ? 'Analysing…' : 'Analyse radio'}

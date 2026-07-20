@@ -77,24 +77,30 @@ export function useRadioLaps(gp: string | undefined, enabled: boolean) {
 }
 
 /**
- * Run the Radio Agent's NLP pipeline for one (gp, driver, lap) transcript:
+ * Run the Radio Agent's NLP pipeline for one (gp, driver, lap, msg) transcript:
  * fetches the lap_state the agent reads for context, then posts the transcript
  * as a single radio message — the fix for the Streamlit lookup, which built
  * `radio_msgs` from an empty string and analysed nothing (see `analyzeRadio`).
- * Keyed by (gp, driver, lap) only, NOT by `text` — editing the transcript
+ * `msg` is the message's index within that driver's lap list, since a lap can
+ * carry more than one radio call and `lap` alone can't tell them apart.
+ * Keyed by (gp, driver, lap, msg) only, NOT by `text` — editing the transcript
  * doesn't invalidate a prior result on its own; the caller re-triggers by
  * flipping `enabled` (the panel's "Analyse" button). Disabled by default, since
- * merely selecting a message shouldn't fire the pipeline.
+ * merely selecting a message shouldn't fire the pipeline. `staleTime: Infinity`
+ * keeps a completed analysis cached under its key, so re-selecting a message
+ * that was already analysed (which re-enables this query with an unchanged
+ * key) never silently re-fires the LLM call.
  */
 export function useRadioAnalysis(
   gp: string | undefined,
   driver: string | undefined,
   lap: number | undefined,
+  msg: number | undefined,
   text: string,
   enabled: boolean,
 ) {
   return useQuery({
-    queryKey: ['race', 'radio', gp ?? 'idle', driver ?? 'idle', lap ?? 'idle'],
+    queryKey: ['race', 'radio', gp ?? 'idle', driver ?? 'idle', lap ?? 'idle', msg ?? 'idle'],
     queryFn: async (): Promise<RadioResult> => {
       const lapState = await fetchLapState(gp!, driver!, lap!)
       // LapState is a typed struct (no index signature); the radio endpoint just
@@ -104,6 +110,8 @@ export function useRadioAnalysis(
       ])
     },
     enabled: enabled && !!gp && !!driver && lap != null,
+    staleTime: Infinity,
+    gcTime: Infinity,
     retry: 1,
   })
 }

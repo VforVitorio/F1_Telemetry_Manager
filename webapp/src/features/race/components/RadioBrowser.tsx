@@ -4,6 +4,11 @@
 // asked for a lap number with no preview of what was actually said. Rows
 // without a transcript (audio only) are shown but disabled, since there is
 // nothing for the NLP pipeline to analyse yet.
+//
+// The backend returns one `laps[]` entry PER MESSAGE, not per lap — a driver
+// can key the radio twice in the same lap, so two entries sharing a `lap`
+// value is normal, not a data bug. The message's identity is therefore its
+// INDEX into that driver's `laps[]` array, never the lap number alone.
 
 import { useEffect, useState } from 'react'
 import { Button } from '@/components/Button'
@@ -17,10 +22,13 @@ export interface RadioBrowserProps {
   radioDrivers: RadioDriver[]
   /** Drivers selected in the context bar; seeds which rail entry opens first. */
   contextDrivers: string[]
-  /** The URL-bound selected message, if any. */
+  /** The URL-bound selected message, if any. `selectedLap` is display-only;
+   *  `selectedMsg` (the index into the active driver's `laps[]`) is the
+   *  actual identity — it disambiguates two messages sharing the same lap. */
   selectedDriver?: string
   selectedLap?: number
-  onSelect: (driver: string | undefined, lap: number | undefined) => void
+  selectedMsg?: number
+  onSelect: (driver?: string, lap?: number, msg?: number) => void
   /** Offered on the empty-corpus fallback (re-fetch after a transient failure). */
   onRetry?: () => void
 }
@@ -43,6 +51,7 @@ export function RadioBrowser({
   contextDrivers,
   selectedDriver,
   selectedLap,
+  selectedMsg,
   onSelect,
   onRetry,
 }: RadioBrowserProps) {
@@ -76,7 +85,14 @@ export function RadioBrowser({
   }
 
   const active = radioDrivers.find((d) => d.driver === activeDriver)
-  const laps = active ? [...active.laps].sort((a, b) => a.lap - b.lap) : []
+  const activeLaps = active?.laps ?? []
+  // Sort for display, but sort a list of INDICES rather than the messages
+  // themselves — the index into `activeLaps` is each message's identity, and
+  // sorting the objects directly would sever that tie for the common case of
+  // two messages sharing a lap.
+  const messageOrder = [...activeLaps.keys()].sort(
+    (a, b) => activeLaps[a].lap - activeLaps[b].lap,
+  )
 
   return (
     <div className="grid gap-4 md:grid-cols-[12rem_1fr]">
@@ -112,18 +128,23 @@ export function RadioBrowser({
       </div>
 
       <div className="flex flex-col gap-1.5">
-        {laps.length === 0 ? (
+        {messageOrder.length === 0 ? (
           <p className="px-1 py-6 text-center text-sm text-fg-3">No radio calls for this driver.</p>
         ) : (
-          laps.map((l) => {
-            const isSelected = activeDriver === selectedDriver && l.lap === selectedLap
+          messageOrder.map((msgIndex) => {
+            const l = activeLaps[msgIndex]
+            // A stored `selectedMsg` is the precise identity; without one
+            // (an older deep link) fall back to matching by lap, same as before.
+            const isSelected =
+              activeDriver === selectedDriver &&
+              (selectedMsg != null ? msgIndex === selectedMsg : l.lap === selectedLap)
             return (
               <button
-                key={l.lap}
+                key={msgIndex}
                 type="button"
                 disabled={!l.has_transcript}
                 aria-pressed={isSelected}
-                onClick={() => onSelect(activeDriver, l.lap)}
+                onClick={() => onSelect(activeDriver, l.lap, msgIndex)}
                 className={cn(
                   'flex flex-col gap-0.5 rounded-lg border px-3 py-2 text-left text-sm transition-colors',
                   'disabled:cursor-not-allowed disabled:opacity-50',

@@ -133,11 +133,10 @@ function renderCell(kind: ColumnKind, value: unknown): ReactNode {
     case 'boolean':
       return <Pill tone={value ? 'success' : 'neutral'}>{value ? 'Fresh' : 'Used'}</Pill>
     case 'number':
-      return typeof value === 'number' ? (
-        <div className="text-right font-mono tabular-nums">{formatNumber(value)}</div>
-      ) : (
-        DASH
-      )
+      // Alignment and mono/tabular-nums figures both come from the cell's
+      // `<td>` in DataTable (via `meta.align` and its numeric-value check) —
+      // this case only needs to return the formatted text.
+      return typeof value === 'number' ? formatNumber(value) : DASH
     default:
       return String(value)
   }
@@ -155,6 +154,7 @@ function buildColumns(preset: DatasetPreset): ColumnDef<RaceRecord, unknown>[] {
       accessorKey: key,
       header: spec.label,
       size: COLUMN_WIDTH[spec.kind],
+      meta: spec.kind === 'number' ? { align: 'right' } : undefined,
       cell: (info) => renderCell(spec.kind, info.getValue()),
     }
   })
@@ -166,12 +166,20 @@ export function DatasetPanel({ rows, selectedDrivers }: DatasetPanelProps) {
   const scope = useRaceStore((s) => s.datasetScope)
   const setScope = useRaceStore((s) => s.setDatasetScope)
 
+  const noDriversSelected = selectedDrivers.length === 0
+
   const scopedRows = useMemo(() => {
     if (scope === 'selected' && selectedDrivers.length > 0) {
       return rows.filter((row) => selectedDrivers.includes(row.Driver))
     }
     return rows
   }, [rows, scope, selectedDrivers])
+
+  // "Selected" showing active while nothing is picked would lie about what's
+  // on screen (the table falls back to the whole field). Displaying "all" as
+  // the active segment in that case keeps the toggle honest about what it's
+  // actually showing, without discarding the user's stored preference.
+  const displayedScope: DatasetScope = scope === 'selected' && noDriversSelected ? 'all' : scope
 
   const columns = useMemo(() => buildColumns(preset), [preset])
 
@@ -197,10 +205,16 @@ export function DatasetPanel({ rows, selectedDrivers }: DatasetPanelProps) {
           </TabsList>
         </Tabs>
 
-        <Tabs value={scope} onValueChange={(value) => setScope(value as DatasetScope)}>
+        <Tabs value={displayedScope} onValueChange={(value) => setScope(value as DatasetScope)}>
           <TabsList variant="segmented">
             <TabsTrigger value="all">All drivers</TabsTrigger>
-            <TabsTrigger value="selected">Selected</TabsTrigger>
+            <TabsTrigger
+              value="selected"
+              disabled={noDriversSelected}
+              title={noDriversSelected ? 'Pick drivers first' : undefined}
+            >
+              Selected
+            </TabsTrigger>
           </TabsList>
         </Tabs>
       </div>

@@ -3,8 +3,10 @@
 // dashboard/comparison: the URL carries `drivers` as a comma string, the
 // component sees an array. Differences from those tabs: no `session` (Race is
 // always the 2025 featured parquet), drivers cap THREE, and extra view params —
-// `tab` (which of the 5 areas), `compound` (tyre filter), `rdriver`/`rlap` (the
-// selected radio message), `q` (a Regulations query to prefill).
+// `tab` (which of the 5 areas), `compound` (tyre filter), `rdriver`/`rlap`/`rmsg`
+// (the selected radio message — a lap can carry more than one radio message,
+// so `rmsg` is the index that disambiguates which one), `q` (a Regulations
+// query to prefill).
 //
 // The year is a constant, not a URL param: the featured parquet only covers
 // 2025. Data is fetched once per GP and filtered client-side, so there is no
@@ -26,9 +28,12 @@ export interface RaceSearch {
   tab: RaceTab
   /** Active compound filter on the Tyres tab (e.g. 'SOFT'), if any. */
   compound?: string
-  /** Selected radio message: driver code + lap number (the Radio tab). */
+  /** Selected radio message: driver code + lap number + the index of the
+   *  message within that driver's lap list (a lap can carry more than one
+   *  radio message, so the index is what actually disambiguates them). */
   rdriver?: string
   rlap?: number
+  rmsg?: number
   /** A Regulations query to prefill (deep-link only; never auto-fires). */
   q?: string
 }
@@ -41,6 +46,7 @@ export interface RawRaceSearch {
   compound?: string
   rdriver?: string
   rlap?: number
+  rmsg?: number
   q?: string
 }
 
@@ -48,7 +54,8 @@ function coerceStr(raw: unknown): string | undefined {
   return typeof raw === 'string' && raw !== '' ? raw : undefined
 }
 
-function coerceLap(raw: unknown): number | undefined {
+/** Shared by `rlap` and `rmsg` — both are non-negative integer positions. */
+function coerceNonNegativeInt(raw: unknown): number | undefined {
   if (raw == null || raw === '') return undefined
   const n = Number(raw)
   return Number.isInteger(n) && n >= 0 ? n : undefined
@@ -84,7 +91,8 @@ export function validateRaceSearch(raw: Record<string, unknown>): RawRaceSearch 
   const tab = coerceTab(raw.tab)
   const compound = gp ? coerceStr(raw.compound)?.toUpperCase() : undefined
   const rdriver = gp ? coerceStr(raw.rdriver)?.toUpperCase() : undefined
-  const rlap = gp && rdriver ? coerceLap(raw.rlap) : undefined
+  const rlap = gp && rdriver ? coerceNonNegativeInt(raw.rlap) : undefined
+  const rmsg = gp && rdriver ? coerceNonNegativeInt(raw.rmsg) : undefined
   const q = coerceStr(raw.q)
   return {
     ...(gp ? { gp } : {}),
@@ -93,6 +101,7 @@ export function validateRaceSearch(raw: Record<string, unknown>): RawRaceSearch 
     ...(compound ? { compound } : {}),
     ...(rdriver ? { rdriver } : {}),
     ...(rlap != null ? { rlap } : {}),
+    ...(rmsg != null ? { rmsg } : {}),
     ...(q ? { q } : {}),
   }
 }
@@ -113,6 +122,7 @@ export function applyRacePatch(search: RaceSearch, patch: Partial<RaceSearch>): 
     next.compound = undefined
     next.rdriver = undefined
     next.rlap = undefined
+    next.rmsg = undefined
   } else if ('drivers' in patch) {
     next.drivers = next.drivers.slice(0, MAX_DRIVERS)
   }
@@ -128,6 +138,7 @@ export function fromRaw(raw: RawRaceSearch): RaceSearch {
     compound: raw.compound,
     rdriver: raw.rdriver,
     rlap: raw.rlap,
+    rmsg: raw.rmsg,
     q: raw.q,
   }
 }
@@ -144,6 +155,7 @@ export function toRaw(search: RaceSearch): RawRaceSearch {
     ...(search.gp && search.compound ? { compound: search.compound } : {}),
     ...(search.gp && search.rdriver ? { rdriver: search.rdriver } : {}),
     ...(search.gp && search.rdriver && search.rlap != null ? { rlap: search.rlap } : {}),
+    ...(search.gp && search.rdriver && search.rmsg != null ? { rmsg: search.rmsg } : {}),
     ...(search.q ? { q: search.q } : {}),
   }
 }

@@ -37,6 +37,9 @@ const UNDERCUT_MAX = 2.0
 const OVERCUT_MAX = 3.5
 const CONSISTENCY_THRESHOLD = 3
 const DEFAULT_Y_MAX = OVERCUT_MAX + 2
+/** Default y-axis ceiling: keeps the strategic band readable when a lapped car
+ *  has a huge gap; the toolbox box-zoom reaches anything taller. */
+const Y_MAX_CEILING = 12
 
 const UNDERCUT_ZONE_COLOR = 'rgba(34,197,94,0.12)'
 const OVERCUT_ZONE_COLOR = 'rgba(234,179,8,0.10)'
@@ -123,18 +126,49 @@ function extractSeries(
   return { laps, values }
 }
 
-/** Linear-interpolate a continuous quantity (a gap in seconds) onto the shared
- *  grid, but only WITHIN the driver's own observed lap range — outside it
- *  (before their first logged lap, after a retirement) stays `null` rather
- *  than clamping to the nearest endpoint, so the line doesn't invent a gap
- *  that was never measured. */
-function resampleContinuous(grid: number[], laps: number[], values: number[]): (number | null)[] {
-  if (laps.length === 0) return grid.map(() => null)
-  const domainStart = laps[0]
-  const domainEnd = laps[laps.length - 1]
-  return grid.map((lap) =>
-    lap < domainStart || lap > domainEnd ? null : interp(lap, laps, values),
-  )
+interface Run {
+  laps: number[]
+  values: number[]
+}
+
+/** Split a driver's rows into maximal contiguous runs of NON-NULL values. A null
+ *  value breaks the run: the leader has no car ahead (GapToCarAhead is null those
+ *  laps), so the line must CUT there, not interpolate across it and invent a gap
+ *  the driver never had. A merely missing lap (a row dropped for an SC/pit lap)
+ *  does not break a run — only an explicit null value does. */
+function extractRuns(rows: RaceRecord[], field: NumericField): Run[] {
+  const runs: Run[] = []
+  let current: Run | null = null
+  for (const row of rows) {
+    const value = row[field]
+    if (row.LapNumber == null) continue
+    if (value == null) {
+      current = null
+      continue
+    }
+    if (!current) {
+      current = { laps: [], values: [] }
+      runs.push(current)
+    }
+    current.laps.push(row.LapNumber)
+    current.values.push(value)
+  }
+  return runs
+}
+
+/** Linear-interpolate each run onto the shared grid, WITHIN that run's own lap
+ *  span only. A grid lap in no run's span stays null, so the line cuts at the
+ *  leader's laps (and before the first / after the last logged lap) instead of
+ *  inventing a gap that was never measured. */
+function resampleRuns(grid: number[], runs: Run[]): (number | null)[] {
+  return grid.map((lap) => {
+    for (const run of runs) {
+      if (lap >= run.laps[0] && lap <= run.laps[run.laps.length - 1]) {
+        return interp(lap, run.laps, run.values)
+      }
+    }
+    return null
+  })
 }
 
 /** Exact lookup onto the shared grid for a discrete count (consecutive laps in
@@ -145,22 +179,26 @@ function resampleExact(grid: number[], laps: number[], values: number[]): (numbe
   return grid.map((lap) => byLap.get(lap) ?? null)
 }
 
-/** Highest observed GapToCarAhead across every loaded driver, +1 — the top
- *  edge of the "no strategy" zone, mirroring `y_max = gap_all.max() + 1` in
- *  `st_plot_undercut_opportunities`. Falls back to a fixed ceiling when no
- *  driver has any gap-ahead value at all (e.g. a lone race leader). */
+/** Top of the y-axis: the highest observed gap (ahead OR behind) across every
+ *  loaded driver, +1, so neither the ahead nor the behind lines clip — but
+ *  capped, because a lapped/25-second behind gap would otherwise flatten the
+ *  0-3.5s strategic band (the undercut/overcut zones) into an unreadable sliver.
+ *  Box-zoom via the toolbox reaches anything above the cap. Falls back to a
+ *  fixed ceiling when no driver has any gap at all (a lone race leader). */
 function computeYMax(byDriver: Map<string, RaceRecord[]>): number {
   let max = 0
   let found = false
   for (const rows of byDriver.values()) {
     for (const row of rows) {
-      if (row.GapToCarAhead != null && row.GapToCarAhead > max) {
-        max = row.GapToCarAhead
-        found = true
+      for (const gap of [row.GapToCarAhead, row.GapToCarBehind]) {
+        if (gap != null && gap > max) {
+          max = gap
+          found = true
+        }
       }
     }
   }
-  return found ? max + 1 : DEFAULT_Y_MAX
+  return found ? Math.min(max + 1, Y_MAX_CEILING) : DEFAULT_Y_MAX
 }
 
 // ── Shared chart scaffolding ──────────────────────────────────────────────────
@@ -363,10 +401,10 @@ export function buildGapEvolutionOption(
     const lineColor = getDriverColor(driver, year)
     const textColor = getDriverTextColor(driver, year)
 
-    const ahead = extractSeries(driverRows, 'GapToCarAhead')
-    if (ahead.laps.length > 0) {
+    const aheadRuns = extractRuns(driverRows, 'GapToCarAhead')
+    if (aheadRuns.length > 0) {
       const name = `${driver} ahead`
-      const values = resampleContinuous(grid, ahead.laps, ahead.values)
+      const values = resampleRuns(grid, aheadRuns)
       series.push({
         name,
         type: 'line',
@@ -380,10 +418,10 @@ export function buildGapEvolutionOption(
       textColorByName.set(name, textColor)
     }
 
-    const behind = extractSeries(driverRows, 'GapToCarBehind')
-    if (behind.laps.length > 0) {
+    const behindRuns = extractRuns(driverRows, 'GapToCarBehind')
+    if (behindRuns.length > 0) {
       const name = `${driver} behind`
-      const values = resampleContinuous(grid, behind.laps, behind.values)
+      const values = resampleRuns(grid, behindRuns)
       series.push({
         name,
         type: 'line',

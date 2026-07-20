@@ -8,7 +8,7 @@ import { useEffect, useState } from 'react'
 import { Card } from '@/components/Card'
 import { EmptyState } from '@/components/EmptyState'
 import { getDriverTextColor } from '@/lib/drivers'
-import { compoundVariant, type CompoundVariant } from '@/lib/compounds'
+import { COMPOUND_ORDER, compoundVariant, type CompoundVariant } from '@/lib/compounds'
 import { tireColors } from '@/charts/echartsTheme'
 import type { RaceRecord } from '@/lib/api/race'
 import { buildGanttModel, COMPOUND_DASH_PREVIEW, type GanttStint } from '../lib/tyreSeries'
@@ -17,6 +17,7 @@ const ROW_HEIGHT = 10
 const STAGGER_MS = 40
 const REVEAL_MS = 500
 const FALLBACK_BLOCK_COLOR = '#6b7280'
+const GRIDLINE_STEP_LAPS = 10
 
 /** True under `prefers-reduced-motion`, or when `matchMedia` isn't available —
  *  either way the safe default is to skip the reveal animation and paint the
@@ -29,6 +30,26 @@ function prefersReducedMotion(): boolean {
 function blockColor(compound: string): string {
   const variant = compoundVariant(compound)
   return variant ? tireColors[variant] : FALLBACK_BLOCK_COLOR
+}
+
+/** Orders the compounds present soft→wet using the catalogue's own shared
+ *  `COMPOUND_ORDER`, so this legend always matches TyresPanel's compound
+ *  filter chips directly above it in the Tyres tab, instead of drifting into
+ *  whatever order the compounds first appear in the lap data. */
+function orderCompounds(variants: CompoundVariant[]): CompoundVariant[] {
+  return [...variants].sort(
+    (a, b) => COMPOUND_ORDER.indexOf(a.toLowerCase()) - COMPOUND_ORDER.indexOf(b.toLowerCase()),
+  )
+}
+
+/** Lap positions for the axis labels and the per-row background gridlines:
+ *  every 10 laps, plus the final lap so a partial last interval still gets a
+ *  boundary marker. */
+function axisTicks(maxLap: number): number[] {
+  const ticks: number[] = []
+  for (let lap = 0; lap <= maxLap; lap += GRIDLINE_STEP_LAPS) ticks.push(lap)
+  if (ticks[ticks.length - 1] !== maxLap) ticks.push(maxLap)
+  return ticks
 }
 
 /** Groups the flat, already-sorted stint list by driver, preserving the sort
@@ -46,11 +67,31 @@ function groupByDriver(stints: GanttStint[]): Array<[string, GanttStint[]]> {
   return order.map((driver): [string, GanttStint[]] => [driver, byDriver.get(driver) ?? []])
 }
 
-/** One driver's row: an SVG whose viewBox spans the lap axis, one `<rect>`
- *  per stint. Rects scale in from zero width once `revealed` flips true
- *  (skipped when reduced motion is on, since `revealed` starts `true` then)
- *  so the plan reads as drawn rather than popped in. */
-function DriverRow({ driver, stints, maxLap, revealed }: { driver: string; stints: GanttStint[]; maxLap: number; revealed: boolean }) {
+/** One driver's row: an SVG whose viewBox spans the lap axis, a hairline
+ *  gridline at each axis tick (drawn first so stints paint over them), then
+ *  one `<rect>` per stint. Rects scale in from zero width once `revealed`
+ *  flips true (skipped when reduced motion is on, since `revealed` starts
+ *  `true` then) so the plan reads as drawn rather than popped in.
+ *
+ *  No `rx` on the stint rects: `preserveAspectRatio="none"` scales the x and
+ *  y axes independently (the viewBox is `maxLap` wide but a fixed
+ *  `ROW_HEIGHT` tall), which would stretch a rounded corner into an
+ *  uneven ellipse — a plain rectangle stays crisp under that distortion.
+ *  `vectorEffect="non-scaling-stroke"` keeps the hairline stroke itself a
+ *  constant on-screen width for the same reason. */
+function DriverRow({
+  driver,
+  stints,
+  maxLap,
+  ticks,
+  revealed,
+}: {
+  driver: string
+  stints: GanttStint[]
+  maxLap: number
+  ticks: number[]
+  revealed: boolean
+}) {
   return (
     <div className="flex items-center gap-3">
       <span className="w-10 shrink-0 font-mono text-xs font-semibold" style={{ color: getDriverTextColor(driver) }}>
@@ -63,6 +104,18 @@ function DriverRow({ driver, stints, maxLap, revealed }: { driver: string; stint
         role="img"
         aria-label={`${driver} stint plan`}
       >
+        {ticks.map((lap) => (
+          <line
+            key={lap}
+            x1={lap}
+            x2={lap}
+            y1={0}
+            y2={ROW_HEIGHT}
+            className="stroke-hairline"
+            strokeWidth={1}
+            vectorEffect="non-scaling-stroke"
+          />
+        ))}
         {stints.map((stint, index) => (
           <rect
             key={stint.stint}
@@ -70,8 +123,10 @@ function DriverRow({ driver, stints, maxLap, revealed }: { driver: string; stint
             y={0}
             width={Math.max(stint.endLap - stint.startLap + 1, 1)}
             height={ROW_HEIGHT}
-            rx={1}
             fill={blockColor(stint.compound)}
+            className="stroke-hairline"
+            strokeWidth={1}
+            vectorEffect="non-scaling-stroke"
             style={{
               transformBox: 'fill-box',
               transformOrigin: 'left center',
@@ -97,7 +152,11 @@ function CompoundLegend({ compounds }: { compounds: CompoundVariant[] }) {
     <div className="flex flex-wrap items-center gap-4">
       {compounds.map((variant) => (
         <span key={variant} className="flex items-center gap-1.5 text-xs text-fg-3">
-          <span className="size-2.5 rounded-sm" style={{ backgroundColor: tireColors[variant] }} aria-hidden="true" />
+          <span
+            className="size-2.5 rounded-sm border border-hairline"
+            style={{ backgroundColor: tireColors[variant] }}
+            aria-hidden="true"
+          />
           <svg width="18" height="2" aria-hidden="true">
             <line
               x1="0"
@@ -112,6 +171,34 @@ function CompoundLegend({ compounds }: { compounds: CompoundVariant[] }) {
           {variant.charAt(0) + variant.slice(1).toLowerCase()}
         </span>
       ))}
+    </div>
+  )
+}
+
+/** Shared lap-number axis rendered once beneath every driver row. Mirrors
+ *  each row's own layout (an empty `w-10` gutter matching the driver-code
+ *  column, then a full-width lane) so a tick's percentage position lands
+ *  exactly under its lap on every SVG row above — plain HTML text instead of
+ *  SVG, since text drawn inside a `preserveAspectRatio="none"` viewBox would
+ *  suffer the same non-uniform stretch the stint rects avoid by dropping `rx`. */
+function LapAxis({ ticks, maxLap }: { ticks: number[]; maxLap: number }) {
+  return (
+    <div className="flex items-center gap-3">
+      <span className="w-10 shrink-0" aria-hidden="true" />
+      <div className="relative h-3 w-full flex-1 font-mono text-[11px] text-fg-3">
+        {ticks.map((lap) => (
+          <span
+            key={lap}
+            className="absolute top-0"
+            style={{
+              left: `${(lap / maxLap) * 100}%`,
+              transform: lap === 0 ? 'none' : lap === maxLap ? 'translateX(-100%)' : 'translateX(-50%)',
+            }}
+          >
+            {lap}
+          </span>
+        ))}
+      </div>
     </div>
   )
 }
@@ -149,9 +236,10 @@ export function StintGantt({ rows }: StintGanttProps) {
   }
 
   const maxLap = stints.reduce((max, stint) => Math.max(max, stint.endLap), 1)
-  const compoundsPresent = [
+  const compoundsPresent = orderCompounds([
     ...new Set(stints.map((stint) => compoundVariant(stint.compound)).filter((c): c is CompoundVariant => c != null)),
-  ]
+  ])
+  const ticks = axisTicks(maxLap)
 
   return (
     <Card elevation="resting" className="flex flex-col gap-4 p-4">
@@ -161,10 +249,17 @@ export function StintGantt({ rows }: StintGanttProps) {
       </div>
       <div className="flex flex-col gap-2">
         {groupByDriver(stints).map(([driver, driverStints]) => (
-          <DriverRow key={driver} driver={driver} stints={driverStints} maxLap={maxLap} revealed={revealed} />
+          <DriverRow
+            key={driver}
+            driver={driver}
+            stints={driverStints}
+            maxLap={maxLap}
+            ticks={ticks}
+            revealed={revealed}
+          />
         ))}
       </div>
-      <p className="text-right text-[11px] text-fg-3">Lap {maxLap}</p>
+      <LapAxis ticks={ticks} maxLap={maxLap} />
     </Card>
   )
 }

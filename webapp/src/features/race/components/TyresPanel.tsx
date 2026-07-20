@@ -11,6 +11,7 @@ import type { RaceRecord } from '@/lib/api/race'
 import { compoundVariant, type CompoundVariant } from '@/lib/compounds'
 import { StintGantt } from './StintGantt'
 import { TyreChartSwitcher } from './TyreChartSwitcher'
+import { PodiumQuickPick } from './PodiumQuickPick'
 
 const COMPOUND_ORDER: CompoundVariant[] = ['SOFT', 'MEDIUM', 'HARD', 'INTERMEDIATE', 'WET']
 
@@ -53,9 +54,22 @@ export interface TyresPanelProps {
   /** Active compound filter (URL-bound), if any. */
   compound?: string
   onCompound: (compound: string | undefined) => void
+  /** Whether the user has picked any drivers. With none, the line chart would be
+   *  20-car spaghetti, so we show a quick-pick instead (the gantt stays). */
+  hasSelection: boolean
+  /** Top 3 by final position, for the quick-pick. */
+  podium: string[]
+  onPick: (drivers: string[]) => void
 }
 
-export function TyresPanel({ rows, compound, onCompound }: TyresPanelProps) {
+export function TyresPanel({
+  rows,
+  compound,
+  onCompound,
+  hasSelection,
+  podium,
+  onPick,
+}: TyresPanelProps) {
   if (rows.length === 0) {
     return (
       <EmptyState
@@ -69,22 +83,30 @@ export function TyresPanel({ rows, compound, onCompound }: TyresPanelProps) {
 
   return (
     <div className="flex flex-col gap-6">
-      {compounds.length > 0 ? (
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs font-medium uppercase tracking-widest text-fg-3">Compound</span>
-          {compounds.map((c) => (
-            <CompoundFilterChip
-              key={c}
-              compound={c}
-              active={compound === c}
-              onClick={() => onCompound(compound === c ? undefined : c)}
-            />
-          ))}
-        </div>
-      ) : null}
-
       <StintGantt rows={rows} />
-      <TyreChartSwitcher rows={rows} compound={compound} />
+
+      {hasSelection ? (
+        <>
+          {compounds.length > 0 ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs font-medium uppercase tracking-widest text-fg-3">
+                Compound
+              </span>
+              {compounds.map((c) => (
+                <CompoundFilterChip
+                  key={c}
+                  compound={c}
+                  active={compound === c}
+                  onClick={() => onCompound(compound === c ? undefined : c)}
+                />
+              ))}
+            </div>
+          ) : null}
+          <TyreChartSwitcher rows={rows} compound={compound} />
+        </>
+      ) : (
+        <PodiumQuickPick podium={podium} onPick={onPick} />
+      )}
     </div>
   )
 }

@@ -46,6 +46,28 @@ function frameCompounds(rows: RaceRecord[]): string[] {
   return order.filter((c) => [...seen].some((s) => compoundVariant(s) === c))
 }
 
+/** Top 3 drivers by FINAL-lap position — the one-click starting selection for
+ *  the line charts (a driver's last logged lap holds their finishing order). */
+function podiumDrivers(rows: RaceRecord[], drivers: string[]): string[] {
+  const finalPosition = new Map<string, number>()
+  for (const driver of drivers) {
+    let bestLap = -1
+    let position: number | null = null
+    for (const row of rows) {
+      if (row.Driver !== driver || row.Position == null || row.LapNumber == null) continue
+      if (row.LapNumber > bestLap) {
+        bestLap = row.LapNumber
+        position = row.Position
+      }
+    }
+    if (position != null) finalPosition.set(driver, position)
+  }
+  return [...finalPosition.entries()]
+    .sort((a, b) => a[1] - b[1])
+    .slice(0, 3)
+    .map(([driver]) => driver)
+}
+
 export function RacePage() {
   const raw = routeApi.useSearch()
   const navigate = routeApi.useNavigate()
@@ -65,12 +87,23 @@ export function RacePage() {
   const isError = !upload && !!search.gp && raceQuery.isError
 
   const driverOptions = useMemo(() => uniqueDrivers(frame), [frame])
-  const selected = search.drivers
+  // Only keep selected drivers that actually exist in the loaded frame — a stale
+  // URL selection (or an uploaded frame with different drivers) otherwise filters
+  // everything away and shows a false "no laps" state.
+  const selected = useMemo(
+    () => search.drivers.filter((d) => driverOptions.includes(d)),
+    [search.drivers, driverOptions],
+  )
+  const hasSelection = selected.length > 0
+  const podium = useMemo(() => podiumDrivers(frame, driverOptions), [frame, driverOptions])
   // Tyres/Gaps see only the selected drivers (or the whole field if none picked).
   const filtered = useMemo(
-    () => (selected.length ? frame.filter((r) => selected.includes(r.Driver)) : frame),
-    [frame, selected],
+    () => (hasSelection ? frame.filter((r) => selected.includes(r.Driver)) : frame),
+    [frame, selected, hasSelection],
   )
+  // Identity of the loaded frame — remounts driver-selecting children (GapsPanel's
+  // highlight state) when the race changes, so a highlight can't outlive its data.
+  const frameKey = upload ? `upload:${upload.name}` : (search.gp ?? 'none')
   const loaded: RaceLoadedInfo | null = frame.length
     ? {
         rows: frame.length,
@@ -89,7 +122,7 @@ export function RacePage() {
         <EmptyState
           icon={<Flag className="size-6" />}
           title="Pick a Grand Prix to begin"
-          description="Load a 2025 race to explore its tyres, gaps and full dataset — or ask the regulations, which needs nothing loaded."
+          description="Load a 2025 race to explore its tyres, gaps and full dataset. Or ask the regulations, which needs nothing loaded."
         />
       )
     }
@@ -156,10 +189,23 @@ export function RacePage() {
                   rows={filtered}
                   compound={search.compound}
                   onCompound={(compound) => patch({ compound })}
+                  hasSelection={hasSelection}
+                  podium={podium}
+                  onPick={(drivers) => patch({ drivers })}
                 />,
               )}
             </TabsContent>
-            <TabsContent value="gaps">{dataBody(<GapsPanel rows={filtered} />)}</TabsContent>
+            <TabsContent value="gaps">
+              {dataBody(
+                <GapsPanel
+                  key={frameKey}
+                  rows={filtered}
+                  hasSelection={hasSelection}
+                  podium={podium}
+                  onPick={(drivers) => patch({ drivers })}
+                />,
+              )}
+            </TabsContent>
             <TabsContent value="dataset">
               {dataBody(<DatasetPanel rows={frame} selectedDrivers={selected} />)}
             </TabsContent>
@@ -170,7 +216,8 @@ export function RacePage() {
                   drivers={selected}
                   rdriver={search.rdriver}
                   rlap={search.rlap}
-                  onSelect={(rdriver, rlap) => patch({ rdriver, rlap })}
+                  rmsg={search.rmsg}
+                  onSelect={(rdriver, rlap, rmsg) => patch({ rdriver, rlap, rmsg })}
                 />
               ) : (
                 <EmptyState title="Pick a Grand Prix" description="Radio needs a race selected." />

@@ -82,7 +82,13 @@ export function RegulationsPanel({ initialQuestion }: { initialQuestion?: string
               </button>
             ))}
           </div>
-          <div className="flex justify-end">
+          <div className="flex items-center justify-end gap-2">
+            <span className="flex items-center gap-1 text-[11px] text-fg-4">
+              <kbd className="rounded border border-hairline bg-bg-4 px-1 py-0.5 font-mono">Cmd/Ctrl</kbd>
+              <span>+</span>
+              <kbd className="rounded border border-hairline bg-bg-4 px-1 py-0.5 font-mono">Enter</kbd>
+              to ask
+            </span>
             <Button size="sm" onClick={() => ask(question)} disabled={!question.trim() || rag.isPending}>
               <Send className="size-3.5" aria-hidden="true" />
               {rag.isPending ? 'Asking…' : 'Ask'}
@@ -99,7 +105,7 @@ export function RegulationsPanel({ initialQuestion }: { initialQuestion?: string
         ) : (
           <Card elevation="resting" className="flex items-center gap-3 p-6 text-sm text-fg-3">
             <Scale className="size-5 text-fg-4" aria-hidden="true" />
-            Ask a question or tap a suggestion — no race data needed.
+            Ask a question or tap a suggestion. No race data needed.
           </Card>
         )}
       </div>
