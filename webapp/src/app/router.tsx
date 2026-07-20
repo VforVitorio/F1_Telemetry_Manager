@@ -9,6 +9,7 @@ import { Shell } from './Shell'
 import { validateDashboardSearch } from '@/features/dashboard/search'
 import { validateStrategySearch } from '@/features/strategy/search'
 import { validateComparisonSearch } from '@/features/comparison/search'
+import { validateRaceSearch } from '@/features/race/search'
 
 // Each feature page is a LAZY route component so the first paint of a light tab
 // (Home) doesn't download every other tab's code — the chart-heavy pages
@@ -29,6 +30,7 @@ const ComparisonPage = lazyRouteComponent(
   () => import('@/features/comparison/ComparisonPage'),
   'ComparisonPage',
 )
+const RacePage = lazyRouteComponent(() => import('@/features/race/RacePage'), 'RacePage')
 const ThemePreview = lazyRouteComponent(() => import('@/features/dev/ThemePreview'), 'ThemePreview')
 
 // Route tree wiring (#33). Root renders the app shell (acrylic rail + routed
@@ -85,10 +87,15 @@ const devThemeRoute = createRoute({
   component: ThemePreview,
 })
 
+// Race Analysis (#37) — the post-race debrief room (tyres / gaps / dataset /
+// radio / regulations over the 2025 featured parquet). Its own search shape (gp,
+// drivers cap-3, tab, compound, radio selection, q); no session (always 2025),
+// no explicit load gate.
 const raceRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/race',
-  component: () => <ComingSoon title="Race" />,
+  validateSearch: validateRaceSearch,
+  component: RacePage,
 })
 
 const labRoute = createRoute({
