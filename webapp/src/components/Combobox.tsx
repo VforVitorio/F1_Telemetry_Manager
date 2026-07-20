@@ -155,11 +155,26 @@ export interface ComboboxProps {
   className?: string
   /** Accessible name for the trigger when the visible label lives elsewhere. */
   ariaLabel?: string
+  /** Optional trailing marker rendered on the right of an option row (e.g. a
+   *  small "radio available" badge on circuits that have team radio). Returns
+   *  null for options that carry no marker. Shows only in the dropdown, not on
+   *  the collapsed trigger, so the selected value stays clean. */
+  getOptionHint?: (value: string) => ReactNode
 }
 
 /** Single-select typeahead combobox (e.g. "pick a circuit"). */
 export const Combobox = forwardRef<HTMLButtonElement, ComboboxProps>(function Combobox(
-  { options, value, onChange, placeholder = 'Select...', disabled, loading, className, ariaLabel },
+  {
+    options,
+    value,
+    onChange,
+    placeholder = 'Select...',
+    disabled,
+    loading,
+    className,
+    ariaLabel,
+    getOptionHint,
+  },
   ref,
 ) {
   const [open, setOpen] = useState(false)
@@ -207,7 +222,10 @@ export const Combobox = forwardRef<HTMLButtonElement, ComboboxProps>(function Co
             className={cn(ITEM_CLASSNAME, 'cursor-pointer')}
           >
             <span className="truncate">{option.label}</span>
-            {option.value === value && <CheckIcon className="size-4 shrink-0 text-purple-400" />}
+            <span className="flex shrink-0 items-center gap-2">
+              {getOptionHint?.(option.value)}
+              {option.value === value && <CheckIcon className="size-4 shrink-0 text-purple-400" />}
+            </span>
           </Command.Item>
         ))}
       </ComboboxPanel>

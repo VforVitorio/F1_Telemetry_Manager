@@ -175,7 +175,7 @@ function CorrectionsFootnote({
       {corrections.map((c, i) => (
         <p key={i}>
           <span className="font-medium text-fg-2">{c.driver}</span>: {c.original_intent} &rarr;{' '}
-          {c.suggested_intent} &mdash; {c.reason}
+          {c.suggested_intent} · {c.reason}
           {c.span ? <span className="italic"> ({c.span})</span> : null}
         </p>
       ))}
