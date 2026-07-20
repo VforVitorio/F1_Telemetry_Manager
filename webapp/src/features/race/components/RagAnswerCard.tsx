@@ -8,6 +8,7 @@
 import { FileText, Scale } from 'lucide-react'
 import { Card } from '@/components/Card'
 import { Markdown } from '@/components/Markdown'
+import { useTypewriter } from '@/lib/useTypewriter'
 import type { RagChunk, RagResult } from '@/lib/api/race'
 
 /** A regulation reference chip, e.g. "⚖ Art 55.1". */
@@ -62,15 +63,23 @@ export function SourcePassage({ chunk }: { chunk: RagChunk }) {
 }
 
 /** The answer card: the plain-English answer, its citation chips, and the
- *  expandable source passages backing it. */
-export function RagAnswerCard({ result }: { result: RagResult }) {
+ *  expandable source passages backing it. When `stream` is set (a freshly
+ *  asked question, not a restored history entry) the answer types itself out
+ *  and the citations/passages hold back until it finishes, so the card reads
+ *  as if the answer were being generated live. */
+export function RagAnswerCard({ result, stream = false }: { result: RagResult; stream?: boolean }) {
+  const answerText = result.answer || ''
+  const { revealed, done } = useTypewriter(answerText, stream)
+  const body = stream && !done ? `${revealed}▌` : answerText || '_No answer returned._'
+  const showBacking = !stream || done
+
   return (
     <Card elevation="resting" className="flex flex-col gap-4 p-4">
       <div className="prose-sm text-fg-1">
-        <Markdown>{result.answer || '_No answer returned._'}</Markdown>
+        <Markdown>{body}</Markdown>
       </div>
 
-      {result.articles.length > 0 ? (
+      {showBacking && result.articles.length > 0 ? (
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="text-xs font-medium tracking-wide text-fg-3 uppercase">Cites</span>
           {result.articles.map((article) => (
@@ -79,7 +88,7 @@ export function RagAnswerCard({ result }: { result: RagResult }) {
         </div>
       ) : null}
 
-      {result.chunks.length > 0 ? (
+      {showBacking && result.chunks.length > 0 ? (
         <div className="flex flex-col gap-1.5">
           <span className="text-xs font-medium tracking-wide text-fg-3 uppercase">
             Source passages

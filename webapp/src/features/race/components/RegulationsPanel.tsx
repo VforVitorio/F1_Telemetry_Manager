@@ -110,7 +110,7 @@ export function RegulationsPanel({ initialQuestion }: { initialQuestion?: string
             <SkeletonText lines={4} />
           </Card>
         ) : answer ? (
-          <RagAnswerCard result={answer} />
+          <RagAnswerCard result={answer} stream={viewing === null} />
         ) : null}
       </div>
 

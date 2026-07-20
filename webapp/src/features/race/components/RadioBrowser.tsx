@@ -102,7 +102,7 @@ export function RadioBrowser({
   const hasTranscribed = activeLaps.some((l) => l.has_transcript)
 
   return (
-    <div className="grid gap-4 md:min-h-64 md:grid-cols-[12rem_1fr]">
+    <div className="grid gap-4 md:min-h-64 md:grid-cols-[12rem_minmax(0,1fr)]">
       <div className="flex gap-2 overflow-x-auto pb-1 md:flex-col md:overflow-visible md:pb-0">
         {radioDrivers.map((d) => {
           const total = d.laps.length
@@ -188,7 +188,7 @@ export function RadioBrowser({
                   Lap {l.lap}
                   {!l.has_transcript ? <span className="text-fg-4">(audio only)</span> : null}
                 </span>
-                <span className="truncate">{l.text || 'No transcript preview.'}</span>
+                <span className="wrap-break-word">{l.text || 'No transcript preview.'}</span>
               </button>
             )
           })

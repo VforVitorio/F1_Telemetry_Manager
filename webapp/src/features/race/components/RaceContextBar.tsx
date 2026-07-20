@@ -1,7 +1,7 @@
 // Context row for Race Analysis: the GP selector + a driver multiselect (cap
 // 3, options come from the loaded frame). No year/session (Race is always the
 // 2025 featured parquet), and no explicit load gate: picking a GP auto-fetches.
-// A dot on a GP option flags radio availability.
+// A small "radio" badge on a GP option flags team-radio availability.
 //
 // This is the only part meant to stay pinned under the page header. The
 // loaded-frame summary and the local-data drop zone live in the separate
@@ -9,7 +9,7 @@
 // a chart never pins a quarter of the viewport as chrome.
 
 import { useState } from 'react'
-import { ChevronRight, CircleDot, Database, X } from 'lucide-react'
+import { ChevronRight, CircleDot, Database, Mic, X } from 'lucide-react'
 import { Combobox, MultiCombobox, type ComboboxOption } from '@/components/Combobox'
 import { FileDrop } from '@/components/FileDrop'
 import { Pill } from '@/components/Pill'
@@ -45,7 +45,7 @@ export function RaceContextBar({ value, onChange, driverOptions, loading }: Race
 
   const gpOptions: ComboboxOption[] = (gpsQuery.data ?? []).map((gp) => ({
     value: gp,
-    label: radioGps.has(gp) ? `${gp}  ●` : gp,
+    label: gp,
   }))
   const driverComboOptions: ComboboxOption[] = driverOptions.map((code) => ({
     value: code,
@@ -70,6 +70,14 @@ export function RaceContextBar({ value, onChange, driverOptions, loading }: Race
           onChange={(gp) => onChange({ gp })}
           placeholder="Select a Grand Prix"
           loading={gpsQuery.isLoading}
+          getOptionHint={(gp) =>
+            radioGps.has(gp) ? (
+              <span className="flex items-center gap-1 text-xs text-fg-3">
+                <Mic className="size-3" aria-hidden="true" />
+                radio
+              </span>
+            ) : null
+          }
         />
       </div>
 
