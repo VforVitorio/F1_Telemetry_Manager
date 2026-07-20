@@ -1,8 +1,26 @@
 import { useRef } from 'react'
-import { type ColumnDef, flexRender, getCoreRowModel, useReactTable } from '@tanstack/react-table'
+import {
+  type ColumnDef,
+  type RowData,
+  flexRender,
+  getCoreRowModel,
+  useReactTable,
+} from '@tanstack/react-table'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { cn } from '@/lib/cn'
 import { Button } from '@/components/Button'
+
+// Lets callers opt a column into right-alignment (numeric columns whose
+// header should sit directly above its right-aligned values) via
+// `columnDef.meta.align`. Unset columns default to left, so every existing
+// table keeps its current look untouched. The `TData extends RowData`
+// constraint must mirror tanstack's own declaration exactly, or TypeScript
+// rejects the merge with "all declarations must have identical type parameters".
+declare module '@tanstack/react-table' {
+  interface ColumnMeta<TData extends RowData, TValue> {
+    align?: 'left' | 'right'
+  }
+}
 
 // Virtualized data table (react-table + react-virtual). Replaces st.dataframe:
 // the header stays pinned while the body scrolls in its own fixed-height
@@ -127,17 +145,23 @@ export function DataTable<T>({
           <thead className="sticky top-0 bg-bg-2">
             {table.getHeaderGroups().map((headerGroup) => (
               <tr key={headerGroup.id}>
-                {headerGroup.headers.map((header) => (
-                  <th
-                    key={header.id}
-                    style={{ width: header.getSize() }}
-                    className="border-b border-hairline px-3 py-2 text-left font-display text-xs font-semibold uppercase tracking-wide text-fg-3"
-                  >
-                    {header.isPlaceholder
-                      ? null
-                      : flexRender(header.column.columnDef.header, header.getContext())}
-                  </th>
-                ))}
+                {headerGroup.headers.map((header) => {
+                  const align = header.column.columnDef.meta?.align ?? 'left'
+                  return (
+                    <th
+                      key={header.id}
+                      style={{ width: header.getSize() }}
+                      className={cn(
+                        'border-b border-hairline px-3 py-2 font-display text-xs font-semibold uppercase tracking-wide text-fg-3',
+                        align === 'right' ? 'text-right' : 'text-left',
+                      )}
+                    >
+                      {header.isPlaceholder
+                        ? null
+                        : flexRender(header.column.columnDef.header, header.getContext())}
+                    </th>
+                  )
+                })}
               </tr>
             ))}
           </thead>
@@ -151,18 +175,22 @@ export function DataTable<T>({
               const row = rows[virtualRow.index]
               return (
                 <tr key={row.id} className="border-b border-hairline last:border-b-0">
-                  {row.getVisibleCells().map((cell) => (
-                    <td
-                      key={cell.id}
-                      style={{ width: cell.column.getSize() }}
-                      className={cn(
-                        'px-3 py-2 text-fg-2',
-                        typeof cell.getValue() === 'number' && 'font-mono tabular-nums',
-                      )}
-                    >
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                    </td>
-                  ))}
+                  {row.getVisibleCells().map((cell) => {
+                    const align = cell.column.columnDef.meta?.align ?? 'left'
+                    return (
+                      <td
+                        key={cell.id}
+                        style={{ width: cell.column.getSize() }}
+                        className={cn(
+                          'px-3 py-2 text-fg-2',
+                          align === 'right' ? 'text-right' : 'text-left',
+                          typeof cell.getValue() === 'number' && 'font-mono tabular-nums',
+                        )}
+                      >
+                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      </td>
+                    )
+                  })}
                 </tr>
               )
             })}
