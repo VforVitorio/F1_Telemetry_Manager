@@ -19,7 +19,11 @@ const EXAMPLE_PROMPTS: ExamplePrompt[] = [
     label: 'FIA regulation',
     prompt: 'What do articles 55 and 57 say about safety car procedures?',
   },
-  { Icon: Route, label: 'Full strategy', prompt: 'Full strategy for NOR lap 40 Australia risk 0.7' },
+  {
+    Icon: Route,
+    label: 'Full strategy',
+    prompt: 'Full strategy for NOR lap 40 Australia risk 0.7',
+  },
 ]
 
 export interface ExamplePromptsProps {
@@ -37,8 +41,8 @@ export function ExamplePrompts({ onSelect }: ExamplePromptsProps) {
       <p className="max-w-sm text-sm text-fg-3">
         Mention a <span className="font-medium text-fg-2">driver</span>,{' '}
         <span className="font-medium text-fg-2">GP</span>, and{' '}
-        <span className="font-medium text-fg-2">lap</span> to trigger an analysis, or try an
-        example below.
+        <span className="font-medium text-fg-2">lap</span> to trigger an analysis, or try an example
+        below.
       </p>
       <div className="grid w-full max-w-lg grid-cols-1 gap-2 sm:grid-cols-2">
         {EXAMPLE_PROMPTS.map(({ Icon, label, prompt }) => (

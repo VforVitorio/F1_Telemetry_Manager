@@ -99,13 +99,7 @@ function numOrUndef(raw: unknown): number | undefined {
   return typeof raw === 'number' && !Number.isNaN(raw) ? raw : undefined
 }
 
-const DISPLAY_TYPES: readonly DisplayType[] = [
-  'metrics',
-  'strategy_card',
-  'table',
-  'chart',
-  'text',
-]
+const DISPLAY_TYPES: readonly DisplayType[] = ['metrics', 'strategy_card', 'table', 'chart', 'text']
 
 function toToolResult(raw: unknown): ToolResult | null {
   const d = asRecord(raw)

@@ -110,7 +110,10 @@ describe('applyStreamEvent', () => {
   })
 
   it('re-keys an unknown stage to a sentence-cased fallback instead of raw snake_case', () => {
-    const turn = applyStreamEvent(createActiveTurn(), { event: 'stage', stage: 'calling_a_future_tool' })
+    const turn = applyStreamEvent(createActiveTurn(), {
+      event: 'stage',
+      stage: 'calling_a_future_tool',
+    })
     expect(turn.stageLabel).toBe('A future tool…')
   })
 })

@@ -21,7 +21,14 @@ export interface ComposerProps {
  * than disabling the whole composer, since the user can keep typing the next
  * message while the current reply finishes.
  */
-export function Composer({ value, onChange, onSend, isStreaming, onStop, disabled }: ComposerProps) {
+export function Composer({
+  value,
+  onChange,
+  onSend,
+  isStreaming,
+  onStop,
+  disabled,
+}: ComposerProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   function autosize() {

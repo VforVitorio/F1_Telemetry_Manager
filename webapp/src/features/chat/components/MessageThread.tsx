@@ -92,7 +92,10 @@ function MessageBubble({ message }: { message: ChatMessage }) {
 
   return (
     <div
-      className={cn('flex flex-col gap-1 [content-visibility:auto]', isUser ? 'items-end' : 'items-start')}
+      className={cn(
+        'flex flex-col gap-1 [content-visibility:auto]',
+        isUser ? 'items-end' : 'items-start',
+      )}
     >
       <div
         className={cn(

@@ -1,5 +1,10 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { sendChatTurn, buildWireHistory, type ChatStreamEvent, type HistorySourceMessage } from './chat'
+import {
+  sendChatTurn,
+  buildWireHistory,
+  type ChatStreamEvent,
+  type HistorySourceMessage,
+} from './chat'
 
 // Captured-SSE fixtures: real wire text (not pre-parsed JS objects), so this
 // also exercises `parseChatFrame` (module-private) end to end through
@@ -60,7 +65,9 @@ describe('sendChatTurn', () => {
     const events: ChatStreamEvent[] = []
     await sendChatTurn({ text: 'hi' }, { onEvent: (e) => events.push(e) })
 
-    expect(events).toEqual([{ event: 'done', llmModel: undefined, tokensUsed: undefined, error: undefined }])
+    expect(events).toEqual([
+      { event: 'done', llmModel: undefined, tokensUsed: undefined, error: undefined },
+    ])
   })
 
   it('always asks the backend for real token streaming by default', async () => {

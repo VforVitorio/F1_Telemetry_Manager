@@ -99,7 +99,12 @@ export function applyStreamEvent(turn: ActiveTurn, event: ChatStreamEvent): Acti
       const assistantMessage = turn.assistantMessage
         ? { ...turn.assistantMessage, model: event.llmModel, tokens: event.tokensUsed }
         : turn.assistantMessage
-      return { ...turn, status: event.error ? 'error' : 'done', error: event.error, assistantMessage }
+      return {
+        ...turn,
+        status: event.error ? 'error' : 'done',
+        error: event.error,
+        assistantMessage,
+      }
     }
   }
 }
@@ -115,13 +120,20 @@ const EMPTY_STREAM_NOTICE =
  *  token had landed yet. */
 export function markStopped(turn: ActiveTurn): ActiveTurn {
   const base = turn.assistantMessage ?? newAssistantMessage()
-  return { ...turn, status: 'done', assistantMessage: { ...base, content: base.content + STOPPED_MARKER } }
+  return {
+    ...turn,
+    status: 'done',
+    assistantMessage: { ...base, content: base.content + STOPPED_MARKER },
+  }
 }
 
 /** True once a turn produced NEITHER a tool result NOR any assistant text — a
  *  200 OK with a silently empty SSE stream (parity: `chat.py:358-363`). */
 export function isEmptyTurn(turn: ActiveTurn): boolean {
-  return !turn.toolResultMessage && (!turn.assistantMessage || turn.assistantMessage.content.trim() === '')
+  return (
+    !turn.toolResultMessage &&
+    (!turn.assistantMessage || turn.assistantMessage.content.trim() === '')
+  )
 }
 
 // ── The hook ─────────────────────────────────────────────────────────────

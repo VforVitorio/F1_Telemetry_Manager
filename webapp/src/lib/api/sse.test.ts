@@ -57,14 +57,20 @@ describe('postStream', () => {
   it('rejects with a typed SseError carrying the real status code', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn().mockResolvedValue(new Response('too many requests', { status: 429, statusText: 'Too Many Requests' })),
+      vi
+        .fn()
+        .mockResolvedValue(
+          new Response('too many requests', { status: 429, statusText: 'Too Many Requests' }),
+        ),
     )
 
     await expect(postStream('/api/v1/x', {}, { onEvent: () => {} })).rejects.toMatchObject({
       name: 'SseError',
       status: 429,
     })
-    await expect(postStream('/api/v1/x', {}, { onEvent: () => {} })).rejects.toBeInstanceOf(SseError)
+    await expect(postStream('/api/v1/x', {}, { onEvent: () => {} })).rejects.toBeInstanceOf(
+      SseError,
+    )
   })
 
   it('swallows an aborted stream (Stop button) without erroring', async () => {
