@@ -2,14 +2,26 @@
 // (cap 3, options come from the loaded frame) + a "what's loaded" strip. No
 // year/session (Race is always the 2025 featured parquet) and no explicit load
 // gate — picking a GP auto-fetches. A dot on a GP option flags radio availability.
+//
+// A collapsed "Local data" disclosure at the bottom lets an offline CSV/parquet
+// stand in for the backend fetch entirely (see RacePage: an active upload takes
+// precedence over `search.gp`'s query). It's a plain native <details> so it
+// costs nothing when collapsed and never competes visually with the GP/driver
+// controls above it.
 
-import { CircleDot } from 'lucide-react'
+import { useState } from 'react'
+import { ChevronRight, CircleDot, Database, X } from 'lucide-react'
 import { Combobox, MultiCombobox, type ComboboxOption } from '@/components/Combobox'
 import { CompoundPill } from '@/components/CompoundPill'
+import { FileDrop } from '@/components/FileDrop'
+import { Pill } from '@/components/Pill'
+import { useToast } from '@/components/Toast'
 import { getDriverColor } from '@/lib/drivers'
 import { cn } from '@/lib/cn'
-import { RACE_YEAR, type RaceSearch } from '../search'
+import { parseUploadedFile } from '../lib/uploadParse'
 import { useRaceGps, useRadioAvailableGps } from '../queries'
+import { RACE_YEAR, type RaceSearch } from '../search'
+import { useRaceStore } from '../store'
 
 /** Summary of the loaded frame for the strip. */
 export interface RaceLoadedInfo {
@@ -50,6 +62,36 @@ export function RaceContextBar({
     value: code,
     label: code,
   }))
+
+  const upload = useRaceStore((s) => s.upload)
+  const setUpload = useRaceStore((s) => s.setUpload)
+  const clearUpload = useRaceStore((s) => s.clearUpload)
+  const { toast } = useToast()
+  const [isParsing, setIsParsing] = useState(false)
+
+  /** Parse a dropped file client-side and stash it as the active upload. A
+   *  parse failure (malformed CSV, non-parquet binary, …) never touches the
+   *  store — the previous upload (if any) stays active. */
+  async function handleFile(file: File) {
+    setIsParsing(true)
+    try {
+      const rows = await parseUploadedFile(file)
+      setUpload({ name: file.name, rows })
+      toast({
+        title: 'Local dataset loaded',
+        description: `${file.name} · ${rows.length.toLocaleString()} rows`,
+        tone: 'success',
+      })
+    } catch (error) {
+      toast({
+        title: 'Could not parse file',
+        description: error instanceof Error ? error.message : 'Unknown parsing error.',
+        tone: 'danger',
+      })
+    } finally {
+      setIsParsing(false)
+    }
+  }
 
   return (
     <div className="flex flex-col gap-3">
@@ -96,6 +138,21 @@ export function RaceContextBar({
             radio available
           </span>
         ) : null}
+
+        {upload ? (
+          <Pill tone="purple" className="gap-1.5">
+            <Database className="size-3" aria-hidden="true" />
+            Local dataset
+            <button
+              type="button"
+              onClick={clearUpload}
+              aria-label="Clear local dataset"
+              className="rounded-full hover:text-fg-1"
+            >
+              <X className="size-3" aria-hidden="true" />
+            </button>
+          </Pill>
+        ) : null}
       </div>
 
       {loaded ? (
@@ -112,6 +169,29 @@ export function RaceContextBar({
           ) : null}
         </div>
       ) : null}
+
+      <details className="group rounded-lg border border-hairline open:bg-bg-4/60">
+        <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-sm font-medium text-fg-2 [&::-webkit-details-marker]:hidden">
+          <ChevronRight
+            aria-hidden="true"
+            className="size-4 shrink-0 text-fg-3 transition-transform duration-200 group-open:rotate-90"
+          />
+          Local data
+        </summary>
+        <div className="flex flex-col gap-2 border-t border-hairline px-3 py-3">
+          <FileDrop
+            accept=".csv,.parquet"
+            onFile={(file) => void handleFile(file)}
+            label={isParsing ? 'Parsing…' : 'Drop a CSV or parquet file, or click to browse'}
+            disabled={isParsing}
+          />
+          {upload ? (
+            <p className="font-mono text-xs text-fg-3">
+              {upload.name} · {upload.rows.length.toLocaleString()} rows
+            </p>
+          ) : null}
+        </div>
+      </details>
     </div>
   )
 }
