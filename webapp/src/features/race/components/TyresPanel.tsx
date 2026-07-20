@@ -9,6 +9,7 @@ import { CompoundPill } from '@/components/CompoundPill'
 import { cn } from '@/lib/cn'
 import type { RaceRecord } from '@/lib/api/race'
 import { compoundVariant, type CompoundVariant } from '@/lib/compounds'
+import { useRaceStore } from '../store'
 import { StintGantt } from './StintGantt'
 import { TyreChartSwitcher } from './TyreChartSwitcher'
 import { PodiumQuickPick } from './PodiumQuickPick'
@@ -74,6 +75,13 @@ export function TyresPanel({
   podium,
   onPick,
 }: TyresPanelProps) {
+  // Read directly from the tab's own store rather than a new prop from
+  // RacePage: both the compound-filter gating below and the gantt's
+  // dash-preview toggle need to know which tyre view is active, and
+  // TyreChartSwitcher already reads this same store for its own state.
+  const tyreChart = useRaceStore((s) => s.tyreChart)
+  const tyreShowAll = useRaceStore((s) => s.tyreShowAll)
+
   if (rows.length === 0) {
     return (
       <EmptyState
@@ -84,33 +92,40 @@ export function TyresPanel({
   }
 
   const compounds = compoundsInFrame(rows)
+  // The compound filter only feeds the Speed view (buildSpeedOption is the
+  // only builder that reads it), so showing it above every other view made
+  // it look like a control that silently does nothing on four out of five tabs.
+  const showCompoundFilter = (tyreChart === 'speed' || tyreShowAll) && compounds.length > 0
+
+  if (!hasSelection) {
+    // Quick-pick leads here instead of trailing a 600px gantt off-viewport;
+    // the gantt still follows so the full field's stint plan stays visible.
+    return (
+      <div className="flex flex-col gap-6">
+        <PodiumQuickPick podium={podium} onPick={onPick} />
+        <StintGantt rows={rows} />
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-col gap-6">
-      <StintGantt rows={rows} />
+      <StintGantt rows={rows} hideCompoundDash={tyreChart === 'speed'} />
 
-      {hasSelection ? (
-        <>
-          {compounds.length > 0 ? (
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-xs font-medium uppercase tracking-widest text-fg-3">
-                Compound
-              </span>
-              {compounds.map((c) => (
-                <CompoundFilterChip
-                  key={c}
-                  compound={c}
-                  active={compound === c}
-                  onClick={() => onCompound(compound === c ? undefined : c)}
-                />
-              ))}
-            </div>
-          ) : null}
-          <TyreChartSwitcher rows={rows} compound={compound} />
-        </>
-      ) : (
-        <PodiumQuickPick podium={podium} onPick={onPick} />
-      )}
+      {showCompoundFilter ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-medium uppercase tracking-widest text-fg-3">Compound</span>
+          {compounds.map((c) => (
+            <CompoundFilterChip
+              key={c}
+              compound={c}
+              active={compound === c}
+              onClick={() => onCompound(compound === c ? undefined : c)}
+            />
+          ))}
+        </div>
+      ) : null}
+      <TyreChartSwitcher rows={rows} compound={compound} />
     </div>
   )
 }

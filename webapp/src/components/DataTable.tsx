@@ -93,6 +93,12 @@ export interface DataTableProps<T> {
   height?: number
   /** Filename used by the CSV export button. Defaults to 'export.csv'. */
   csvFilename?: string
+  /** When true, the table hugs the sum of its column widths instead of
+   *  stretching to fill its container. Use it for narrow tables (a handful of
+   *  columns) so values stay packed together rather than scattered across the
+   *  viewport with wide empty gaps. Defaults to false, so existing full-width
+   *  tables keep their current layout. */
+  fitContent?: boolean
 }
 
 /** Virtualized data table with a sticky header and a CSV export button.
@@ -103,6 +109,7 @@ export function DataTable<T>({
   data,
   height = DEFAULT_HEIGHT_PX,
   csvFilename = 'export.csv',
+  fitContent = false,
 }: DataTableProps<T>) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const table = useReactTable({ columns, data, getCoreRowModel: getCoreRowModel() })
@@ -138,10 +145,16 @@ export function DataTable<T>({
       </div>
       <div
         ref={scrollRef}
-        className="overflow-auto rounded-xl border border-hairline"
+        className={cn(
+          'overflow-auto rounded-xl border border-hairline',
+          fitContent && 'w-fit max-w-full',
+        )}
         style={{ height }}
       >
-        <table className="w-full table-fixed border-collapse text-sm">
+        <table
+          className={cn('table-fixed border-collapse text-sm', !fitContent && 'w-full')}
+          style={fitContent ? { width: table.getTotalSize() } : undefined}
+        >
           <thead className="sticky top-0 bg-bg-2">
             {table.getHeaderGroups().map((headerGroup) => (
               <tr key={headerGroup.id}>

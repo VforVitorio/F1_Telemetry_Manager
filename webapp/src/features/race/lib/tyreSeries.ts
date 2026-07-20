@@ -12,13 +12,20 @@
 // silently show a single driver instead of the whole field. Same fix as the
 // Dashboard telemetry charts (`ChannelChart.tsx`, `findDensestDistanceGrid`).
 
-import type { EChartsOption, LineSeriesOption } from 'echarts'
+import type {
+  DefaultLabelFormatterCallbackParams,
+  EChartsOption,
+  LineSeriesOption,
+  TooltipComponentFormatterCallbackParams,
+} from 'echarts'
 import { RACE_YEAR, type RaceRecord } from '@/lib/api/race'
-import { getDriverColor, resolvePilotColor } from '@/lib/drivers'
+import { getDriverColor, getDriverTextColor, resolvePilotColor } from '@/lib/drivers'
 import { compoundLabel, compoundVariant } from '@/lib/compounds'
 import { interp } from '@/lib/interp'
 import type { Theme } from '@/stores/ui'
 import type { TyreChartKey } from '../store'
+
+const MONO = "'JetBrains Mono Variable', ui-monospace, monospace"
 
 // ── Compound dash encoding (ported from race_viz.py COMPOUND_DASHES) ────────
 
@@ -152,17 +159,55 @@ function toSeriesData(
 
 // ── Shared chart scaffolding ─────────────────────────────────────────────────
 
-function baseTyreOption(yAxisName: string, valueSuffix: string): EChartsOption {
+/** The tyres tab's shared axis-tooltip formatter: a "Tyre life N laps" header
+ *  (the shared x-axis value rounded to a whole lap, replacing ECharts' default
+ *  two-decimal float) followed by one coloured row per hovered series. Kept
+ *  as its own copy of the header-plus-rows shape gapSeries.ts's tooltip
+ *  formatter uses, rather than importing it, so the two chart files stay
+ *  independent of each other. The header has no explicit colour, so it
+ *  inherits the tooltip's own theme text colour and just dims via opacity
+ *  instead of hardcoding a light/dark hex here. */
+function tyreAxisTooltipFormatter(textColorByName: Map<string, string>, valueSuffix: string) {
+  return (params: TooltipComponentFormatterCallbackParams): string => {
+    const items: DefaultLabelFormatterCallbackParams[] = Array.isArray(params) ? params : [params]
+    const rows = items
+      .filter((item) => item.seriesName && textColorByName.has(item.seriesName))
+      .map((item) => {
+        const raw = Array.isArray(item.value) ? item.value[1] : item.value
+        const display = typeof raw === 'number' ? `${raw.toFixed(2)}${valueSuffix}` : '-'
+        const color = textColorByName.get(item.seriesName ?? '') ?? '#f5f5f5'
+        return `<div style="display:flex;justify-content:space-between;gap:20px;">
+  <span style="color:${color}">${item.seriesName}</span>
+  <span style="font-family:${MONO}">${display}</span>
+</div>`
+      })
+      .join('')
+    const firstAxisValue = (items[0] as { axisValue?: number | string } | undefined)?.axisValue
+    const lap = typeof firstAxisValue === 'number' ? Math.round(firstAxisValue) : firstAxisValue
+    const header = `<div style="font-family:${MONO};margin-bottom:6px;opacity:0.7;">Tyre life ${lap ?? '-'} laps</div>`
+    return header + rows
+  }
+}
+
+/** Scaffolding shared by every degradation view. The ECharts legend stays off
+ *  (`show: false`): with six to twelve (driver, stint) entries it was the
+ *  single most cramped element on the chart, and driver identity is now
+ *  carried once, in HTML, by the chip row in the ChartCard header instead
+ *  (see TyreChartSwitcher.tsx), freeing the top of the grid back down from
+ *  44px to 16px. `textColorByName` feeds the per-series tooltip rows; each
+ *  builder assembles it as it creates its series, since that's where a
+ *  series' driver (and hence its colour) is known. */
+function baseTyreOption(valueSuffix: string, textColorByName: Map<string, string>): EChartsOption {
   return {
     tooltip: {
       trigger: 'axis',
-      valueFormatter: (value) =>
-        typeof value === 'number' ? `${value.toFixed(2)}${valueSuffix}` : '—',
+      extraCssText: 'border-radius:12px;padding:10px 12px',
+      formatter: tyreAxisTooltipFormatter(textColorByName, valueSuffix),
     },
-    legend: { type: 'scroll', top: 0, textStyle: { fontSize: 11 } },
-    grid: { top: 44, left: 8, right: 20, bottom: 8, containLabel: true },
+    legend: { show: false },
+    grid: { top: 16, left: 8, right: 20, bottom: 28, containLabel: true },
     xAxis: { type: 'value', name: 'Tyre life (laps)', nameLocation: 'middle', nameGap: 28 },
-    yAxis: { type: 'value', name: yAxisName, scale: true },
+    yAxis: { type: 'value', scale: true },
     // No `inside` dataZoom — it traps the page's mouse wheel (see
     // ChannelChart.tsx). Zoom stays available through the toolbox box-zoom
     // (drag a box), which never touches the wheel.
@@ -246,25 +291,20 @@ function buildSpeedOption(
   const groups = groupByDriverStint(filtered)
   const grid = tyreLifeGrid(groups)
   const series: LineSeriesOption[] = []
+  const textColorByName = new Map<string, string>()
   for (const group of groups) {
     const color = resolvePilotColor(getDriverColor(group.driver, RACE_YEAR), theme)
+    const textColor = getDriverTextColor(group.driver, RACE_YEAR)
     for (const sector of SECTOR_FIELDS) {
       const { xs, ys } = extractPoints(group.rows, (row) => row[sector.key])
       if (xs.length === 0) continue
       const values = resampleOnGrid(grid, xs, ys)
-      series.push(
-        lineSeries(
-          `${seriesName(group)} · ${sector.label}`,
-          color,
-          sector.dash,
-          2,
-          undefined,
-          toSeriesData(grid, values),
-        ),
-      )
+      const name = `${seriesName(group)} · ${sector.label}`
+      series.push(lineSeries(name, color, sector.dash, 2, undefined, toSeriesData(grid, values)))
+      textColorByName.set(name, textColor)
     }
   }
-  return { ...baseTyreOption('Speed (km/h)', ' km/h'), series }
+  return { ...baseTyreOption(' km/h', textColorByName), series }
 }
 
 // ── Builders 2-3-5: one metric, one line per (driver, stint) ────────────────
@@ -272,21 +312,22 @@ function buildSpeedOption(
 function buildMetricOption(
   rows: RaceRecord[],
   metric: (row: RaceRecord) => number | null,
-  yAxisName: string,
   valueSuffix: string,
   theme: Theme,
 ): EChartsOption {
   const groups = groupByDriverStint(rows)
   const grid = tyreLifeGrid(groups)
   const series: LineSeriesOption[] = []
+  const textColorByName = new Map<string, string>()
   for (const group of groups) {
     const { xs, ys } = extractPoints(group.rows, metric)
     if (xs.length === 0) continue
     const color = resolvePilotColor(getDriverColor(group.driver, RACE_YEAR), theme)
     const values = resampleOnGrid(grid, xs, ys)
+    const name = seriesName(group)
     series.push(
       lineSeries(
-        seriesName(group),
+        name,
         color,
         dashForCompound(group.compoundId, group.compound),
         2,
@@ -294,8 +335,9 @@ function buildMetricOption(
         toSeriesData(grid, values),
       ),
     )
+    textColorByName.set(name, getDriverTextColor(group.driver, RACE_YEAR))
   }
-  return { ...baseTyreOption(yAxisName, valueSuffix), series }
+  return { ...baseTyreOption(valueSuffix, textColorByName), series }
 }
 
 // ── Builder 4: regular vs fuel-adjusted degradation ──────────────────────────
@@ -307,44 +349,65 @@ function buildMetricOption(
  * trace is bold, mirroring race_viz.py's thin-dashed-vs-bold-solid pairing
  * (there the dash was free for this; here it already carries the compound,
  * so weight + opacity take over as the regular/adjusted signal instead).
+ *
+ * The regular trace's opacity and width are themed: at dark-mode's 0.5
+ * opacity the raw line washes out to near-invisible over a white light-mode
+ * card, so light mode gets a stronger 0.65 opacity and a touch more width to
+ * keep the raw-vs-adjusted contrast the whole view exists to show.
  */
 function buildRegVsAdjOption(rows: RaceRecord[], theme: Theme): EChartsOption {
   const groups = groupByDriverStint(rows)
   const grid = tyreLifeGrid(groups)
   const series: LineSeriesOption[] = []
+  const textColorByName = new Map<string, string>()
+  const regularOpacity = theme === 'light' ? 0.65 : 0.5
+  const regularWidth = theme === 'light' ? 1.75 : 1.5
   for (const group of groups) {
     const color = resolvePilotColor(getDriverColor(group.driver, RACE_YEAR), theme)
     const dash = dashForCompound(group.compoundId, group.compound)
     const name = seriesName(group)
+    const textColor = getDriverTextColor(group.driver, RACE_YEAR)
 
     const regular = extractPoints(group.rows, (row) => row.DegradationRate)
     if (regular.xs.length > 0) {
       const values = resampleOnGrid(grid, regular.xs, regular.ys)
+      const regularName = `${name} · regular`
       series.push(
-        lineSeries(`${name} · regular`, color, dash, 1.5, 0.5, toSeriesData(grid, values)),
+        lineSeries(
+          regularName,
+          color,
+          dash,
+          regularWidth,
+          regularOpacity,
+          toSeriesData(grid, values),
+        ),
       )
+      textColorByName.set(regularName, textColor)
     }
 
     const adjusted = extractPoints(group.rows, (row) => row.FuelAdjustedDegAbsolute)
     if (adjusted.xs.length > 0) {
       const values = resampleOnGrid(grid, adjusted.xs, adjusted.ys)
-      series.push(
-        lineSeries(`${name} · adjusted`, color, dash, 2.5, undefined, toSeriesData(grid, values)),
-      )
+      const adjustedName = `${name} · adjusted`
+      series.push(lineSeries(adjustedName, color, dash, 2.5, undefined, toSeriesData(grid, values)))
+      textColorByName.set(adjustedName, textColor)
     }
   }
-  return { ...baseTyreOption('Degradation (s/lap)', 's'), series }
+  return { ...baseTyreOption('s', textColorByName), series }
 }
 
 // ── Public entry point ───────────────────────────────────────────────────────
 
-/** Tab label + chart-card title for each of the five views. */
+/** Tab label + chart-card title for each of the five views. Titles carry the
+ *  unit that used to live in the (clipped) ECharts y-axis name: deleting
+ *  that name in `baseTyreOption` means the title is now the only place the
+ *  unit shows up, so it has to say it. */
 export const TYRE_CHART_META: Record<TyreChartKey, { label: string; title: string }> = {
-  speed: { label: 'Speed', title: 'Speed vs tyre age' },
-  fuelAdj: { label: 'Fuel-adj', title: 'Fuel-adjusted degradation' },
-  regVsAdj: { label: 'Reg vs adj', title: 'Regular vs fuel-adjusted degradation' },
-  rate: { label: 'Rate', title: 'Degradation rate' },
-  pct: { label: '%', title: 'Fuel-adjusted degradation %' },
+  speed: { label: 'Speed', title: 'Speed vs tyre age (km/h)' },
+  fuelAdj: { label: 'Fuel-adj', title: 'Fuel-adjusted degradation (s/lap)' },
+  regVsAdj: { label: 'Raw vs adj', title: 'Regular vs fuel-adjusted degradation (s/lap)' },
+  rate: { label: 'Rate', title: 'Degradation rate (s/lap)' },
+  pct: { label: 'Deg %', title: 'Fuel-adjusted degradation (%)' },
 }
 
 export interface TyreChartBuildOptions {
@@ -364,31 +427,13 @@ export function buildTyreChartOption(
     case 'speed':
       return buildSpeedOption(rows, opts.compound, opts.theme)
     case 'fuelAdj':
-      return buildMetricOption(
-        rows,
-        (row) => row.FuelAdjustedDegAbsolute,
-        'Fuel-adjusted degradation (s/lap)',
-        's',
-        opts.theme,
-      )
+      return buildMetricOption(rows, (row) => row.FuelAdjustedDegAbsolute, 's', opts.theme)
     case 'regVsAdj':
       return buildRegVsAdjOption(rows, opts.theme)
     case 'rate':
-      return buildMetricOption(
-        rows,
-        (row) => row.DegradationRate,
-        'Degradation rate (s/lap)',
-        's',
-        opts.theme,
-      )
+      return buildMetricOption(rows, (row) => row.DegradationRate, 's', opts.theme)
     case 'pct':
-      return buildMetricOption(
-        rows,
-        (row) => row.FuelAdjustedDegPercent,
-        'Fuel-adjusted degradation (%)',
-        '%',
-        opts.theme,
-      )
+      return buildMetricOption(rows, (row) => row.FuelAdjustedDegPercent, '%', opts.theme)
   }
 }
 

@@ -27,6 +27,7 @@ import type {
 import type { RaceRecord } from '@/lib/api/race'
 import { getDriverColor, getDriverTextColor } from '@/lib/drivers'
 import { interp } from '@/lib/interp'
+import type { Theme } from '@/stores/ui'
 
 // ── Domain thresholds ─────────────────────────────────────────────────────────
 // Mirror the private UNDERCUT_MAX/OVERCUT_MAX/CONSISTENCY_MIN constants in
@@ -36,14 +37,22 @@ import { interp } from '@/lib/interp'
 const UNDERCUT_MAX = 2.0
 const OVERCUT_MAX = 3.5
 const CONSISTENCY_THRESHOLD = 3
+/** Y-axis cap for the consistency bars: a single long streak (a driver who
+ *  held one window for 40-50 laps) otherwise flattens the 3-lap strategic
+ *  threshold into an unreadable sliver near the x-axis. Box-zoom via the
+ *  toolbox still reaches anything taller. */
+const CONSISTENCY_Y_MAX = 15
 const DEFAULT_Y_MAX = OVERCUT_MAX + 2
 /** Default y-axis ceiling: keeps the strategic band readable when a lapped car
  *  has a huge gap; the toolbox box-zoom reaches anything taller. */
 const Y_MAX_CEILING = 12
 
-const UNDERCUT_ZONE_COLOR = 'rgba(34,197,94,0.12)'
-const OVERCUT_ZONE_COLOR = 'rgba(234,179,8,0.10)'
-const NO_STRATEGY_ZONE_COLOR = 'rgba(239,68,68,0.08)'
+// Zone-band base colours as bare "r,g,b" triples (not full rgba strings), so
+// `zoneColor()` below can apply a different alpha per theme. A wash that
+// reads as a calm hint over a dark card turns into a solid pastel flag over a
+// white one, so light mode needs roughly half the opacity.
+const UNDERCUT_ZONE_RGB = '34,197,94'
+const OVERCUT_ZONE_RGB = '234,179,8'
 const UNDERCUT_LINE_COLOR = '#22c55e'
 const OVERCUT_LINE_COLOR = '#eab308'
 const DEFENSIVE_LINE_COLOR = '#ef4444'
@@ -225,7 +234,11 @@ function buildGrid(hasLegend: boolean): EChartsOption['grid'] {
     top: hasLegend ? 44 : 16,
     left: 8,
     right: 20,
-    bottom: 8,
+    // 28, not 8: `containLabel` reserves room for axis LABELS, never for the
+    // axis NAME. At 8 the centred "Lap" name renders half off the bottom
+    // edge under the tick row; 28 gives the name (nameGap: 28 in lapAxis())
+    // enough room to actually fit inside the card.
+    bottom: 28,
     containLabel: true,
   }
 }
@@ -257,18 +270,26 @@ function zoomToolbox(): EChartsOption['toolbox'] {
 /** One tooltip row per hovered series, in the series' own readable colour —
  *  built from an explicit name→colour map (rather than re-deriving a driver
  *  code from the series name, which carries an " ahead"/" behind" suffix here)
- *  so ghost series (zones/highlight/threshold, absent from the map) never show. */
+ *  so ghost series (zones/highlight/threshold, absent from the map) never show.
+ *  A header line names the hovered lap first (e.g. "Lap 19"), rounded since
+ *  the continuous value x-axis otherwise hands back a raw float like "19.4".
+ *  The header text carries no explicit colour so it inherits the tooltip's own
+ *  theme text colour (white on dark, ink on light) and is only dimmed with
+ *  opacity, keeping it legible in both themes without a hardcoded hex. */
 function buildAxisTooltipFormatter(
   textColorByName: Map<string, string>,
   formatValue: (raw: number) => string,
 ) {
   return (params: TooltipComponentFormatterCallbackParams): string => {
     const items: DefaultLabelFormatterCallbackParams[] = Array.isArray(params) ? params : [params]
-    return items
+    const rawLap = (items[0] as { axisValue?: number | string } | undefined)?.axisValue
+    const lap = typeof rawLap === 'number' ? Math.round(rawLap) : rawLap
+    const header = `<div style="font-family:${MONO};margin-bottom:6px;opacity:0.6">Lap ${lap ?? '-'}</div>`
+    const rows = items
       .filter((item) => item.seriesName && textColorByName.has(item.seriesName))
       .map((item) => {
         const raw = Array.isArray(item.value) ? item.value[1] : item.value
-        const display = typeof raw === 'number' ? formatValue(raw) : '—'
+        const display = typeof raw === 'number' ? formatValue(raw) : '-'
         const color = textColorByName.get(item.seriesName ?? '') ?? '#f5f5f5'
         return `<div style="display:flex;justify-content:space-between;gap:20px;">
   <span style="color:${color}">${item.seriesName}</span>
@@ -276,6 +297,7 @@ function buildAxisTooltipFormatter(
 </div>`
       })
       .join('')
+    return header + rows
   }
 }
 
@@ -285,15 +307,28 @@ type MarkAreaEntry = NonNullable<MarkAreaComponentOption['data']>[number]
 type MarkLineEntry = NonNullable<MarkLineComponentOption['data']>[number]
 type MarkPointEntry = NonNullable<MarkPointComponentOption['data']>[number]
 
-/** Ghost series (no visible line of its own) hosting the three zone
- *  `markArea` bands — undercut/overcut/no-strategy, bottom to top — and the
- *  two boundary `markLine`s. A low `z` keeps it painting under every driver's
- *  real line, mirroring RaceTrace.tsx's `buildStintBandsSeries`. */
-function buildZonesSeries(yMax: number): LineSeriesOption {
+/** Zone-band alpha for one theme: dark reads calmly at a slightly richer
+ *  alpha; light needs roughly half that or the same value renders as a solid
+ *  pastel flag over a white card and swallows the drivers' own line colours. */
+function zoneColor(rgb: string, theme: Theme, darkAlpha: number, lightAlpha: number): string {
+  const alpha = theme === 'light' ? lightAlpha : darkAlpha
+  return `rgba(${rgb},${alpha})`
+}
+
+/** Ghost series (no visible line of its own) hosting the two zone
+ *  `markArea` bands, undercut then overcut, and their boundary `markLine`s.
+ *  There is deliberately no third "no strategy" band above the overcut
+ *  threshold: the absence of shading already says "no defined zone" here,
+ *  and a red wash covering the rest of the plot fought the drivers' own
+ *  lines for attention without adding information. A low `z` keeps this
+ *  series painting under every driver's real line, mirroring
+ *  RaceTrace.tsx's `buildStintBandsSeries`. */
+function buildZonesSeries(theme: Theme): LineSeriesOption {
+  const undercutColor = zoneColor(UNDERCUT_ZONE_RGB, theme, 0.1, 0.05)
+  const overcutColor = zoneColor(OVERCUT_ZONE_RGB, theme, 0.08, 0.04)
   const areaData: MarkAreaEntry[] = [
-    [{ yAxis: 0, itemStyle: { color: UNDERCUT_ZONE_COLOR } }, { yAxis: UNDERCUT_MAX }],
-    [{ yAxis: UNDERCUT_MAX, itemStyle: { color: OVERCUT_ZONE_COLOR } }, { yAxis: OVERCUT_MAX }],
-    [{ yAxis: OVERCUT_MAX, itemStyle: { color: NO_STRATEGY_ZONE_COLOR } }, { yAxis: yMax }],
+    [{ yAxis: 0, itemStyle: { color: undercutColor } }, { yAxis: UNDERCUT_MAX }],
+    [{ yAxis: UNDERCUT_MAX, itemStyle: { color: overcutColor } }, { yAxis: OVERCUT_MAX }],
   ]
   const lineData: MarkLineEntry[] = [
     {
@@ -382,14 +417,17 @@ function buildHighlightSeries(
 
 /**
  * Gap-to-car-ahead (solid) and gap-to-car-behind (dashed) per loaded driver,
- * team-coloured, over undercut/overcut/no-strategy zone shading — the merge of
+ * team-coloured, over undercut/overcut zone shading — the merge of
  * `st_plot_gap_evolution` and `st_plot_undercut_opportunities` into one chart.
  * `highlight` (from a clicked StrategicWindowCards tile) adds coloured pins at
- * that driver's qualifying laps.
+ * that driver's qualifying laps. `theme` only feeds the zone-band alpha (see
+ * `zoneColor`); the y-axis unit ("Gap (s)") lives in the ChartCard title
+ * instead of an in-chart axis name, which `containLabel` clips at this grid.
  */
 export function buildGapEvolutionOption(
   rows: RaceRecord[],
   year: number | undefined,
+  theme: Theme,
   highlight?: GapHighlight,
 ): EChartsOption {
   const byDriver = groupRowsByDriver(rows)
@@ -441,7 +479,7 @@ export function buildGapEvolutionOption(
     }
   }
 
-  series.push(buildZonesSeries(yMax))
+  series.push(buildZonesSeries(theme))
   const highlightSeries = buildHighlightSeries(byDriver, highlight)
   if (highlightSeries) series.push(highlightSeries)
 
@@ -458,7 +496,11 @@ export function buildGapEvolutionOption(
     legend: buildLegend(legendEntries),
     grid: buildGrid(hasLegend),
     xAxis: lapAxis(),
-    yAxis: { type: 'value', name: 'Gap (s)', min: 0, max: yMax },
+    // No `name` here: `containLabel` never reserves room for an axis NAME
+    // (only its labels), so a horizontal y-axis name renders half off-canvas
+    // at this grid width. The unit lives in the ChartCard title instead
+    // ("Gap evolution (s)"), matching the tyre charts' fix for the same bug.
+    yAxis: { type: 'value', min: 0, max: yMax },
     toolbox: zoomToolbox(),
     series,
   }
@@ -551,7 +593,11 @@ export function buildGapConsistencyOption(
     legend: buildLegend(legendEntries),
     grid: buildGrid(hasLegend),
     xAxis: lapAxis(),
-    yAxis: { type: 'value', name: 'Consecutive laps', min: 0 },
+    // No `name` (same axis-name clipping fix as gap evolution above; the unit
+    // lives in the ChartCard title as "Gap consistency (laps)"). `max` caps
+    // the cap-worthy streak so the 3-lap threshold stays legible instead of
+    // hugging the x-axis (see `CONSISTENCY_Y_MAX`).
+    yAxis: { type: 'value', min: 0, max: CONSISTENCY_Y_MAX },
     toolbox: zoomToolbox(),
     series,
   }

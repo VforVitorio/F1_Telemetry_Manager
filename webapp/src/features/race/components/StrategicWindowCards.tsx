@@ -7,6 +7,7 @@
 // this component and GapCharts can read/set it.
 
 import type { KeyboardEvent } from 'react'
+import { Crosshair } from 'lucide-react'
 import { Card } from '@/components/Card'
 import { StatCard } from '@/components/StatCard'
 import { Pill } from '@/components/Pill'
@@ -17,10 +18,15 @@ import { calculateStrategicWindows, type RaceStrategicWindow } from '../lib/race
 import { RACE_YEAR } from '../search'
 import type { GapHighlight, GapHighlightKind } from '../lib/gapSeries'
 
-const TONE_TEXT_CLASS: Record<GapHighlightKind, string> = {
-  undercut: 'text-success',
-  overcut: 'text-warning',
-  defensive: 'text-danger',
+// Kind identity now lives ONLY in this small dot (StatCard tile corner, or the
+// leaderboard's column header), and the count itself renders in the neutral
+// `text-fg-1`. Colouring the number by kind used to make magnitude and
+// semantics collide: "0 undercut" glowed green (reads "good"), "18
+// defensive" glowed red (reads "alarm"), when both are just counts.
+const KIND_DOT_CLASS: Record<GapHighlightKind, string> = {
+  undercut: 'bg-success',
+  overcut: 'bg-warning',
+  defensive: 'bg-danger',
 }
 
 const CARD_LABEL: Record<GapHighlightKind, string> = {
@@ -94,7 +100,10 @@ export function StrategicWindowCards({ rows, highlight, onHighlight }: Strategic
 
   return (
     <div className="flex flex-col gap-3">
-      <h3 className="font-display text-sm font-medium text-fg-1">Strategic windows summary</h3>
+      <div className="flex flex-col gap-1">
+        <h3 className="font-display text-sm font-medium text-fg-1">Strategic windows summary</h3>
+        <p className="text-xs text-fg-4">Click a count to pin those laps on the chart.</p>
+      </div>
       {perDriver.length > MAX_FULL_CARD_DRIVERS ? (
         <StrategicWindowLeaderboard perDriver={perDriver} highlight={highlight} onToggle={toggle} />
       ) : (
@@ -141,25 +150,41 @@ function DriverWindowGroup({
             activate()
           }
           return (
-            <StatCard
-              key={kind}
-              eyebrow={CARD_LABEL[kind]}
-              value={<span className={TONE_TEXT_CLASS[kind]}>{laps.length}</span>}
-              hint={clickable ? undefined : 'None this race'}
-              role="button"
-              tabIndex={clickable ? 0 : -1}
-              aria-pressed={active}
-              aria-disabled={!clickable}
-              onClick={activate}
-              onKeyDown={onKeyDown}
-              className={cn(
-                'p-3 transition-colors',
-                clickable
-                  ? 'cursor-pointer hover:ring-1 hover:ring-purple-400/70'
-                  : 'cursor-not-allowed opacity-60',
-                active && 'ring-2 ring-purple-400',
-              )}
-            />
+            // The kind dot and the "clickable" crosshair sit in the two top
+            // corners of the tile, outside StatCard's own markup. Its
+            // `eyebrow` prop only accepts plain text, so a coloured dot can't
+            // live inline with the label without touching that shared
+            // component, which is out of scope here.
+            <div key={kind} className="relative">
+              <span
+                aria-hidden="true"
+                className={cn('absolute top-3 right-3 size-1.5 rounded-full', KIND_DOT_CLASS[kind])}
+              />
+              {clickable ? (
+                <Crosshair
+                  aria-hidden="true"
+                  className="absolute right-3 bottom-3 size-3 text-fg-4"
+                />
+              ) : null}
+              <StatCard
+                eyebrow={CARD_LABEL[kind]}
+                value={<span className="text-fg-1">{laps.length}</span>}
+                hint={clickable ? undefined : 'None this race'}
+                role="button"
+                tabIndex={clickable ? 0 : -1}
+                aria-pressed={active}
+                aria-disabled={!clickable}
+                onClick={activate}
+                onKeyDown={onKeyDown}
+                className={cn(
+                  'p-3 transition-colors',
+                  clickable
+                    ? 'cursor-pointer ring-1 ring-hairline hover:ring-purple-400/70'
+                    : 'cursor-not-allowed opacity-60',
+                  active && 'ring-2 ring-purple-400',
+                )}
+              />
+            </div>
           )
         })}
       </div>
@@ -185,7 +210,7 @@ function StrategicWindowLeaderboard({
   const sorted = [...perDriver].sort((a, b) => b.laps.undercut.length - a.laps.undercut.length)
 
   return (
-    <Card elevation="resting" className="overflow-x-auto">
+    <Card elevation="resting" className="max-w-3xl overflow-x-auto">
       <table className="w-full min-w-md border-collapse text-sm">
         <thead>
           <tr className="border-b border-hairline">
@@ -197,7 +222,13 @@ function StrategicWindowLeaderboard({
                 key={kind}
                 className="px-3 py-2 text-right text-xs font-medium tracking-wide text-fg-3 uppercase"
               >
-                {CARD_LABEL[kind]}
+                <span className="inline-flex items-center justify-end gap-1.5">
+                  <span
+                    aria-hidden="true"
+                    className={cn('size-1.5 rounded-full', KIND_DOT_CLASS[kind])}
+                  />
+                  {CARD_LABEL[kind]}
+                </span>
               </th>
             ))}
           </tr>
@@ -250,8 +281,7 @@ function LeaderboardRow({
               aria-pressed={active}
               onClick={() => onToggle(entry.driver, kind, laps)}
               className={cn(
-                'rounded-md px-2 py-1 font-mono text-sm tabular-nums transition-colors',
-                TONE_TEXT_CLASS[kind],
+                'rounded-md px-2 py-1 font-mono text-sm tabular-nums text-fg-1 transition-colors',
                 clickable
                   ? 'cursor-pointer hover:ring-1 hover:ring-purple-400/70'
                   : 'cursor-not-allowed opacity-40',

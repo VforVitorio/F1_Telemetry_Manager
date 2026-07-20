@@ -11,6 +11,8 @@ import { getDriverTextColor } from '@/lib/drivers'
 import { COMPOUND_ORDER, compoundVariant, type CompoundVariant } from '@/lib/compounds'
 import { tireColors } from '@/charts/echartsTheme'
 import type { RaceRecord } from '@/lib/api/race'
+import type { Theme } from '@/stores/ui'
+import { useUiStore } from '@/stores/ui'
 import { buildGanttModel, COMPOUND_DASH_PREVIEW, type GanttStint } from '../lib/tyreSeries'
 
 const ROW_HEIGHT = 10
@@ -30,6 +32,16 @@ function prefersReducedMotion(): boolean {
 function blockColor(compound: string): string {
   const variant = compoundVariant(compound)
   return variant ? tireColors[variant] : FALLBACK_BLOCK_COLOR
+}
+
+/** Theme-aware stroke for a stint rect. The default hairline token is a thin
+ *  dark tint (~6% opacity), which reads fine on the dark card but nearly
+ *  disappears around the near-white hard-compound fill on a light card, so
+ *  light mode gets a darker, more opaque outline instead so hard-compound
+ *  stints stay visible. `undefined` on dark keeps the existing hairline
+ *  class in charge there. */
+function rectStrokeColor(theme: Theme): string | undefined {
+  return theme === 'light' ? 'rgba(20,18,31,0.25)' : undefined
 }
 
 /** Orders the compounds present soft→wet using the catalogue's own shared
@@ -85,12 +97,14 @@ function DriverRow({
   maxLap,
   ticks,
   revealed,
+  theme,
 }: {
   driver: string
   stints: GanttStint[]
   maxLap: number
   ticks: number[]
   revealed: boolean
+  theme: Theme
 }) {
   return (
     <div className="flex items-center gap-3">
@@ -127,7 +141,8 @@ function DriverRow({
             width={Math.max(stint.endLap - stint.startLap + 1, 1)}
             height={ROW_HEIGHT}
             fill={blockColor(stint.compound)}
-            className="stroke-hairline"
+            className={theme === 'light' ? undefined : 'stroke-hairline'}
+            stroke={rectStrokeColor(theme)}
             strokeWidth={1}
             vectorEffect="non-scaling-stroke"
             style={{
@@ -149,8 +164,18 @@ function DriverRow({
 }
 
 /** Bridges the gantt's fill-colour compound encoding with the degradation
- *  charts' dash encoding, so the two views read as one system. */
-function CompoundLegend({ compounds }: { compounds: CompoundVariant[] }) {
+ *  charts' dash encoding, so the two views read as one system. The dash
+ *  preview is hidden when the Speed view is active: that view repurposes
+ *  dash for the sector split instead of compound, so showing "this is what
+ *  compound looks like as a dash" here would contradict what dash means on
+ *  screen right now; the colour swatch alone still says "compound". */
+function CompoundLegend({
+  compounds,
+  hideDash,
+}: {
+  compounds: CompoundVariant[]
+  hideDash: boolean
+}) {
   if (compounds.length === 0) return null
   return (
     <div className="flex flex-wrap items-center gap-4">
@@ -161,17 +186,19 @@ function CompoundLegend({ compounds }: { compounds: CompoundVariant[] }) {
             style={{ backgroundColor: tireColors[variant] }}
             aria-hidden="true"
           />
-          <svg width="18" height="2" aria-hidden="true">
-            <line
-              x1="0"
-              y1="1"
-              x2="18"
-              y2="1"
-              stroke={tireColors[variant]}
-              strokeWidth="2"
-              strokeDasharray={COMPOUND_DASH_PREVIEW[variant]}
-            />
-          </svg>
+          {hideDash ? null : (
+            <svg width="18" height="2" aria-hidden="true">
+              <line
+                x1="0"
+                y1="1"
+                x2="18"
+                y2="1"
+                stroke={tireColors[variant]}
+                strokeWidth="2"
+                strokeDasharray={COMPOUND_DASH_PREVIEW[variant]}
+              />
+            </svg>
+          )}
           {variant.charAt(0) + variant.slice(1).toLowerCase()}
         </span>
       ))}
@@ -211,11 +238,16 @@ function LapAxis({ ticks, maxLap }: { ticks: number[]; maxLap: number }) {
 export interface StintGanttProps {
   /** Frame filtered to the selected drivers (or the whole field if none). */
   rows: RaceRecord[]
+  /** Hides the compound-dash preview in the legend strip. True when the
+   *  Speed view is the active tyre chart below, since that view repurposes
+   *  dash for the sector split instead of compound. */
+  hideCompoundDash?: boolean
 }
 
 /** Stint-plan card: legend strip + one timeline row per driver. Doubles as
  *  the compound-dash legend for the five charts in TyreChartSwitcher. */
-export function StintGantt({ rows }: StintGanttProps) {
+export function StintGantt({ rows, hideCompoundDash = false }: StintGanttProps) {
+  const theme = useUiStore((state) => state.theme)
   const [revealed, setRevealed] = useState<boolean>(() => prefersReducedMotion())
 
   useEffect(() => {
@@ -259,7 +291,7 @@ export function StintGantt({ rows }: StintGanttProps) {
     <Card elevation="resting" className="flex flex-col gap-4 p-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h3 className="font-display text-sm font-medium text-fg-1">Stint plan</h3>
-        <CompoundLegend compounds={compoundsPresent} />
+        <CompoundLegend compounds={compoundsPresent} hideDash={hideCompoundDash} />
       </div>
       <div className="flex flex-col gap-2">
         {groupByDriver(stints).map(([driver, driverStints]) => (
@@ -270,6 +302,7 @@ export function StintGantt({ rows }: StintGanttProps) {
             maxLap={maxLap}
             ticks={ticks}
             revealed={revealed}
+            theme={theme}
           />
         ))}
       </div>

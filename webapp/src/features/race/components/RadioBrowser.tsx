@@ -3,7 +3,10 @@
 // means guessing a lap number blind, unlike the old Streamlit lookup which
 // asked for a lap number with no preview of what was actually said. Rows
 // without a transcript (audio only) are shown but disabled, since there is
-// nothing for the NLP pipeline to analyse yet.
+// nothing for the NLP pipeline to analyse yet. The rail badge counts ALL
+// messages for a driver (not just the transcribed ones) so a driver with
+// audio-only radio never looks like a failed load; a driver whose every
+// message is audio-only gets an explicit empty state instead of a silent void.
 //
 // The backend returns one `laps[]` entry PER MESSAGE, not per lap — a driver
 // can key the radio twice in the same lap, so two entries sharing a `lap`
@@ -11,6 +14,7 @@
 // INDEX into that driver's `laps[]` array, never the lap number alone.
 
 import { useEffect, useState } from 'react'
+import { Mic, MicOff } from 'lucide-react'
 import { Button } from '@/components/Button'
 import { EmptyState } from '@/components/EmptyState'
 import { RACE_YEAR, type RadioDriver } from '@/lib/api/race'
@@ -31,6 +35,9 @@ export interface RadioBrowserProps {
   onSelect: (driver?: string, lap?: number, msg?: number) => void
   /** Offered on the empty-corpus fallback (re-fetch after a transient failure). */
   onRetry?: () => void
+  /** Opens the free-text composer below, offered when the active driver has
+   *  radio calls but none of them carry a transcript to analyse. */
+  onOpenComposer?: () => void
 }
 
 /** First rail entry to show: the current URL selection, else the first
@@ -54,6 +61,7 @@ export function RadioBrowser({
   selectedMsg,
   onSelect,
   onRetry,
+  onOpenComposer,
 }: RadioBrowserProps) {
   const [activeDriver, setActiveDriver] = useState<string | undefined>(() =>
     pickInitialDriver(radioDrivers, contextDrivers, selectedDriver),
@@ -91,12 +99,14 @@ export function RadioBrowser({
   // sorting the objects directly would sever that tie for the common case of
   // two messages sharing a lap.
   const messageOrder = [...activeLaps.keys()].sort((a, b) => activeLaps[a].lap - activeLaps[b].lap)
+  const hasTranscribed = activeLaps.some((l) => l.has_transcript)
 
   return (
-    <div className="grid gap-4 md:grid-cols-[12rem_1fr]">
+    <div className="grid gap-4 md:min-h-64 md:grid-cols-[12rem_1fr]">
       <div className="flex gap-2 overflow-x-auto pb-1 md:flex-col md:overflow-visible md:pb-0">
         {radioDrivers.map((d) => {
-          const messageCount = d.laps.filter((l) => l.has_transcript).length
+          const total = d.laps.length
+          const withTranscript = d.laps.filter((l) => l.has_transcript).length
           const isActive = d.driver === activeDriver
           return (
             <button
@@ -119,7 +129,17 @@ export function RadioBrowser({
                 />
                 {d.driver}
               </span>
-              <span className="font-mono text-xs text-fg-3">{messageCount}</span>
+              <span
+                className="flex items-center gap-1 font-mono text-xs text-fg-3"
+                title={`${total} radio message${total === 1 ? '' : 's'}, ${withTranscript} with transcript`}
+              >
+                {withTranscript > 0 ? (
+                  <Mic className="size-3" aria-hidden="true" />
+                ) : (
+                  <MicOff className="size-3 text-fg-4" aria-hidden="true" />
+                )}
+                {total}
+              </span>
             </button>
           )
         })}
@@ -128,6 +148,19 @@ export function RadioBrowser({
       <div className="flex flex-col gap-1.5">
         {messageOrder.length === 0 ? (
           <p className="px-1 py-6 text-center text-sm text-fg-3">No radio calls for this driver.</p>
+        ) : !hasTranscribed ? (
+          <EmptyState
+            icon={<MicOff className="size-5" aria-hidden="true" />}
+            title="No transcript to analyse"
+            description={`Audio-only radio for ${activeDriver}. Try another driver or use free text.`}
+            action={
+              onOpenComposer ? (
+                <Button variant="ghost" size="sm" onClick={onOpenComposer}>
+                  Use free text
+                </Button>
+              ) : undefined
+            }
+          />
         ) : (
           messageOrder.map((msgIndex) => {
             const l = activeLaps[msgIndex]

@@ -7,9 +7,11 @@
 import { useMemo } from 'react'
 import ReactECharts from 'echarts-for-react'
 import { registerF1Theme, useChartTheme } from '@/charts/registerEcharts'
+import { F1_LIGHT_THEME } from '@/charts/echartsTheme'
 import { useFirstPaintAnimation } from '@/charts/useFirstPaintAnimation'
 import { ChartCard } from '@/components/ChartCard'
 import type { RaceRecord } from '@/lib/api/race'
+import type { Theme } from '@/stores/ui'
 import { RACE_YEAR } from '../search'
 import {
   buildGapConsistencyOption,
@@ -24,6 +26,18 @@ registerF1Theme()
 
 const CHART_HEIGHT = 360
 
+/** The gap-evolution y-axis clips at 12s so the strategic band (0-3.5s) stays
+ *  readable even when a lapped car's gap runs to 25+ seconds (see
+ *  `Y_MAX_CEILING` in gapSeries.ts). Without a hint, a line just vanishing at
+ *  the top edge reads like a render bug rather than an intentional cap. */
+const GAP_CLIP_FOOTER = 'Gaps above 12s are clipped. Drag the box-zoom to inspect them.'
+
+/** The consistency bars cap at 15 laps (`CONSISTENCY_Y_MAX` in gapSeries.ts)
+ *  so one driver's very long streak can't flatten the 3-lap strategic
+ *  threshold into an unreadable sliver near the x-axis. */
+const CONSISTENCY_CAP_FOOTER =
+  'Streaks are capped at 15 laps so the 3-lap strategic threshold stays readable. Longer streaks are clipped at the top.'
+
 export interface GapChartsProps {
   /** Frame filtered to the selected drivers (or the whole field if none). */
   rows: RaceRecord[]
@@ -37,10 +51,14 @@ export interface GapChartsProps {
  *  supporting detail: how long have they held). */
 export function GapCharts({ rows, highlight }: GapChartsProps) {
   const chartTheme = useChartTheme()
+  // Same theme-name comparison TyreChartSwitcher.tsx uses, so the zone bands
+  // (buildZonesSeries in gapSeries.ts) get the right alpha for the mode
+  // that's actually on screen.
+  const theme: Theme = chartTheme === F1_LIGHT_THEME ? 'light' : 'dark'
 
   const evolutionOption = useMemo(
-    () => buildGapEvolutionOption(rows, RACE_YEAR, highlight),
-    [rows, highlight],
+    () => buildGapEvolutionOption(rows, RACE_YEAR, theme, highlight),
+    [rows, theme, highlight],
   )
   const consistencyOption = useMemo(() => buildGapConsistencyOption(rows, RACE_YEAR), [rows])
 
@@ -55,7 +73,10 @@ export function GapCharts({ rows, highlight }: GapChartsProps) {
 
   return (
     <div className="flex flex-col gap-4">
-      <ChartCard title="Gap evolution">
+      <ChartCard
+        title="Gap evolution (s)"
+        footer={<p className="text-xs text-fg-4">{GAP_CLIP_FOOTER}</p>}
+      >
         <div
           role="img"
           aria-label="Gap to the car ahead and behind, per lap, with undercut and overcut zones"
@@ -69,7 +90,10 @@ export function GapCharts({ rows, highlight }: GapChartsProps) {
           />
         </div>
       </ChartCard>
-      <ChartCard title="Gap consistency">
+      <ChartCard
+        title="Gap consistency (laps)"
+        footer={<p className="text-xs text-fg-4">{CONSISTENCY_CAP_FOOTER}</p>}
+      >
         <div
           role="img"
           aria-label="Consecutive laps each driver stayed in the same gap-ahead window"

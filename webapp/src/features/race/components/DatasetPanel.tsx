@@ -3,17 +3,17 @@
 // All/Selected scope toggle and CSV export. `DataTable` already renders
 // numeric cells in tabular mono figures; this panel is only responsible for
 // choosing which columns show per preset and dressing up cell content
-// (compound branding, boolean pills, null formatting, right-aligned numbers)
-// on top of that.
+// (compound identity dot, boolean text, null formatting, right-aligned
+// numbers) on top of that.
 
 import { useMemo, type ReactNode } from 'react'
 import type { ColumnDef } from '@tanstack/react-table'
-import { CompoundPill } from '@/components/CompoundPill'
+import { tireColors } from '@/charts/echartsTheme'
 import { DataTable } from '@/components/DataTable'
 import { EmptyState } from '@/components/EmptyState'
-import { Pill } from '@/components/Pill'
 import { Tabs, TabsList, TabsTrigger } from '@/components/Tabs'
 import type { RaceRecord } from '@/lib/api/race'
+import { compoundLabel, compoundVariant } from '@/lib/compounds'
 import { DATASET_PRESETS, useRaceStore, type DatasetPreset, type DatasetScope } from '../store'
 
 export interface DatasetPanelProps {
@@ -26,6 +26,13 @@ export interface DatasetPanelProps {
 const DASH = '—'
 const TABLE_HEIGHT_PX = 560
 
+// Presets at or under this many columns hug their own width instead of
+// stretching across the card (see the `DataTable` wrapper below); the `all`
+// preset sits far above it and keeps the full-width, scrollable layout.
+const COMPACT_COLUMN_LIMIT = 9
+
+const EYEBROW_CLASSNAME = 'mr-2 text-xs font-medium uppercase tracking-widest text-fg-3'
+
 // ── Column catalogue ─────────────────────────────────────────────────────────
 // One entry per RaceRecord field the Dataset tab can show: its display label
 // and how its cell renders. Presets below just pick which keys to show, in
@@ -37,6 +44,11 @@ type ColumnKey = keyof RaceRecord
 interface ColumnSpec {
   label: string
   kind: ColumnKind
+  /** Decimal places to show for a `number` column. Omitted columns fall back
+   *  to `DEFAULT_NUMBER_PRECISION` (3dp); coarse physical readings such as
+   *  temperatures and fuel load look fake-precise at that default, so they
+   *  override it to match the sensor's real resolution. */
+  precision?: number
 }
 
 const COLUMN_SPECS: Record<ColumnKey, ColumnSpec> = {
@@ -56,13 +68,13 @@ const COLUMN_SPECS: Record<ColumnKey, ColumnSpec> = {
   Position: { label: 'Pos', kind: 'number' },
   CompoundID: { label: 'Compound ID', kind: 'number' },
   LapTime_s: { label: 'Lap Time (s)', kind: 'number' },
-  FuelLoad: { label: 'Fuel Load (kg)', kind: 'number' },
+  FuelLoad: { label: 'Fuel Load (kg)', kind: 'number', precision: 2 },
   FuelAdjustedLapTime: { label: 'Fuel-Adj. Lap Time (s)', kind: 'number' },
   FuelAdjustedDegAbsolute: { label: 'Fuel-Adj. Deg (abs)', kind: 'number' },
   FuelAdjustedDegPercent: { label: 'Fuel-Adj. Deg (%)', kind: 'number' },
   DegradationRate: { label: 'Deg. Rate (s/lap)', kind: 'number' },
-  AirTemp: { label: 'Air Temp (°C)', kind: 'number' },
-  TrackTemp: { label: 'Track Temp (°C)', kind: 'number' },
+  AirTemp: { label: 'Air Temp (°C)', kind: 'number', precision: 1 },
+  TrackTemp: { label: 'Track Temp (°C)', kind: 'number', precision: 1 },
   GP_Name: { label: 'Grand Prix', kind: 'text' },
   GapToCarAhead: { label: 'Gap Ahead (s)', kind: 'number' },
   GapToCarBehind: { label: 'Gap Behind (s)', kind: 'number' },
@@ -112,31 +124,56 @@ const PRESET_COLUMNS: Record<DatasetPreset, ColumnKey[]> = {
     'consistent_gap_behind_laps',
   ],
   weather: ['Driver', 'LapNumber', 'AirTemp', 'TrackTemp'],
-  all: Object.keys(COLUMN_SPECS) as ColumnKey[],
+  // `GP_Name` is dropped here: a loaded frame is always a single Grand Prix,
+  // so the column would repeat one value for every row, and the context bar
+  // above the table already names the GP.
+  all: (Object.keys(COLUMN_SPECS) as ColumnKey[]).filter((key) => key !== 'GP_Name'),
 }
 
-/** Round a display number to 3dp; whole numbers (lap counts, positions) stay
- *  bare so "Lap 12" doesn't read as "Lap 12.000". */
-function formatNumber(value: number): string {
-  return Number.isInteger(value) ? String(value) : value.toFixed(3)
+const DEFAULT_NUMBER_PRECISION = 3
+
+/** Round a display number to its column's precision (default 3dp); whole
+ *  numbers (lap counts, positions) stay bare so "Lap 12" doesn't read as
+ *  "Lap 12.000". */
+function formatNumber(value: number, precision: number = DEFAULT_NUMBER_PRECISION): string {
+  return Number.isInteger(value) ? String(value) : value.toFixed(precision)
+}
+
+/** Render a compound value as a small identity dot plus its label, rather
+ *  than a saturated pill — a table with hundreds of rows reads better quiet,
+ *  and the driver's compound colour is already carried by the stint gantt and
+ *  the compound legend above the table. An unrecognised compound string falls
+ *  back to plain text with no dot, matching how `CompoundPill` treats it. */
+function renderCompoundCell(value: string): ReactNode {
+  const variant = compoundVariant(value)
+  if (!variant) return compoundLabel(value)
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span className="size-2 rounded-full" style={{ background: tireColors[variant] }} />
+      {compoundLabel(value)}
+    </span>
+  )
 }
 
 /** Render one cell's content per its column kind. Null/blank always collapses
  *  to an em dash rather than a raw "null"/empty cell — the guard runs first
  *  so it applies uniformly across every kind, including `false` booleans
  *  which must NOT be caught by it (`false == null` is false, so they aren't). */
-function renderCell(kind: ColumnKind, value: unknown): ReactNode {
+function renderCell(spec: ColumnSpec, value: unknown): ReactNode {
   if (value == null || value === '') return <span className="text-fg-3">{DASH}</span>
-  switch (kind) {
+  switch (spec.kind) {
     case 'compound':
-      return typeof value === 'string' ? <CompoundPill compound={value} /> : DASH
+      return typeof value === 'string' ? renderCompoundCell(value) : DASH
     case 'boolean':
-      return <Pill tone={value ? 'success' : 'neutral'}>{value ? 'Fresh' : 'Used'}</Pill>
+      // Plain text keeps this an information surface rather than a rail of
+      // status pills; "Used" is dimmed since "Fresh" is the state worth
+      // noticing at a glance.
+      return value ? 'Fresh' : <span className="text-fg-3">Used</span>
     case 'number':
       // Alignment and mono/tabular-nums figures both come from the cell's
       // `<td>` in DataTable (via `meta.align` and its numeric-value check) —
       // this case only needs to return the formatted text.
-      return typeof value === 'number' ? formatNumber(value) : DASH
+      return typeof value === 'number' ? formatNumber(value, spec.precision) : DASH
     default:
       return String(value)
   }
@@ -155,7 +192,7 @@ function buildColumns(preset: DatasetPreset): ColumnDef<RaceRecord, unknown>[] {
       header: spec.label,
       size: COLUMN_WIDTH[spec.kind],
       meta: spec.kind === 'number' ? { align: 'right' } : undefined,
-      cell: (info) => renderCell(spec.kind, info.getValue()),
+      cell: (info) => renderCell(spec, info.getValue()),
     }
   })
 }
@@ -182,6 +219,7 @@ export function DatasetPanel({ rows, selectedDrivers }: DatasetPanelProps) {
   const displayedScope: DatasetScope = scope === 'selected' && noDriversSelected ? 'all' : scope
 
   const columns = useMemo(() => buildColumns(preset), [preset])
+  const isCompactPreset = columns.length <= COMPACT_COLUMN_LIMIT
 
   if (rows.length === 0) {
     return (
@@ -195,15 +233,18 @@ export function DatasetPanel({ rows, selectedDrivers }: DatasetPanelProps) {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <Tabs value={preset} onValueChange={(value) => setPreset(value as DatasetPreset)}>
-          <TabsList variant="segmented">
-            {DATASET_PRESETS.map((key) => (
-              <TabsTrigger key={key} value={key}>
-                {PRESET_LABELS[key]}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </Tabs>
+        <div className="flex flex-wrap items-center">
+          <span className={EYEBROW_CLASSNAME}>Columns</span>
+          <Tabs value={preset} onValueChange={(value) => setPreset(value as DatasetPreset)}>
+            <TabsList variant="segmented">
+              {DATASET_PRESETS.map((key) => (
+                <TabsTrigger key={key} value={key}>
+                  {PRESET_LABELS[key]}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </Tabs>
+        </div>
 
         <Tabs value={displayedScope} onValueChange={(value) => setScope(value as DatasetScope)}>
           <TabsList variant="segmented">
@@ -223,11 +264,15 @@ export function DatasetPanel({ rows, selectedDrivers }: DatasetPanelProps) {
         {scopedRows.length.toLocaleString()} rows · {columns.length} columns
       </p>
 
+      {/* A compact preset (a handful of columns) hugs its own width so values
+          stay packed together; the wide `all` preset keeps the normal
+          full-width, horizontally-scrollable layout. */}
       <DataTable
         columns={columns}
         data={scopedRows}
         height={TABLE_HEIGHT_PX}
         csvFilename="race-dataset.csv"
+        fitContent={isCompactPreset}
       />
     </div>
   )

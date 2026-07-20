@@ -4,13 +4,14 @@
 // Past answers live in a session history rail (store), one click to restore.
 
 import { useState } from 'react'
-import { Scale, Send } from 'lucide-react'
+import { Send } from 'lucide-react'
 import { Button } from '@/components/Button'
 import { Card } from '@/components/Card'
 import { SkeletonText } from '@/components/Skeleton'
 import { useToast } from '@/components/Toast'
 import type { RagResult } from '@/lib/api/race'
 import { RaceApiError } from '@/lib/api/race'
+import { cn } from '@/lib/cn'
 import { useRag } from '../queries'
 import { useRaceStore } from '../store'
 import { RagAnswerCard } from './RagAnswerCard'
@@ -50,7 +51,7 @@ export function RegulationsPanel({ initialQuestion }: { initialQuestion?: string
   const answer = viewing ?? rag.data ?? null
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[1fr_16rem]">
+    <div className={cn('grid gap-4', history.length > 0 && 'lg:grid-cols-[1fr_16rem]')}>
       <div className="flex flex-col gap-4">
         <Card elevation="resting" className="flex flex-col gap-3 p-4">
           <label htmlFor="rag-q" className="text-xs font-medium tracking-wide text-fg-3 uppercase">
@@ -110,12 +111,7 @@ export function RegulationsPanel({ initialQuestion }: { initialQuestion?: string
           </Card>
         ) : answer ? (
           <RagAnswerCard result={answer} />
-        ) : (
-          <Card elevation="resting" className="flex items-center gap-3 p-6 text-sm text-fg-3">
-            <Scale className="size-5 text-fg-4" aria-hidden="true" />
-            Ask a question or tap a suggestion. No race data needed.
-          </Card>
-        )}
+        ) : null}
       </div>
 
       {history.length > 0 ? (
