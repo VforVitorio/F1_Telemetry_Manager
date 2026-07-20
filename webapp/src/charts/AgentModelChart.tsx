@@ -16,9 +16,10 @@
 
 import { useMemo } from 'react'
 import ReactECharts from 'echarts-for-react'
-import type { EChartsOption, LineSeriesOption } from 'echarts'
+import type { EChartsOption, LineSeriesOption, ScatterSeriesOption } from 'echarts'
 import { registerF1Theme, useChartTheme } from '@/charts/registerEcharts'
 import { useFirstPaintAnimation } from '@/charts/useFirstPaintAnimation'
+import { tireColors } from '@/charts/echartsTheme'
 import { Skeleton } from '@/components/Skeleton'
 
 registerF1Theme()
@@ -41,6 +42,13 @@ export interface AgentModelPoint {
   lap: number
   actual: number | null
   pred: number | null
+  /** Lower/upper prediction-interval bounds, shaded as a band when `ciBand`. */
+  ciLow?: number | null
+  ciHigh?: number | null
+  /** Tyre compound running this lap; colours the actual dot when `compoundDots`. */
+  compound?: string | null
+  /** True on a stint's first lap; draws a boundary line when `stintLines`. */
+  stintStart?: boolean
 }
 
 export interface AgentModelChartProps {
@@ -57,6 +65,12 @@ export interface AgentModelChartProps {
    *  series. Used where the model's raw per-lap estimate isn't reproducible
    *  outside its full agent flow, so a dashed line would mislead. */
   hidePred?: boolean
+  /** Shade a p10-p90 band from each point's `ciLow`/`ciHigh`. Default off. */
+  ciBand?: boolean
+  /** Colour the actual dots by tyre compound (via each point's `compound`). Default off. */
+  compoundDots?: boolean
+  /** Draw a boundary line at every `stintStart` lap. Default off. */
+  stintLines?: boolean
   height?: number
   loading?: boolean
 }
@@ -68,28 +82,34 @@ function hasData(points: AgentModelPoint[]): boolean {
   return points.some((point) => point.actual != null || point.pred != null)
 }
 
-/** A faint dashed vertical line at `cursorLap` — where "now" sits on the
- *  trace. Deliberately unlabelled (unlike RaceTrace's "DECISION" marker):
- *  this chart is a compact evidence pane, not the full-width navigable
- *  instrument, so a text label would compete with the legend for room. */
-function buildCursorMarkLine(cursorLap: number): LineSeriesOption['markLine'] {
-  return {
-    silent: true,
-    symbol: 'none',
-    data: [
-      {
-        xAxis: cursorLap,
-        lineStyle: { color: CURSOR_COLOR, width: 1, type: 'dashed', opacity: 0.5 },
-      },
-    ],
+/** Vertical markers on the trace: a faint dashed "now" line at `cursorLap`, plus
+ *  a fainter dotted boundary at each stint-start lap when `stintLaps` is given.
+ *  Deliberately unlabelled (unlike RaceTrace's "DECISION" marker): this is a
+ *  compact evidence pane, so text labels would compete with the legend. */
+function buildMarkLine(
+  cursorLap: number | undefined,
+  stintLaps: number[],
+): LineSeriesOption['markLine'] {
+  const data: NonNullable<LineSeriesOption['markLine']>['data'] = stintLaps.map((lap) => ({
+    xAxis: lap,
+    lineStyle: { color: CURSOR_COLOR, width: 1, type: 'dotted', opacity: 0.3 },
+  }))
+  if (cursorLap != null) {
+    data.push({
+      xAxis: cursorLap,
+      lineStyle: { color: CURSOR_COLOR, width: 1, type: 'dashed', opacity: 0.5 },
+    })
   }
+  return { silent: true, symbol: 'none', data }
 }
 
 function buildActualSeries(
   points: AgentModelPoint[],
   actualLabel: string,
   cursorLap: number | undefined,
+  stintLaps: number[],
 ): LineSeriesOption {
+  const hasMarks = cursorLap != null || stintLaps.length > 0
   return {
     name: actualLabel,
     type: 'line',
@@ -99,8 +119,48 @@ function buildActualSeries(
     itemStyle: { color: ACTUAL_COLOR },
     z: 10,
     data: points.map((point) => [point.lap, point.actual]),
-    ...(cursorLap != null ? { markLine: buildCursorMarkLine(cursorLap) } : {}),
+    ...(hasMarks ? { markLine: buildMarkLine(cursorLap, stintLaps) } : {}),
   }
+}
+
+/** Two stacked line series forming the p10-p90 prediction band: an invisible
+ *  lower line at `ciLow`, then a band of height `ciHigh - ciLow` stacked on top
+ *  with a faint fill. Laps missing either bound leave a gap (no fabricated
+ *  band). Both are silent + excluded from the legend by the explicit legend
+ *  data in `buildOption`. */
+function buildCiBandSeries(points: AgentModelPoint[]): LineSeriesOption[] {
+  const lower: Array<[number, number | null]> = points.map((p) => [p.lap, p.ciLow ?? null])
+  const height: Array<[number, number | null]> = points.map((p) => {
+    const lo = p.ciLow
+    const hi = p.ciHigh
+    return [p.lap, lo != null && hi != null ? hi - lo : null]
+  })
+  const shared = {
+    type: 'line' as const,
+    stack: 'ci',
+    symbol: 'none' as const,
+    silent: true,
+    z: 1,
+    lineStyle: { opacity: 0 },
+    tooltip: { show: false },
+  }
+  return [
+    { ...shared, name: 'ci-lower', data: lower },
+    { ...shared, name: 'ci-band', data: height, areaStyle: { color: PRED_COLOR, opacity: 0.12 } },
+  ]
+}
+
+/** Actual values as compound-coloured dots (soft red, medium yellow, ...), so a
+ *  degradation trace shows which tyre produced each lap. Only points with both a
+ *  value and a known compound render. */
+function buildCompoundScatter(points: AgentModelPoint[]): ScatterSeriesOption {
+  const data = points
+    .filter((p) => p.actual != null && p.compound)
+    .map((p) => ({
+      value: [p.lap, p.actual] as [number, number | null],
+      itemStyle: { color: tireColors[(p.compound ?? '').toLowerCase()] ?? ACTUAL_COLOR },
+    }))
+  return { name: 'compound', type: 'scatter', symbolSize: 6, z: 11, silent: true, data }
 }
 
 function buildPredSeries(points: AgentModelPoint[], predLabel: string): LineSeriesOption {
@@ -121,6 +181,12 @@ function buildPredSeries(points: AgentModelPoint[], predLabel: string): LineSeri
  *  so no custom `icon` override is needed), and the two series above. Axis
  *  labels stay tiny (10px) — this chart lives inside an already-dense Agent
  *  Breakdown tab, not a standalone full-width instrument. */
+interface BuildOptionFlags {
+  ciBand: boolean
+  compoundDots: boolean
+  stintLines: boolean
+}
+
 function buildOption(
   points: AgentModelPoint[],
   actualLabel: string,
@@ -128,12 +194,20 @@ function buildOption(
   yUnit: string,
   cursorLap: number | undefined,
   hidePred: boolean,
+  { ciBand, compoundDots, stintLines }: BuildOptionFlags,
 ): EChartsOption {
-  const series: LineSeriesOption[] = [buildActualSeries(points, actualLabel, cursorLap)]
+  const stintLaps = stintLines ? points.filter((p) => p.stintStart).map((p) => p.lap) : []
+  const series: Array<LineSeriesOption | ScatterSeriesOption> = []
+  if (ciBand) series.push(...buildCiBandSeries(points))
+  series.push(buildActualSeries(points, actualLabel, cursorLap, stintLaps))
   if (!hidePred) series.push(buildPredSeries(points, predLabel))
+  if (compoundDots) series.push(buildCompoundScatter(points))
+  // Only the two real lines belong in the legend; the band/scatter helpers
+  // carry structural names that would clutter it.
+  const legendData = [actualLabel, ...(hidePred ? [] : [predLabel])]
   return {
     tooltip: { trigger: 'axis' },
-    legend: { top: 0, right: 0, textStyle: { fontSize: 10 } },
+    legend: { top: 0, right: 0, textStyle: { fontSize: 10 }, data: legendData },
     grid: { top: 28, left: 8, right: 12, bottom: 22, containLabel: true },
     xAxis: {
       type: 'value',
@@ -167,13 +241,21 @@ export function AgentModelChart({
   yUnit = '',
   cursorLap,
   hidePred = false,
+  ciBand = false,
+  compoundDots = false,
+  stintLines = false,
   height = DEFAULT_HEIGHT_PX,
   loading,
 }: AgentModelChartProps) {
   const chartTheme = useChartTheme()
   const option = useMemo(
-    () => buildOption(points, actualLabel, predLabel, yUnit, cursorLap, hidePred),
-    [points, actualLabel, predLabel, yUnit, cursorLap, hidePred],
+    () =>
+      buildOption(points, actualLabel, predLabel, yUnit, cursorLap, hidePred, {
+        ciBand,
+        compoundDots,
+        stintLines,
+      }),
+    [points, actualLabel, predLabel, yUnit, cursorLap, hidePred, ciBand, compoundDots, stintLines],
   )
   const paintedOption = useFirstPaintAnimation(option)
 

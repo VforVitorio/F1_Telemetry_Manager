@@ -20,9 +20,9 @@ import { Skeleton, SkeletonText } from '@/components/Skeleton'
 import { useToast } from '@/components/Toast'
 import { RaceApiError } from '@/lib/api/race'
 import { useRadioAnalysis, useRadioLaps } from '../queries'
-import { RadioBrowser } from './RadioBrowser'
-import { RadioFreeTextComposer } from './RadioFreeTextComposer'
-import { RadioResultCard } from './RadioResultCard'
+import { RadioBrowser } from '@/components/radio/RadioBrowser'
+import { RadioFreeTextComposer } from '@/components/radio/RadioFreeTextComposer'
+import { RadioResultCard } from '@/components/radio/RadioResultCard'
 
 export interface RadioPanelProps {
   gp: string

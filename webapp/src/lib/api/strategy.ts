@@ -116,6 +116,10 @@ export interface SituationResult {
   gap_ahead_s: number
   pace_delta_s: number
   reasoning: string
+  // Real safety-car / virtual-safety-car state the agent already returns; the
+  // Lab's SituationFacts strip surfaces them (both default to false if absent).
+  sc_currently_active: boolean
+  vsc_active: boolean
 }
 
 export interface PitResult {
@@ -364,9 +368,10 @@ export async function fetchPaceRange(
   lapStart: number,
   lapEnd: number,
   year = YEAR,
+  signal?: AbortSignal,
 ): Promise<PaceRangePoint[]> {
   const body = { year, gp, driver, lap_start: lapStart, lap_end: lapEnd }
-  const data = await postJson<{ predictions?: PaceRangePoint[] }>('pace-range', body)
+  const data = await postJson<{ predictions?: PaceRangePoint[] }>('pace-range', body, signal)
   return data.predictions ?? []
 }
 
@@ -394,8 +399,9 @@ export async function fetchTireRange(
   lapStart: number,
   lapEnd: number,
   year = YEAR,
+  signal?: AbortSignal,
 ): Promise<TireRangePoint[]> {
   const body = { year, gp, driver, lap_start: lapStart, lap_end: lapEnd }
-  const data = await postJson<{ predictions?: TireRangePoint[] }>('tire-range', body)
+  const data = await postJson<{ predictions?: TireRangePoint[] }>('tire-range', body, signal)
   return data.predictions ?? []
 }
