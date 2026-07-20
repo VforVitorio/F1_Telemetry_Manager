@@ -20,10 +20,24 @@ export function CitationChip({ article }: { article: string }) {
   )
 }
 
+/** Turns a snake_case doc-type code into a readable label, e.g. "sporting_regs"
+ *  becomes "Sporting Regs" instead of leaking the raw backend field name. */
+function prettifyDocType(docType: string): string {
+  return docType
+    .split('_')
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ')
+}
+
 /** One retrieved source passage, collapsed by default. The header carries the
- *  article + doc type · year · similarity; the body is the raw chunk text. */
+ *  article + doc type · year · retrieval-similarity score; the body is the
+ *  raw chunk text. */
 export function SourcePassage({ chunk }: { chunk: RagChunk }) {
-  const meta = [chunk.doc_type, chunk.year != null ? String(chunk.year) : null]
+  const meta = [
+    chunk.doc_type ? prettifyDocType(chunk.doc_type) : null,
+    chunk.year != null ? String(chunk.year) : null,
+  ]
     .filter(Boolean)
     .join(' · ')
   return (
@@ -35,7 +49,9 @@ export function SourcePassage({ chunk }: { chunk: RagChunk }) {
           {meta ? <span className="truncate text-xs text-fg-3">{meta}</span> : null}
         </span>
         {chunk.score != null ? (
-          <span className="shrink-0 font-mono text-xs text-fg-3">{chunk.score.toFixed(2)}</span>
+          <span className="shrink-0 font-mono text-xs text-fg-4" title="Retrieval similarity score">
+            sim {chunk.score.toFixed(2)}
+          </span>
         ) : null}
       </summary>
       <p className="border-t border-hairline px-3 py-2 text-sm leading-relaxed text-fg-2">

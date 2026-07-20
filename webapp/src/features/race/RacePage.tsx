@@ -18,7 +18,7 @@ import type { RaceRecord } from '@/lib/api/race'
 import { useRaceData } from './queries'
 import { useRaceStore } from './store'
 import { applyRacePatch, fromRaw, toRaw, type RaceSearch, type RaceTab } from './search'
-import { RaceContextBar, type RaceLoadedInfo } from './components/RaceContextBar'
+import { RaceContextBar, RaceContextExtras, type RaceLoadedInfo } from './components/RaceContextBar'
 import { TyresPanel } from './components/TyresPanel'
 import { GapsPanel } from './components/GapsPanel'
 import { DatasetPanel } from './components/DatasetPanel'
@@ -117,6 +117,11 @@ export function RacePage() {
     : null
 
   const hasData = frame.length > 0
+  // At true idle (no GP loaded yet) every data tab is disabled. Showing one
+  // of them as the active-yet-dead trigger reads as broken, so default the
+  // visible tab to Regulations (the only tab that never needs a loaded race)
+  // without touching the URL's own `tab` value.
+  const activeTab = !hasData && search.tab !== 'regs' ? 'regs' : search.tab
 
   /** Wrap a data-tab body in the idle / loading / error states. */
   const dataBody = (panel: React.ReactNode): React.ReactNode => {
@@ -163,12 +168,13 @@ export function RacePage() {
             value={search}
             onChange={patch}
             driverOptions={driverOptions}
-            loaded={loaded}
             loading={loading}
           />
         </div>
 
-        <Tabs value={search.tab} onValueChange={(tab) => patch({ tab: tab as RaceTab })}>
+        <RaceContextExtras loaded={loaded} />
+
+        <Tabs value={activeTab} onValueChange={(tab) => patch({ tab: tab as RaceTab })}>
           <TabsList variant="underline">
             <TabsTrigger value="tyres" disabled={!hasData}>
               Tyres

@@ -21,7 +21,7 @@ export function PodiumQuickPick({ podium, onPick }: PodiumQuickPickProps) {
     <EmptyState
       icon={<Users className="size-6" />}
       title="Pick drivers to chart"
-      description="The whole field is 20 cars — too many lines to read at once. Choose up to 3 (the gantt and strategy cards already cover the full field)."
+      description="The whole field is 20 cars, too many lines to read at once. Choose up to 3 (the gantt and strategy cards already cover the full field)."
       action={
         podium.length > 0 ? (
           <div className="flex flex-wrap items-center justify-center gap-2">

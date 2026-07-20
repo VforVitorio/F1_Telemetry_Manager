@@ -6,6 +6,11 @@
 // lookup — a lap selection alone shouldn't fire the NLP pipeline. `rmsg` is
 // the index of the message within that driver's laps, since a lap can carry
 // more than one radio call and `rlap` alone can't tell them apart.
+//
+// The free-text composer's <details> is controlled (not a plain uncontrolled
+// element) so the browser can open it programmatically when the active driver
+// turns out to have no transcript to analyse. A manual click on its summary
+// still works the same way through the same state.
 
 import { useEffect, useMemo, useState } from 'react'
 import { Play } from 'lucide-react'
@@ -79,6 +84,17 @@ export function RadioPanel({ gp, drivers, rdriver, rlap, rmsg, onSelect }: Radio
 
   const analysis = useRadioAnalysis(gp, rdriver, rlap, rmsg, selectedTranscript, analysisEnabled)
 
+  // Controlled (rather than a plain uncontrolled <details>) so the browser's
+  // zero-transcript empty state can open the composer programmatically, while
+  // a manual click on the summary still works via onToggle.
+  const [composerOpen, setComposerOpen] = useState(false)
+  const openComposer = () => {
+    setComposerOpen(true)
+    document
+      .getElementById('radio-free-text')
+      ?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+  }
+
   useEffect(() => {
     if (!analysis.isError) return
     toast({
@@ -108,6 +124,7 @@ export function RadioPanel({ gp, drivers, rdriver, rlap, rmsg, onSelect }: Radio
           selectedMsg={rmsg}
           onSelect={onSelect}
           onRetry={() => void radioLaps.refetch()}
+          onOpenComposer={openComposer}
         />
       )}
 
@@ -139,7 +156,12 @@ export function RadioPanel({ gp, drivers, rdriver, rlap, rmsg, onSelect }: Radio
         <RadioResultCard result={analysis.data} />
       ) : null}
 
-      <details className="group rounded-lg border border-hairline bg-bg-2">
+      <details
+        id="radio-free-text"
+        open={composerOpen}
+        onToggle={(e) => setComposerOpen(e.currentTarget.open)}
+        className="group rounded-lg border border-hairline bg-bg-2"
+      >
         <summary className="cursor-pointer px-3 py-2 text-sm font-medium text-fg-2 marker:content-none">
           Free text
         </summary>
