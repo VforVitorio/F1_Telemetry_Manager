@@ -272,7 +272,10 @@ export function SituationResultView({
         <Pill tone={threatTone(agent.threat_level)}>{agent.threat_level} threat</Pill>
       </VerdictRow>
 
-      <ChartCard title={lens === 'overtake' ? 'Overtake probability' : 'SC probability (3 laps)'}>
+      <ChartCard
+        title={lens === 'overtake' ? 'Overtake probability' : 'SC probability (3 laps)'}
+        maximizable={false}
+      >
         <div className="grid gap-4 lg:grid-cols-[minmax(0,20rem)_1fr] lg:items-center">
           <div className="mx-auto w-full max-w-xs">
             <Gauge

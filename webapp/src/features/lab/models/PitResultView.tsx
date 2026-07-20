@@ -176,7 +176,7 @@ export function PitResultView({ gp, driver, lap }: ResultViewProps) {
         />
       </VerdictRow>
 
-      <ChartCard title="Stop duration (s)">
+      <ChartCard title="Stop duration (s)" maximizable={false}>
         <RangeBar
           low={agent.stop_duration_p05}
           mid={agent.stop_duration_p50}
@@ -186,7 +186,7 @@ export function PitResultView({ gp, driver, lap }: ResultViewProps) {
       </ChartCard>
 
       {agent.undercut_prob != null ? (
-        <ChartCard title="Undercut probability">
+        <ChartCard title="Undercut probability" maximizable={false}>
           <div className="flex flex-col items-center gap-3">
             <Gauge
               value={agent.undercut_prob}

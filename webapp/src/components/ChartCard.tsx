@@ -40,10 +40,14 @@ export interface ChartCardProps extends HTMLAttributes<HTMLDivElement> {
   children?: ReactNode
   /** Optional strip below the body (status / legend). */
   footer?: ReactNode
+  /** Show the maximize control. Defaults to true; pass false for a card whose
+   *  content gains nothing from a full-viewport view (e.g. a single-value
+   *  gauge), where the button is just noise. */
+  maximizable?: boolean
 }
 
 export const ChartCard = forwardRef<HTMLDivElement, ChartCardProps>(function ChartCard(
-  { title, actions, children, footer, className, ...props },
+  { title, actions, children, footer, maximizable = true, className, ...props },
   ref,
 ) {
   const [isMaximized, setIsMaximized] = useState(false)
@@ -65,19 +69,21 @@ export const ChartCard = forwardRef<HTMLDivElement, ChartCardProps>(function Cha
       <h3 className="truncate font-display text-sm font-medium text-fg-1">{title}</h3>
       <div className="flex items-center gap-1">
         {actions}
-        <Button
-          variant="ghost"
-          size="sm"
-          aria-label={isMaximized ? 'Restore chart' : 'Maximize chart'}
-          onClick={() => setIsMaximized((value) => !value)}
-          className="size-8 px-0 text-fg-3"
-        >
-          {isMaximized ? (
-            <Minimize2 className="size-4" aria-hidden="true" />
-          ) : (
-            <Maximize2 className="size-4" aria-hidden="true" />
-          )}
-        </Button>
+        {maximizable ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            aria-label={isMaximized ? 'Restore chart' : 'Maximize chart'}
+            onClick={() => setIsMaximized((value) => !value)}
+            className="size-8 px-0 text-fg-3"
+          >
+            {isMaximized ? (
+              <Minimize2 className="size-4" aria-hidden="true" />
+            ) : (
+              <Maximize2 className="size-4" aria-hidden="true" />
+            )}
+          </Button>
+        ) : null}
       </div>
     </div>
   )

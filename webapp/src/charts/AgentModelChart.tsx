@@ -160,7 +160,17 @@ function buildCompoundScatter(points: AgentModelPoint[]): ScatterSeriesOption {
       value: [p.lap, p.actual] as [number, number | null],
       itemStyle: { color: tireColors[(p.compound ?? '').toLowerCase()] ?? ACTUAL_COLOR },
     }))
-  return { name: 'compound', type: 'scatter', symbolSize: 6, z: 11, silent: true, data }
+  // The dots duplicate the Actual line's value, so keep them out of the axis
+  // tooltip (they would show a redundant "compound" row equal to Actual).
+  return {
+    name: 'compound',
+    type: 'scatter',
+    symbolSize: 6,
+    z: 11,
+    silent: true,
+    tooltip: { show: false },
+    data,
+  }
 }
 
 function buildPredSeries(points: AgentModelPoint[], predLabel: string): LineSeriesOption {
@@ -206,7 +216,15 @@ function buildOption(
   // carry structural names that would clutter it.
   const legendData = [actualLabel, ...(hidePred ? [] : [predLabel])]
   return {
-    tooltip: { trigger: 'axis' },
+    tooltip: {
+      trigger: 'axis',
+      // Round to 3 decimals (+ the unit) so a raw float like 1.2920000000000016
+      // reads as 1.292s. Data points are [lap, value] tuples, so pull the y.
+      valueFormatter: (raw) => {
+        const value = Array.isArray(raw) ? raw[1] : raw
+        return typeof value === 'number' ? `${value.toFixed(3)}${yUnit}` : String(value ?? '')
+      },
+    },
     legend: { top: 0, right: 0, textStyle: { fontSize: 10 }, data: legendData },
     grid: { top: 28, left: 8, right: 12, bottom: 22, containLabel: true },
     xAxis: {
