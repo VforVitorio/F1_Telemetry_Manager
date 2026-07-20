@@ -1,7 +1,7 @@
 {
   "name": "f1-webapp",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.10.6",
   "type": "module",
   "description": "F1 StratLab telemetry SPA (React + Vite), Streamlit replacement, migration epic #25",
   "scripts": {
