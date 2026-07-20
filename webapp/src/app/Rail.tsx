@@ -377,7 +377,7 @@ export function Rail() {
         )}
       >
         <span className={cn('font-mono text-[10px] text-fg-4', railCollapsed && 'hidden')}>
-          v0.9
+          v{__APP_VERSION__}
         </span>
         <Tooltip content={railCollapsed ? 'Expand navigation' : 'Collapse navigation'} side="right">
           <Button

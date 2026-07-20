@@ -13,3 +13,6 @@ interface ImportMeta {
 // Self-hosted fonts (@fontsource-variable/*) are CSS side-effect imports with no
 // type declarations; this lets tsc accept `import '@fontsource-variable/inter'`.
 declare module '@fontsource-variable/*'
+
+// Injected by Vite `define` (vite.config.ts) from package.json at build time.
+declare const __APP_VERSION__: string
