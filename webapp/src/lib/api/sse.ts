@@ -16,6 +16,18 @@ export interface SseHandlers {
   signal?: AbortSignal
 }
 
+/** A non-ok HTTP response from an SSE POST, carrying the real status code so a
+ *  caller can special-case it (e.g. a 429 rate-limit Toast) instead of parsing
+ *  it back out of the error message string. */
+export class SseError extends Error {
+  readonly status: number
+  constructor(status: number, statusText: string) {
+    super(`SSE request failed: ${status} ${statusText}`)
+    this.name = 'SseError'
+    this.status = status
+  }
+}
+
 /**
  * POST a JSON body and stream the Server-Sent-Events response.
  *
@@ -37,7 +49,7 @@ export async function postStream(
       signal,
     })
     if (!response.ok || !response.body) {
-      throw new Error(`SSE request failed: ${response.status} ${response.statusText}`)
+      throw new SseError(response.status, response.statusText)
     }
 
     const parser = createParser({ onEvent })

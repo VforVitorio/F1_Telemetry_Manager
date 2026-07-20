@@ -229,6 +229,16 @@ class ToolMessageRequest(BaseModel):
     model: Optional[str] = Field(None, description="Override LM Studio model.")
     temperature: float = Field(0.7, ge=0.0, le=2.0)
     max_tokens: int = Field(1000, ge=1, le=8192)
+    stream_tokens: bool = Field(
+        False,
+        description=(
+            "Stream the tool-summary reply as live token deltas instead of one "
+            "full-text event. Only changes the second LLM call (the summary of a "
+            "dispatched tool's result) — the first call, which decides whether to "
+            "call a tool at all, always stays non-streaming. Default False keeps "
+            "today's single-token behaviour for callers that never send this flag."
+        ),
+    )
 
 
 class ToolMessageResponse(BaseModel):
