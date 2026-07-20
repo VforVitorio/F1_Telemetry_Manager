@@ -14,7 +14,7 @@ import { RaceApiError } from '@/lib/api/race'
 import { cn } from '@/lib/cn'
 import { useRag } from '../queries'
 import { useRaceStore } from '../store'
-import { RagAnswerCard } from './RagAnswerCard'
+import { RagAnswerCard } from '@/components/rag/RagAnswerCard'
 
 const SUGGESTIONS = [
   'What happens if the safety car is still out on the last lap?',
