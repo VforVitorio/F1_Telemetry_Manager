@@ -27,6 +27,7 @@ import { RadioResultCard } from '@/components/radio/RadioResultCard'
 import { analyzeRadio, RaceApiError, type RadioResult } from '@/lib/api/race'
 import { fetchLapState } from '@/lib/api/strategy'
 import { useLabRadioCorpus } from '../queries'
+import { selectActiveRun, useLabStore, type LabRun } from '../store'
 import { RunHeader } from '../components/RunFrame'
 import type { ModelMeta, ResultViewProps } from './types'
 
@@ -52,6 +53,8 @@ function errorDescription(error: unknown, fallback: string): string {
 
 export function RadioResultView({ gp, driver }: ResultViewProps) {
   const { toast } = useToast()
+  const addRun = useLabStore((s) => s.addRun)
+  const activeRadioRun = useLabStore((s) => selectActiveRun(s, 'radio'))
   const [mode, setMode] = useState<RadioMode>('lookup')
 
   const [selDriver, setSelDriver] = useState<string | undefined>()
@@ -89,6 +92,23 @@ export function RadioResultView({ gp, driver }: ResultViewProps) {
         { driver: selDriver!, lap: selLap!, text: selectedTranscript },
       ])
     },
+    // Record the analysed message as a proper Lab run so it survives a
+    // model switch and lights up the rail's status dot, same as the other
+    // five benches. Guarded because the selection can in principle change
+    // shape while the request is still in flight.
+    onSuccess: (agent) => {
+      if (!selDriver || selLap == null) return
+      const label = `${selDriver} · Lap ${selLap}`
+      const run: LabRun = {
+        id: crypto.randomUUID(),
+        model: 'radio',
+        context: { gp, radioLabel: label },
+        result: { kind: 'radio', agent },
+        label,
+        ranAt: Date.now(),
+      }
+      addRun(run)
+    },
     onError: (error) => {
       toast({
         title: 'Radio analysis failed',
@@ -114,6 +134,12 @@ export function RadioResultView({ gp, driver }: ResultViewProps) {
     setSelMsg(msg)
     analysis.reset()
   }
+
+  // Sourced from the store rather than `analysis.data` so the last radio
+  // result survives a switch away to another model and back -- the store
+  // entry is what makes the rail's status dot light up too.
+  const shownResult =
+    activeRadioRun?.result.kind === 'radio' ? activeRadioRun.result.agent : undefined
 
   return (
     <div className="flex flex-col gap-4">
@@ -174,8 +200,8 @@ export function RadioResultView({ gp, driver }: ResultViewProps) {
             <Card elevation="resting" className="p-4">
               <SkeletonText lines={4} />
             </Card>
-          ) : analysis.data ? (
-            <RadioResultCard result={analysis.data} />
+          ) : shownResult ? (
+            <RadioResultCard result={shownResult} />
           ) : null}
         </TabsContent>
 

@@ -2,6 +2,7 @@
 // (incl. REACTIVE_SC), compound rec, rec lap; viz: stop-duration RangeBar +
 // undercut Gauge (threshold 0.522) + a small target/lap detail line.
 
+import { useRef } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { Wrench } from 'lucide-react'
 import { Gauge } from '@/charts/Gauge'
@@ -12,7 +13,9 @@ import { Pill } from '@/components/Pill'
 import { RangeBar } from '@/components/RangeBar'
 import { Skeleton } from '@/components/Skeleton'
 import { MetricRow, StatCard, type MetricRowItem } from '@/components/StatCard'
+import { useToast } from '@/components/Toast'
 import { fetchLapState, runAgent, type PitResult } from '@/lib/api/strategy'
+import { runFailureToast } from './runError'
 import { LAB_YEAR } from '../search'
 import { selectActiveRun, useLabStore, type LabRun } from '../store'
 import type { ModelMeta, ResultViewProps } from './types'
@@ -47,13 +50,25 @@ const s2 = (v: number) => `${v.toFixed(2)}s`
 export function PitResultView({ gp, driver, lap }: ResultViewProps) {
   const addRun = useLabStore((s) => s.addRun)
   const activeRun = useLabStore((s) => selectActiveRun(s, 'pit'))
+  const { toast } = useToast()
+  const abortRef = useRef<AbortController | null>(null)
+  const runSeqRef = useRef(0)
 
   const runMut = useMutation({
-    mutationFn: async (): Promise<PitResult> => {
-      const lapState = await fetchLapState(gp!, driver!, lap!, LAB_YEAR)
-      return runAgent('pit', lapState)
+    mutationFn: async ({
+      signal,
+      seq,
+    }: {
+      signal: AbortSignal
+      seq: number
+    }): Promise<{ agent: PitResult; seq: number }> => {
+      const lapState = await fetchLapState(gp!, driver!, lap!, LAB_YEAR, signal)
+      const agent = await runAgent('pit', lapState, signal)
+      return { agent, seq }
     },
-    onSuccess: (agent) => {
+    onSuccess: ({ agent, seq }) => {
+      // Drop a run the user cancelled or superseded before it resolved.
+      if (seq !== runSeqRef.current) return
       const run: LabRun = {
         id: crypto.randomUUID(),
         model: 'pit',
@@ -64,6 +79,7 @@ export function PitResultView({ gp, driver, lap }: ResultViewProps) {
       }
       addRun(run)
     },
+    onError: (error) => runFailureToast(toast, 'Pit', error),
   })
 
   const elapsed = useElapsedSeconds(runMut.isPending)
@@ -77,9 +93,14 @@ export function PitResultView({ gp, driver, lap }: ResultViewProps) {
 
   function onRun() {
     if (disabledReason) return
-    runMut.mutate()
+    const seq = ++runSeqRef.current
+    const ac = new AbortController()
+    abortRef.current = ac
+    runMut.mutate({ signal: ac.signal, seq })
   }
   function onCancel() {
+    runSeqRef.current++
+    abortRef.current?.abort()
     runMut.reset()
   }
 

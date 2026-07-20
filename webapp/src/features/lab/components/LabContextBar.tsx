@@ -47,7 +47,7 @@ export function LabContextBar({ search, onPatch, control }: LabContextBarProps) 
   const seedKeyRef = useRef<string | null>(null)
   useEffect(() => {
     if (minLap == null || maxLap == null || !driver) return
-    const key = `${driver}:${control}`
+    const key = `${search.gp}:${driver}:${control}`
     if (seedKeyRef.current === key) return
     seedKeyRef.current = key
     if (control === 'lap' && !hasLap) onPatch({ lap: maxLap })

@@ -249,11 +249,15 @@ async function parseOrThrow<T>(res: Response): Promise<T> {
   return body as T
 }
 
-async function getJson<T>(path: string, query: Record<string, string | number>): Promise<T> {
+async function getJson<T>(
+  path: string,
+  query: Record<string, string | number>,
+  signal?: AbortSignal,
+): Promise<T> {
   const params = new URLSearchParams(
     Object.entries(query).map(([k, v]) => [k, String(v)]),
   ).toString()
-  const res = await fetch(`${base()}/api/v1/strategy/${path}?${params}`)
+  const res = await fetch(`${base()}/api/v1/strategy/${path}?${params}`, { signal })
   return parseOrThrow<T>(res)
 }
 
@@ -299,16 +303,18 @@ export async function fetchLapState(
   driver: string,
   lap: number,
   year = YEAR,
+  signal?: AbortSignal,
 ): Promise<LapState> {
-  return getJson<LapState>('lap-state', { gp, driver, lap, year })
+  return getJson<LapState>('lap-state', { gp, driver, lap, year }, signal)
 }
 
 /** Run one sub-agent for a lap state (pure ML — no LLM, no rate limit). */
 export async function runAgent<A extends AgentName>(
   agent: A,
   lapState: LapState,
+  signal?: AbortSignal,
 ): Promise<AgentResultMap[A]> {
-  const data = await postJson<Envelope<AgentResultMap[A]>>(agent, { lap_state: lapState })
+  const data = await postJson<Envelope<AgentResultMap[A]>>(agent, { lap_state: lapState }, signal)
   return data.result
 }
 

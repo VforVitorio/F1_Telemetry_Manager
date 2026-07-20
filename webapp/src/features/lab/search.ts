@@ -67,11 +67,15 @@ function coerceInt(raw: unknown): number | undefined {
   return Number.isNaN(n) ? undefined : Math.round(n)
 }
 
-/** Parse a "a-b" lap window into an ordered [start, end] tuple, or undefined. */
+/** Parse a "a-b" lap window into an ordered [start, end] tuple, or undefined.
+ *  Empty segments are rejected first, since `Number('')` is 0, not NaN, so a
+ *  half-written "18-" would otherwise pass the NaN check as a bogus [0, 18]. */
 function parseLaps(raw: unknown): [number, number] | undefined {
   if (typeof raw !== 'string' || raw === '') return undefined
-  const parts = raw.split('-').map((p) => Number(p.trim()))
-  if (parts.length !== 2 || parts.some((n) => Number.isNaN(n))) return undefined
+  const segments = raw.split('-').map((p) => p.trim())
+  if (segments.length !== 2 || segments.some((s) => s === '')) return undefined
+  const parts = segments.map(Number)
+  if (parts.some((n) => Number.isNaN(n))) return undefined
   const [a, b] = parts
   return a <= b ? [a, b] : [b, a]
 }
@@ -91,7 +95,7 @@ export function validateLabSearch(raw: Record<string, unknown>): RawLabSearch {
   const rmode = coerceMode(raw.rmode)
   const rgp = coerceStr(raw.rgp)
   const rdrv = rgp ? coerceStr(raw.rdrv) : undefined
-  const rlap = coerceInt(raw.rlap)
+  const rlap = rdrv ? coerceInt(raw.rlap) : undefined
   return {
     ...(model !== DEFAULT_MODEL ? { model } : {}),
     ...(gp ? { gp } : {}),
