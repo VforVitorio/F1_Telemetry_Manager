@@ -84,12 +84,20 @@ export function RegulationsPanel({ initialQuestion }: { initialQuestion?: string
           </div>
           <div className="flex items-center justify-end gap-2">
             <span className="flex items-center gap-1 text-[11px] text-fg-4">
-              <kbd className="rounded border border-hairline bg-bg-4 px-1 py-0.5 font-mono">Cmd/Ctrl</kbd>
+              <kbd className="rounded border border-hairline bg-bg-4 px-1 py-0.5 font-mono">
+                Cmd/Ctrl
+              </kbd>
               <span>+</span>
-              <kbd className="rounded border border-hairline bg-bg-4 px-1 py-0.5 font-mono">Enter</kbd>
+              <kbd className="rounded border border-hairline bg-bg-4 px-1 py-0.5 font-mono">
+                Enter
+              </kbd>
               to ask
             </span>
-            <Button size="sm" onClick={() => ask(question)} disabled={!question.trim() || rag.isPending}>
+            <Button
+              size="sm"
+              onClick={() => ask(question)}
+              disabled={!question.trim() || rag.isPending}
+            >
               <Send className="size-3.5" aria-hidden="true" />
               {rag.isPending ? 'Asking…' : 'Ask'}
             </Button>
@@ -112,7 +120,9 @@ export function RegulationsPanel({ initialQuestion }: { initialQuestion?: string
 
       {history.length > 0 ? (
         <aside className="flex flex-col gap-1.5">
-          <span className="text-xs font-medium tracking-wide text-fg-3 uppercase">This session</span>
+          <span className="text-xs font-medium tracking-wide text-fg-3 uppercase">
+            This session
+          </span>
           {history.map((entry) => (
             <button
               key={entry.question}

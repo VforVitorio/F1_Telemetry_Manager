@@ -258,7 +258,10 @@ function zoomToolbox(): EChartsOption['toolbox'] {
  *  built from an explicit name→colour map (rather than re-deriving a driver
  *  code from the series name, which carries an " ahead"/" behind" suffix here)
  *  so ghost series (zones/highlight/threshold, absent from the map) never show. */
-function buildAxisTooltipFormatter(textColorByName: Map<string, string>, formatValue: (raw: number) => string) {
+function buildAxisTooltipFormatter(
+  textColorByName: Map<string, string>,
+  formatValue: (raw: number) => string,
+) {
   return (params: TooltipComponentFormatterCallbackParams): string => {
     const items: DefaultLabelFormatterCallbackParams[] = Array.isArray(params) ? params : [params]
     return items
@@ -346,7 +349,9 @@ function buildHighlightSeries(
   if (!rows) return null
 
   const field = highlightField(highlight.kind)
-  const rowByLap = new Map(rows.filter((row) => row.LapNumber != null).map((row) => [row.LapNumber as number, row]))
+  const rowByLap = new Map(
+    rows.filter((row) => row.LapNumber != null).map((row) => [row.LapNumber as number, row]),
+  )
   // ECharts accepts coord-only markPoints at runtime; its types over-require a
   // `name`, so cast the coord list to the data-item shape.
   const points = highlight.laps.flatMap((lap) => {
@@ -500,7 +505,10 @@ function buildConsistencyThresholdSeries(): LineSeriesOption {
  * multi-driver branch (ahead-only bars, since this webapp's Gaps tab is
  * always in "compare drivers" mode, never a single global driver page).
  */
-export function buildGapConsistencyOption(rows: RaceRecord[], year: number | undefined): EChartsOption {
+export function buildGapConsistencyOption(
+  rows: RaceRecord[],
+  year: number | undefined,
+): EChartsOption {
   const byDriver = groupRowsByDriver(rows)
   const drivers = [...byDriver.keys()].sort()
   const grid = sharedLapGrid(byDriver)

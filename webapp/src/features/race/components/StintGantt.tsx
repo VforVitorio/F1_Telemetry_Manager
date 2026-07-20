@@ -94,7 +94,10 @@ function DriverRow({
 }) {
   return (
     <div className="flex items-center gap-3">
-      <span className="w-10 shrink-0 font-mono text-xs font-semibold" style={{ color: getDriverTextColor(driver) }}>
+      <span
+        className="w-10 shrink-0 font-mono text-xs font-semibold"
+        style={{ color: getDriverTextColor(driver) }}
+      >
         {driver}
       </span>
       <svg
@@ -135,7 +138,8 @@ function DriverRow({
             }}
           >
             <title>
-              {driver} · stint {stint.stint} · {stint.compound} · laps {stint.startLap}-{stint.endLap}
+              {driver} · stint {stint.stint} · {stint.compound} · laps {stint.startLap}-
+              {stint.endLap}
             </title>
           </rect>
         ))}
@@ -192,7 +196,8 @@ function LapAxis({ ticks, maxLap }: { ticks: number[]; maxLap: number }) {
             className="absolute top-0"
             style={{
               left: `${(lap / maxLap) * 100}%`,
-              transform: lap === 0 ? 'none' : lap === maxLap ? 'translateX(-100%)' : 'translateX(-50%)',
+              transform:
+                lap === 0 ? 'none' : lap === maxLap ? 'translateX(-100%)' : 'translateX(-50%)',
             }}
           >
             {lap}
@@ -232,12 +237,21 @@ export function StintGantt({ rows }: StintGanttProps) {
 
   const stints = buildGanttModel(rows)
   if (stints.length === 0) {
-    return <EmptyState title="No stint data" description="This selection has no lap-by-lap stint history." />
+    return (
+      <EmptyState
+        title="No stint data"
+        description="This selection has no lap-by-lap stint history."
+      />
+    )
   }
 
   const maxLap = stints.reduce((max, stint) => Math.max(max, stint.endLap), 1)
   const compoundsPresent = orderCompounds([
-    ...new Set(stints.map((stint) => compoundVariant(stint.compound)).filter((c): c is CompoundVariant => c != null)),
+    ...new Set(
+      stints
+        .map((stint) => compoundVariant(stint.compound))
+        .filter((c): c is CompoundVariant => c != null),
+    ),
   ])
   const ticks = axisTicks(maxLap)
 

@@ -156,7 +156,10 @@ export function calculateStrategicWindows(rows: RaceRecord[]): RaceStrategicWind
       lapNumber: row.LapNumber,
       undercutOpportunity: ahead != null && ahead < UNDERCUT_MAX && consAhead >= CONSISTENCY_MIN,
       overcutOpportunity:
-        ahead != null && ahead >= UNDERCUT_MAX && ahead < OVERCUT_MAX && consAhead >= CONSISTENCY_MIN,
+        ahead != null &&
+        ahead >= UNDERCUT_MAX &&
+        ahead < OVERCUT_MAX &&
+        consAhead >= CONSISTENCY_MIN,
       defensiveNeeded: behind != null && behind < DEFENSIVE_MAX && consBehind >= CONSISTENCY_MIN,
       stintPhase: phaseOf(row.LapNumber),
     }

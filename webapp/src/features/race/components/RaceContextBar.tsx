@@ -120,11 +120,7 @@ export function RaceContextBar({
             value={value.drivers}
             onChange={(drivers) => onChange({ drivers })}
             placeholder={
-              !value.gp
-                ? 'Load a race first'
-                : loading
-                  ? 'Loading race…'
-                  : 'Filter drivers (max 3)'
+              !value.gp ? 'Load a race first' : loading ? 'Loading race…' : 'Filter drivers (max 3)'
             }
             disabled={!value.gp || loading || driverOptions.length === 0}
             max={3}

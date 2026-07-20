@@ -101,13 +101,22 @@ describe('calculateGapConsistency', () => {
       rec({ DriverNumber: 1, LapNumber: 2, GapToCarBehind: null }), // unknown → 1
       rec({ DriverNumber: 1, LapNumber: 3, GapToCarBehind: 1.5 }), // defensive → 1
     ]
-    expect(calculateGapConsistency(rows).map((r) => r.consistent_gap_behind_laps)).toEqual([1, 1, 1])
+    expect(calculateGapConsistency(rows).map((r) => r.consistent_gap_behind_laps)).toEqual([
+      1, 1, 1,
+    ])
   })
 })
 
 describe('calculateStrategicWindows', () => {
   it('NEVER flags an opportunity for a null gap (the coercion guard)', () => {
-    const rows = [rec({ GapToCarAhead: null, GapToCarBehind: null, consistent_gap_ahead_laps: 9, consistent_gap_behind_laps: 9 })]
+    const rows = [
+      rec({
+        GapToCarAhead: null,
+        GapToCarBehind: null,
+        consistent_gap_ahead_laps: 9,
+        consistent_gap_behind_laps: 9,
+      }),
+    ]
     const [w] = calculateStrategicWindows(rows)
     expect(w.undercutOpportunity).toBe(false)
     expect(w.overcutOpportunity).toBe(false)

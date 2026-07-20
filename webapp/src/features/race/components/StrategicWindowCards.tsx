@@ -100,7 +100,12 @@ export function StrategicWindowCards({ rows, highlight, onHighlight }: Strategic
       ) : (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {perDriver.map((entry) => (
-            <DriverWindowGroup key={entry.driver} entry={entry} highlight={highlight} onToggle={toggle} />
+            <DriverWindowGroup
+              key={entry.driver}
+              entry={entry}
+              highlight={highlight}
+              onToggle={toggle}
+            />
           ))}
         </div>
       )}
@@ -149,7 +154,9 @@ function DriverWindowGroup({
               onKeyDown={onKeyDown}
               className={cn(
                 'p-3 transition-colors',
-                clickable ? 'cursor-pointer hover:ring-1 hover:ring-purple-400/70' : 'cursor-not-allowed opacity-60',
+                clickable
+                  ? 'cursor-pointer hover:ring-1 hover:ring-purple-400/70'
+                  : 'cursor-not-allowed opacity-60',
                 active && 'ring-2 ring-purple-400',
               )}
             />
@@ -197,7 +204,12 @@ function StrategicWindowLeaderboard({
         </thead>
         <tbody>
           {sorted.map((entry) => (
-            <LeaderboardRow key={entry.driver} entry={entry} highlight={highlight} onToggle={onToggle} />
+            <LeaderboardRow
+              key={entry.driver}
+              entry={entry}
+              highlight={highlight}
+              onToggle={onToggle}
+            />
           ))}
         </tbody>
       </table>
@@ -219,7 +231,10 @@ function LeaderboardRow({
   return (
     <tr className="border-b border-hairline last:border-b-0">
       <td className="px-3 py-2">
-        <span className="font-mono text-xs font-semibold tracking-widest" style={{ color: driverColor }}>
+        <span
+          className="font-mono text-xs font-semibold tracking-widest"
+          style={{ color: driverColor }}
+        >
           {entry.driver}
         </span>
       </td>

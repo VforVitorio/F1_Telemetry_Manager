@@ -11,7 +11,11 @@ import { useFirstPaintAnimation } from '@/charts/useFirstPaintAnimation'
 import { ChartCard } from '@/components/ChartCard'
 import type { RaceRecord } from '@/lib/api/race'
 import { RACE_YEAR } from '../search'
-import { buildGapConsistencyOption, buildGapEvolutionOption, type GapHighlight } from '../lib/gapSeries'
+import {
+  buildGapConsistencyOption,
+  buildGapEvolutionOption,
+  type GapHighlight,
+} from '../lib/gapSeries'
 
 // Registers the token theme once, before any chart here mounts (echarts-for-
 // react inits with the `theme` prop in componentDidMount, ahead of a parent's
@@ -44,13 +48,18 @@ export function GapCharts({ rows, highlight }: GapChartsProps) {
   const paintedConsistency = useFirstPaintAnimation(consistencyOption)
 
   if (rows.length === 0) {
-    return <p className="px-2 py-12 text-center text-sm text-fg-3">No gap data for this selection</p>
+    return (
+      <p className="px-2 py-12 text-center text-sm text-fg-3">No gap data for this selection</p>
+    )
   }
 
   return (
     <div className="flex flex-col gap-4">
       <ChartCard title="Gap evolution">
-        <div role="img" aria-label="Gap to the car ahead and behind, per lap, with undercut and overcut zones">
+        <div
+          role="img"
+          aria-label="Gap to the car ahead and behind, per lap, with undercut and overcut zones"
+        >
           <ReactECharts
             theme={chartTheme}
             key={chartTheme}
@@ -61,7 +70,10 @@ export function GapCharts({ rows, highlight }: GapChartsProps) {
         </div>
       </ChartCard>
       <ChartCard title="Gap consistency">
-        <div role="img" aria-label="Consecutive laps each driver stayed in the same gap-ahead window">
+        <div
+          role="img"
+          aria-label="Consecutive laps each driver stayed in the same gap-ahead window"
+        >
           <ReactECharts
             theme={chartTheme}
             key={chartTheme}

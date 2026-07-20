@@ -82,7 +82,10 @@ export function RacePage() {
   // An uploaded offline frame takes precedence over the fetched one.
   const upload = useRaceStore((s) => s.upload)
   const raceQuery = useRaceData(upload ? undefined : search.gp)
-  const frame = useMemo(() => upload?.rows ?? raceQuery.data ?? EMPTY_ROWS, [upload, raceQuery.data])
+  const frame = useMemo(
+    () => upload?.rows ?? raceQuery.data ?? EMPTY_ROWS,
+    [upload, raceQuery.data],
+  )
   const loading = !upload && !!search.gp && raceQuery.isLoading
   const isError = !upload && !!search.gp && raceQuery.isError
 
@@ -246,7 +249,11 @@ function CopyLinkButton() {
         setTimeout(() => setCopied(false), 1500)
       }}
     >
-      {copied ? <Check className="size-4" aria-hidden="true" /> : <Link2 className="size-4" aria-hidden="true" />}
+      {copied ? (
+        <Check className="size-4" aria-hidden="true" />
+      ) : (
+        <Link2 className="size-4" aria-hidden="true" />
+      )}
       {copied ? 'Copied' : 'Copy link'}
     </Button>
   )

@@ -90,9 +90,7 @@ export function RadioBrowser({
   // themselves — the index into `activeLaps` is each message's identity, and
   // sorting the objects directly would sever that tie for the common case of
   // two messages sharing a lap.
-  const messageOrder = [...activeLaps.keys()].sort(
-    (a, b) => activeLaps[a].lap - activeLaps[b].lap,
-  )
+  const messageOrder = [...activeLaps.keys()].sort((a, b) => activeLaps[a].lap - activeLaps[b].lap)
 
   return (
     <div className="grid gap-4 md:grid-cols-[12rem_1fr]">

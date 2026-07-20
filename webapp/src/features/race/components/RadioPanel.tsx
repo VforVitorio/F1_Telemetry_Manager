@@ -83,7 +83,10 @@ export function RadioPanel({ gp, drivers, rdriver, rlap, rmsg, onSelect }: Radio
     if (!analysis.isError) return
     toast({
       title: 'Radio analysis failed',
-      description: errorDescription(analysis.error, 'The Radio Agent could not process this message.'),
+      description: errorDescription(
+        analysis.error,
+        'The Radio Agent could not process this message.',
+      ),
       tone: 'danger',
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps

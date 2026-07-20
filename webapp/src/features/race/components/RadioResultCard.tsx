@@ -9,11 +9,24 @@
 // file's banner) — `.f1-anim` collapses the animation under reduced motion
 // instead of skipping it, so the content still renders, just without motion.
 
-import { CircleAlert, HelpCircle, Info, Megaphone, TriangleAlert, type LucideIcon } from 'lucide-react'
+import {
+  CircleAlert,
+  HelpCircle,
+  Info,
+  Megaphone,
+  TriangleAlert,
+  type LucideIcon,
+} from 'lucide-react'
 import { Card } from '@/components/Card'
 import { ConfidenceDial } from '@/components/ConfidenceDial'
 import { Pill } from '@/components/Pill'
-import type { RadioAlert, RadioCorrection, RadioEntity, RadioEvent, RadioResult } from '@/lib/api/race'
+import type {
+  RadioAlert,
+  RadioCorrection,
+  RadioEntity,
+  RadioEvent,
+  RadioResult,
+} from '@/lib/api/race'
 
 const REVEAL_KEYFRAMES = `
 @keyframes f1-radio-reveal { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
@@ -143,14 +156,22 @@ function EventBlock({ event, index }: { event: RadioEvent; index: number }) {
   )
 }
 
-function CorrectionsFootnote({ corrections, index }: { corrections: RadioCorrection[]; index: number }) {
+function CorrectionsFootnote({
+  corrections,
+  index,
+}: {
+  corrections: RadioCorrection[]
+  index: number
+}) {
   if (corrections.length === 0) return null
   return (
     <div
       className="f1-anim flex flex-col gap-1.5 rounded-lg border border-hairline bg-bg-2 px-3 py-2 text-xs text-fg-3 animate-[f1-radio-reveal_400ms_ease-out_both]"
       style={{ animationDelay: revealDelay(index) }}
     >
-      <span className="font-medium tracking-wide text-fg-2 uppercase">The model auditing itself</span>
+      <span className="font-medium tracking-wide text-fg-2 uppercase">
+        The model auditing itself
+      </span>
       {corrections.map((c, i) => (
         <p key={i}>
           <span className="font-medium text-fg-2">{c.driver}</span>: {c.original_intent} &rarr;{' '}
@@ -172,7 +193,9 @@ function ReasoningDisclosure({ reasoning, index }: { reasoning: string; index: n
       <summary className="cursor-pointer text-xs font-medium tracking-wide text-fg-3 uppercase marker:content-none">
         Reasoning
       </summary>
-      <p className="mt-2 rounded-lg bg-bg-2 px-3 py-2 text-sm leading-relaxed text-fg-2">{reasoning}</p>
+      <p className="mt-2 rounded-lg bg-bg-2 px-3 py-2 text-sm leading-relaxed text-fg-2">
+        {reasoning}
+      </p>
     </details>
   )
 }
@@ -199,7 +222,10 @@ export function RadioResultCard({ result }: { result: RadioResult }) {
       {result.radio_events.map((event, i) => (
         <EventBlock key={i} event={event} index={i + 1} />
       ))}
-      <CorrectionsFootnote corrections={result.corrections} index={result.radio_events.length + 1} />
+      <CorrectionsFootnote
+        corrections={result.corrections}
+        index={result.radio_events.length + 1}
+      />
       <ReasoningDisclosure reasoning={result.reasoning} index={result.radio_events.length + 2} />
     </Card>
   )

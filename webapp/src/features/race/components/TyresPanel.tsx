@@ -18,7 +18,9 @@ const COMPOUND_ORDER: CompoundVariant[] = ['SOFT', 'MEDIUM', 'HARD', 'INTERMEDIA
 /** Compounds present in the loaded frame, soft→wet — only these earn a
  *  filter chip (no point offering one nobody ran this race). */
 function compoundsInFrame(rows: RaceRecord[]): CompoundVariant[] {
-  const present = new Set(rows.map((row) => compoundVariant(row.Compound)).filter((c): c is CompoundVariant => c != null))
+  const present = new Set(
+    rows.map((row) => compoundVariant(row.Compound)).filter((c): c is CompoundVariant => c != null),
+  )
   return COMPOUND_ORDER.filter((c) => present.has(c))
 }
 
@@ -40,7 +42,9 @@ function CompoundFilterChip({
       aria-pressed={active}
       className={cn(
         'rounded-full transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 focus-visible:ring-offset-2 focus-visible:ring-offset-bg-0',
-        active ? 'opacity-100 ring-2 ring-purple-400 ring-offset-2 ring-offset-bg-0' : 'opacity-60 hover:opacity-90',
+        active
+          ? 'opacity-100 ring-2 ring-purple-400 ring-offset-2 ring-offset-bg-0'
+          : 'opacity-60 hover:opacity-90',
       )}
     >
       <CompoundPill compound={compound} />

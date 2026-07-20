@@ -261,7 +261,12 @@ function toRadioResult(raw: unknown): RadioResult {
     }),
     alerts: alerts.map((al) => {
       const r = asRecord(al)
-      return { source: str(r.source), intent: str(r.intent), message: str(r.message), driver: str(r.driver) }
+      return {
+        source: str(r.source),
+        intent: str(r.intent),
+        message: str(r.message),
+        driver: str(r.driver),
+      }
     }),
     reasoning: str(d.reasoning),
     corrections: corrections.map((c) => {

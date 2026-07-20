@@ -26,9 +26,7 @@ export function GapsPanel({ rows, hasSelection, podium, onPick }: GapsPanelProps
   const [highlight, setHighlight] = useState<GapHighlight | undefined>(undefined)
 
   if (rows.length === 0) {
-    return (
-      <EmptyState title="No gap data" description="This selection has no laps to chart." />
-    )
+    return <EmptyState title="No gap data" description="This selection has no laps to chart." />
   }
 
   return (

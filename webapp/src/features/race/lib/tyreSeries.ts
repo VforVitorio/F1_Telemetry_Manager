@@ -78,7 +78,13 @@ function groupByDriverStint(rows: RaceRecord[]): StintGroup[] {
     const key = `${row.DriverNumber}-${row.Stint}`
     let group = groups.get(key)
     if (!group) {
-      group = { driver: row.Driver, compound: row.Compound, compoundId: row.CompoundID, stint: row.Stint, rows: [] }
+      group = {
+        driver: row.Driver,
+        compound: row.Compound,
+        compoundId: row.CompoundID,
+        stint: row.Stint,
+        rows: [],
+      }
       groups.set(key, group)
     }
     group.rows.push(row)
@@ -137,7 +143,10 @@ function resampleOnGrid(grid: number[], xs: number[], ys: number[]): Array<numbe
 
 /** Pairs the grid with its resampled values into ECharts' `[x, y]` data
  *  format, in one place so every builder below shares the same tuple shape. */
-function toSeriesData(grid: number[], values: Array<number | null>): Array<[number, number | null]> {
+function toSeriesData(
+  grid: number[],
+  values: Array<number | null>,
+): Array<[number, number | null]> {
   return grid.map((x, i): [number, number | null] => [x, values[i]])
 }
 
@@ -147,7 +156,8 @@ function baseTyreOption(yAxisName: string, valueSuffix: string): EChartsOption {
   return {
     tooltip: {
       trigger: 'axis',
-      valueFormatter: (value) => (typeof value === 'number' ? `${value.toFixed(2)}${valueSuffix}` : '—'),
+      valueFormatter: (value) =>
+        typeof value === 'number' ? `${value.toFixed(2)}${valueSuffix}` : '—',
     },
     legend: { type: 'scroll', top: 0, textStyle: { fontSize: 11 } },
     grid: { top: 44, left: 8, right: 20, bottom: 8, containLabel: true },
@@ -185,7 +195,11 @@ function lineSeries(
 
 // ── Builder 1: speed vs tyre age (single-compound view) ──────────────────────
 
-const SECTOR_FIELDS: Array<{ key: 'SpeedI1' | 'SpeedI2' | 'SpeedFL'; label: string; dash: LineDash }> = [
+const SECTOR_FIELDS: Array<{
+  key: 'SpeedI1' | 'SpeedI2' | 'SpeedFL'
+  label: string
+  dash: LineDash
+}> = [
   { key: 'SpeedI1', label: 'Sector 1', dash: 'solid' },
   { key: 'SpeedI2', label: 'Sector 2', dash: [6, 4] },
   { key: 'SpeedFL', label: 'Finish line', dash: [1, 3] },
@@ -219,9 +233,15 @@ function mostCommonCompoundVariant(rows: RaceRecord[]): string | undefined {
  * the sector split instead of the compound; driver colour still carries the
  * driver identity, same as every other view.
  */
-function buildSpeedOption(rows: RaceRecord[], compound: string | undefined, theme: Theme): EChartsOption {
+function buildSpeedOption(
+  rows: RaceRecord[],
+  compound: string | undefined,
+  theme: Theme,
+): EChartsOption {
   const activeCompound = compound ?? mostCommonCompoundVariant(rows)
-  const filtered = activeCompound ? rows.filter((row) => compoundVariant(row.Compound) === activeCompound) : rows
+  const filtered = activeCompound
+    ? rows.filter((row) => compoundVariant(row.Compound) === activeCompound)
+    : rows
 
   const groups = groupByDriverStint(filtered)
   const grid = tyreLifeGrid(groups)
@@ -233,7 +253,14 @@ function buildSpeedOption(rows: RaceRecord[], compound: string | undefined, them
       if (xs.length === 0) continue
       const values = resampleOnGrid(grid, xs, ys)
       series.push(
-        lineSeries(`${seriesName(group)} · ${sector.label}`, color, sector.dash, 2, undefined, toSeriesData(grid, values)),
+        lineSeries(
+          `${seriesName(group)} · ${sector.label}`,
+          color,
+          sector.dash,
+          2,
+          undefined,
+          toSeriesData(grid, values),
+        ),
       )
     }
   }
@@ -258,7 +285,14 @@ function buildMetricOption(
     const color = resolvePilotColor(getDriverColor(group.driver, RACE_YEAR), theme)
     const values = resampleOnGrid(grid, xs, ys)
     series.push(
-      lineSeries(seriesName(group), color, dashForCompound(group.compoundId, group.compound), 2, undefined, toSeriesData(grid, values)),
+      lineSeries(
+        seriesName(group),
+        color,
+        dashForCompound(group.compoundId, group.compound),
+        2,
+        undefined,
+        toSeriesData(grid, values),
+      ),
     )
   }
   return { ...baseTyreOption(yAxisName, valueSuffix), series }
@@ -286,13 +320,17 @@ function buildRegVsAdjOption(rows: RaceRecord[], theme: Theme): EChartsOption {
     const regular = extractPoints(group.rows, (row) => row.DegradationRate)
     if (regular.xs.length > 0) {
       const values = resampleOnGrid(grid, regular.xs, regular.ys)
-      series.push(lineSeries(`${name} · regular`, color, dash, 1.5, 0.5, toSeriesData(grid, values)))
+      series.push(
+        lineSeries(`${name} · regular`, color, dash, 1.5, 0.5, toSeriesData(grid, values)),
+      )
     }
 
     const adjusted = extractPoints(group.rows, (row) => row.FuelAdjustedDegAbsolute)
     if (adjusted.xs.length > 0) {
       const values = resampleOnGrid(grid, adjusted.xs, adjusted.ys)
-      series.push(lineSeries(`${name} · adjusted`, color, dash, 2.5, undefined, toSeriesData(grid, values)))
+      series.push(
+        lineSeries(`${name} · adjusted`, color, dash, 2.5, undefined, toSeriesData(grid, values)),
+      )
     }
   }
   return { ...baseTyreOption('Degradation (s/lap)', 's'), series }
@@ -326,13 +364,31 @@ export function buildTyreChartOption(
     case 'speed':
       return buildSpeedOption(rows, opts.compound, opts.theme)
     case 'fuelAdj':
-      return buildMetricOption(rows, (row) => row.FuelAdjustedDegAbsolute, 'Fuel-adjusted degradation (s/lap)', 's', opts.theme)
+      return buildMetricOption(
+        rows,
+        (row) => row.FuelAdjustedDegAbsolute,
+        'Fuel-adjusted degradation (s/lap)',
+        's',
+        opts.theme,
+      )
     case 'regVsAdj':
       return buildRegVsAdjOption(rows, opts.theme)
     case 'rate':
-      return buildMetricOption(rows, (row) => row.DegradationRate, 'Degradation rate (s/lap)', 's', opts.theme)
+      return buildMetricOption(
+        rows,
+        (row) => row.DegradationRate,
+        'Degradation rate (s/lap)',
+        's',
+        opts.theme,
+      )
     case 'pct':
-      return buildMetricOption(rows, (row) => row.FuelAdjustedDegPercent, 'Fuel-adjusted degradation (%)', '%', opts.theme)
+      return buildMetricOption(
+        rows,
+        (row) => row.FuelAdjustedDegPercent,
+        'Fuel-adjusted degradation (%)',
+        '%',
+        opts.theme,
+      )
   }
 }
 

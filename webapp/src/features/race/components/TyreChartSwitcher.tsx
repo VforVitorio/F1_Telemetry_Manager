@@ -91,7 +91,12 @@ export function TyreChartSwitcher({ rows, compound }: TyreChartSwitcherProps) {
             </TabsTrigger>
           ))}
         </TabsList>
-        <Button variant="ghost" size="sm" aria-pressed={tyreShowAll} onClick={() => setTyreShowAll(!tyreShowAll)}>
+        <Button
+          variant="ghost"
+          size="sm"
+          aria-pressed={tyreShowAll}
+          onClick={() => setTyreShowAll(!tyreShowAll)}
+        >
           {tyreShowAll ? 'Show one' : 'Show all'}
         </Button>
       </div>
