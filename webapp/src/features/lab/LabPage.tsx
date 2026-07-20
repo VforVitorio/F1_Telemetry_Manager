@@ -5,8 +5,9 @@
 
 import { useCallback, useMemo } from 'react'
 import { getRouteApi, Link } from '@tanstack/react-router'
-import { ArrowUpRight } from 'lucide-react'
+import { ArrowUpRight, Play } from 'lucide-react'
 import { Header } from '@/app/Header'
+import { Button } from '@/components/Button'
 import { LabContextBar } from './components/LabContextBar'
 import { ModelRail } from './components/ModelRail'
 import { RunFrame } from './components/RunFrame'
@@ -14,6 +15,7 @@ import { RunHistoryStrip } from './components/RunHistoryStrip'
 import { MODEL_DEFS, MODEL_DEF_BY_ID } from './models/registry'
 import { applyLabPatch, fromRaw, toRaw, type LabSearch, type ModelId } from './search'
 import { useLabStore } from './store'
+import { useRunAll } from './useRunAll'
 
 const routeApi = getRouteApi('/lab')
 
@@ -44,12 +46,29 @@ export function LabPage() {
     [activeRunByModel],
   )
 
+  const { runAll, isRunning, canRunAll } = useRunAll()
+
   const window = strategyWindow(search)
   const canSendToStrategy = !!search.gp && !!search.driver
 
   return (
     <>
       <Header title="Model Lab">
+        <Button
+          size="sm"
+          variant="ghost"
+          className="border border-hairline bg-bg-3 hover:bg-bg-4"
+          onClick={() => runAll(search)}
+          disabled={!canRunAll(search) || isRunning}
+          title={
+            canRunAll(search)
+              ? 'Run every model for this moment'
+              : 'Pick a Grand Prix, driver and lap first'
+          }
+        >
+          <Play className="size-3.5" aria-hidden="true" />
+          {isRunning ? 'Running all…' : 'Run all'}
+        </Button>
         {canSendToStrategy ? (
           <Link
             to="/strategy"
