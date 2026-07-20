@@ -75,12 +75,27 @@ export const useLabStore = create<LabState>()(
       addRun: (run) =>
         set((s) => {
           const runs = [run, ...s.runs].slice(0, RUN_CAP)
-          const activeRunByModel = { ...s.activeRunByModel }
+          // Drop any active pointer whose run was evicted by the cap, so the
+          // rail never shows a filled dot for a model whose run is gone.
+          const alive = new Set(runs.map((r) => r.id))
+          const activeRunByModel: Partial<Record<ModelId, string>> = {}
+          for (const [model, id] of Object.entries(s.activeRunByModel)) {
+            if (id && alive.has(id)) activeRunByModel[model as ModelId] = id
+          }
           for (const id of activeIdsFor(run)) activeRunByModel[id] = run.id
           return { runs, activeRunByModel }
         }),
+      // Restoring a run activates it under EVERY id it answers, so restoring a
+      // Situation run from history keeps the Overtake and Safety-car lenses in
+      // sync (they share one run) instead of splitting them.
       setActiveRun: (model, runId) =>
-        set((s) => ({ activeRunByModel: { ...s.activeRunByModel, [model]: runId } })),
+        set((s) => {
+          const run = s.runs.find((r) => r.id === runId)
+          const ids = run ? activeIdsFor(run) : [model]
+          const activeRunByModel = { ...s.activeRunByModel }
+          for (const id of ids) activeRunByModel[id] = runId
+          return { activeRunByModel }
+        }),
       clearRuns: () => set({ runs: [], activeRunByModel: {} }),
     }),
     {

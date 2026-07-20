@@ -17,14 +17,17 @@ import { CompoundPill } from '@/components/CompoundPill'
 import { Pill } from '@/components/Pill'
 import { Skeleton } from '@/components/Skeleton'
 import { StatCard } from '@/components/StatCard'
+import { useToast } from '@/components/Toast'
 import {
   fetchLapRange,
   fetchLapState,
   fetchTireRange,
   runAgent,
   type TireRangePoint,
+  type TireResult,
 } from '@/lib/api/strategy'
 import { compoundVariant } from '@/lib/compounds'
+import { runFailureToast } from './runError'
 import { LAB_YEAR } from '../search'
 import { StintRunway } from '../components/StintRunway'
 import { selectActiveRun, useLabStore, type LabRun } from '../store'
@@ -90,19 +93,31 @@ function toChartPoints(points: TireRangePoint[]): AgentModelPoint[] {
 export function TyreResultView({ gp, driver, lap }: ResultViewProps) {
   const addRun = useLabStore((s) => s.addRun)
   const activeRun = useLabStore((s) => selectActiveRun(s, 'tyres'))
+  const { toast } = useToast()
   const abortRef = useRef<AbortController | null>(null)
+  const runSeqRef = useRef(0)
 
   const runMut = useMutation({
-    mutationFn: async ({ signal }: { signal: AbortSignal }) => {
+    mutationFn: async ({
+      signal,
+      seq,
+    }: {
+      signal: AbortSignal
+      seq: number
+    }): Promise<{ agent: TireResult; range: TireRangePoint[]; seq: number }> => {
       const [agent, range] = await Promise.all([
-        fetchLapState(gp!, driver!, lap!, LAB_YEAR).then((lapState) => runAgent('tire', lapState)),
+        fetchLapState(gp!, driver!, lap!, LAB_YEAR, signal).then((lapState) =>
+          runAgent('tire', lapState, signal),
+        ),
         fetchLapRange(gp!, driver!, LAB_YEAR).then((lapRange) =>
           fetchTireRange(gp!, driver!, lapRange.min_lap, lapRange.max_lap, LAB_YEAR, signal),
         ),
       ])
-      return { agent, range }
+      return { agent, range, seq }
     },
-    onSuccess: ({ agent, range }) => {
+    onSuccess: ({ agent, range, seq }) => {
+      // Drop a run the user cancelled or superseded before it resolved.
+      if (seq !== runSeqRef.current) return
       const run: LabRun = {
         id: crypto.randomUUID(),
         model: 'tyres',
@@ -113,6 +128,7 @@ export function TyreResultView({ gp, driver, lap }: ResultViewProps) {
       }
       addRun(run)
     },
+    onError: (error) => runFailureToast(toast, 'Tyres', error),
   })
 
   const elapsed = useElapsedSeconds(runMut.isPending)
@@ -126,11 +142,13 @@ export function TyreResultView({ gp, driver, lap }: ResultViewProps) {
 
   function onRun() {
     if (disabledReason) return
+    const seq = ++runSeqRef.current
     const ac = new AbortController()
     abortRef.current = ac
-    runMut.mutate({ signal: ac.signal })
+    runMut.mutate({ signal: ac.signal, seq })
   }
   function onCancel() {
+    runSeqRef.current++
     abortRef.current?.abort()
     runMut.reset()
   }
@@ -205,7 +223,11 @@ export function TyreResultView({ gp, driver, lap }: ResultViewProps) {
         <StatCard
           eyebrow="Laps to cliff"
           value={`+${Math.round(agent.laps_to_cliff_p50)}`}
-          hint={`≈ ${fmtLap(agent.current_tyre_life + agent.laps_to_cliff_p50)} · P10 +${Math.round(agent.laps_to_cliff_p10)} · P90 +${Math.round(agent.laps_to_cliff_p90)}`}
+          hint={
+            run.context.lap != null
+              ? `≈ ${fmtLap(run.context.lap + agent.laps_to_cliff_p50)} · P10 +${Math.round(agent.laps_to_cliff_p10)} · P90 +${Math.round(agent.laps_to_cliff_p90)}`
+              : `P10 +${Math.round(agent.laps_to_cliff_p10)} · P90 +${Math.round(agent.laps_to_cliff_p90)}`
+          }
         />
       </VerdictRow>
 

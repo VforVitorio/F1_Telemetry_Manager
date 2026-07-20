@@ -12,7 +12,9 @@ import { AgentModelChart, type AgentModelPoint } from '@/charts/AgentModelChart'
 import { ChartCard } from '@/components/ChartCard'
 import { Skeleton } from '@/components/Skeleton'
 import { StatCard } from '@/components/StatCard'
+import { useToast } from '@/components/Toast'
 import { fetchPaceRange, type PaceRangePoint } from '@/lib/api/strategy'
+import { runFailureToast } from './runError'
 import { LAB_YEAR } from '../search'
 import { selectActiveRun, useLabStore, type LabRun } from '../store'
 import type { ModelMeta, ResultViewProps } from './types'
@@ -54,7 +56,9 @@ function windowMae(points: PaceRangePoint[]): number | null {
 function toChartPoints(points: PaceRangePoint[]): AgentModelPoint[] {
   let prevStint: number | null = null
   return points.map((p) => {
-    const stintStart = p.stint !== prevStint
+    // Never mark the window's first lap as a stint boundary: prevStint is null
+    // there, so it would draw a phantom pit line where no stop happened.
+    const stintStart = prevStint !== null && p.stint !== prevStint
     prevStint = p.stint
     return {
       lap: p.lap,
@@ -84,12 +88,18 @@ function sameWindow(a: [number, number] | undefined, b: [number, number] | undef
 export function PaceResultView({ gp, driver, laps }: ResultViewProps) {
   const addRun = useLabStore((s) => s.addRun)
   const activeRun = useLabStore((s) => selectActiveRun(s, 'pace'))
+  const { toast } = useToast()
   const abortRef = useRef<AbortController | null>(null)
+  const runSeqRef = useRef(0)
 
   const runMut = useMutation({
-    mutationFn: async ({ signal }: { signal: AbortSignal }) =>
-      fetchPaceRange(gp!, driver!, laps![0], laps![1], LAB_YEAR, signal),
-    onSuccess: (range) => {
+    mutationFn: async ({ signal, seq }: { signal: AbortSignal; seq: number }) => {
+      const range = await fetchPaceRange(gp!, driver!, laps![0], laps![1], LAB_YEAR, signal)
+      return { range, seq }
+    },
+    onSuccess: ({ range, seq }) => {
+      // Drop a run the user cancelled or superseded before it resolved.
+      if (seq !== runSeqRef.current) return
       const run: LabRun = {
         id: crypto.randomUUID(),
         model: 'pace',
@@ -100,6 +110,7 @@ export function PaceResultView({ gp, driver, laps }: ResultViewProps) {
       }
       addRun(run)
     },
+    onError: (error) => runFailureToast(toast, 'Pace', error),
   })
 
   const elapsed = useElapsedSeconds(runMut.isPending)
@@ -113,11 +124,13 @@ export function PaceResultView({ gp, driver, laps }: ResultViewProps) {
 
   function onRun() {
     if (disabledReason) return
+    const seq = ++runSeqRef.current
     const ac = new AbortController()
     abortRef.current = ac
-    runMut.mutate({ signal: ac.signal })
+    runMut.mutate({ signal: ac.signal, seq })
   }
   function onCancel() {
+    runSeqRef.current++
     abortRef.current?.abort()
     runMut.reset()
   }

@@ -145,10 +145,10 @@ export function StintRunway({
         ))}
       </div>
       <div className="flex items-center justify-between font-mono text-xs tabular-nums text-fg-4">
-        <span className="text-fg-2">now L{Math.round(nowLap)}</span>
+        <span className="text-fg-2">now age {Math.round(nowLap)}</span>
         <span>
-          cliff <span className="text-fg-1">~L{Math.round(p50Lap)}</span> (P10 L{Math.round(p10Lap)}{' '}
-          · P90 L{Math.round(p90Lap)})
+          cliff <span className="text-fg-1">~age {Math.round(p50Lap)}</span> (P10{' '}
+          {Math.round(p10Lap)} · P90 {Math.round(p90Lap)})
         </span>
       </div>
     </div>

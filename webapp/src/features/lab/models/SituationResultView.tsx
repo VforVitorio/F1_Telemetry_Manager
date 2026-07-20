@@ -4,6 +4,7 @@
 // same SituationFacts strip (gap/DRS, pace delta, SC/VSC flags) because a
 // single backend call answers both questions in one shot.
 
+import { useRef } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { ArrowDown, ArrowUp, ShieldAlert, Swords } from 'lucide-react'
 import { Gauge } from '@/charts/Gauge'
@@ -11,7 +12,9 @@ import { ChartCard } from '@/components/ChartCard'
 import { MetricRow } from '@/components/StatCard'
 import { Pill } from '@/components/Pill'
 import { Skeleton } from '@/components/Skeleton'
+import { useToast } from '@/components/Toast'
 import { fetchLapState, runAgent, type SituationResult } from '@/lib/api/strategy'
+import { runFailureToast } from './runError'
 import { LAB_YEAR } from '../search'
 import { selectActiveRun, useLabStore, type LabRun } from '../store'
 import type { ModelMeta, ResultViewProps } from './types'
@@ -168,13 +171,25 @@ export function SituationResultView({
   const meta = lens === 'overtake' ? OVERTAKE_META : SAFETYCAR_META
   const addRun = useLabStore((s) => s.addRun)
   const activeRun = useLabStore((s) => selectActiveRun(s, lens))
+  const { toast } = useToast()
+  const abortRef = useRef<AbortController | null>(null)
+  const runSeqRef = useRef(0)
 
   const runMut = useMutation({
-    mutationFn: async () => {
-      const lapState = await fetchLapState(gp!, driver!, lap!, LAB_YEAR)
-      return runAgent('situation', lapState)
+    mutationFn: async ({
+      signal,
+      seq,
+    }: {
+      signal: AbortSignal
+      seq: number
+    }): Promise<{ agent: SituationResult; seq: number }> => {
+      const lapState = await fetchLapState(gp!, driver!, lap!, LAB_YEAR, signal)
+      const agent = await runAgent('situation', lapState, signal)
+      return { agent, seq }
     },
-    onSuccess: (agent) => {
+    onSuccess: ({ agent, seq }) => {
+      // Drop a run the user cancelled or superseded before it resolved.
+      if (seq !== runSeqRef.current) return
       const run: LabRun = {
         id: crypto.randomUUID(),
         model: lens,
@@ -185,6 +200,7 @@ export function SituationResultView({
       }
       addRun(run)
     },
+    onError: (error) => runFailureToast(toast, meta.title, error),
   })
 
   const elapsed = useElapsedSeconds(runMut.isPending)
@@ -198,11 +214,14 @@ export function SituationResultView({
 
   function onRun() {
     if (disabledReason) return
-    runMut.mutate()
+    const seq = ++runSeqRef.current
+    const ac = new AbortController()
+    abortRef.current = ac
+    runMut.mutate({ signal: ac.signal, seq })
   }
-  // Neither fetchLapState nor runAgent accepts an AbortSignal, so Cancel just
-  // drops the pending mutation locally rather than aborting a network call.
   function onCancel() {
+    runSeqRef.current++
+    abortRef.current?.abort()
     runMut.reset()
   }
 
