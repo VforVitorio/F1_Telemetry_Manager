@@ -48,7 +48,7 @@ const TRIGGER_VARIANTS: Record<TabsListVariant, string> = {
   underline:
     'border-b-2 border-transparent pb-3 text-fg-3 hover:text-fg-2 data-[state=active]:border-purple-600 data-[state=active]:text-fg-1',
   segmented:
-    'rounded-lg px-3 py-1.5 text-fg-3 hover:text-fg-2 data-[state=active]:bg-bg-4 data-[state=active]:text-fg-1',
+    'rounded-lg px-3 py-1.5 text-fg-3 hover:text-fg-2 data-[state=active]:bg-bg-5 data-[state=active]:text-fg-1 data-[state=active]:shadow-sm',
 }
 
 export const TabsTrigger = forwardRef<

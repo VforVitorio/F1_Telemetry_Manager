@@ -28,7 +28,7 @@ export function RangeBar({ low, mid, high, format }: RangeBarProps) {
 
   return (
     <div className="flex flex-col gap-1.5">
-      <div className="relative h-1.5 rounded-full bg-bg-5" aria-hidden="true">
+      <div className="relative h-1.5 rounded-full bg-fg-1/10" aria-hidden="true">
         <div className="absolute top-1/2 left-0 h-2 w-px -translate-y-1/2 bg-fg-4" />
         <div className="absolute top-1/2 right-0 h-2 w-px -translate-y-1/2 bg-fg-4" />
         <div

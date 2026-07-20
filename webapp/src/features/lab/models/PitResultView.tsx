@@ -142,8 +142,13 @@ export function PitResultView({ gp, driver, lap }: ResultViewProps) {
       ) : null}
 
       <VerdictRow>
-        <ActionBadge action={agent.action} />
-        <CompoundPill compound={agent.compound_recommendation} />
+        <div className="flex flex-col items-start justify-center gap-1.5 rounded-2xl border border-hairline bg-bg-3 px-4 py-3 shadow-[var(--shadow-card)]">
+          <span className="text-xs font-medium uppercase tracking-widest text-fg-3">Verdict</span>
+          <div className="flex items-center gap-1.5">
+            <ActionBadge action={agent.action} />
+            <CompoundPill compound={agent.compound_recommendation} />
+          </div>
+        </div>
         <StatCard
           eyebrow="Recommended lap"
           value={agent.recommended_lap != null ? `L${agent.recommended_lap}` : 'None'}

@@ -105,8 +105,9 @@ function buildGaugeOption({
         radius: '90%',
         pointer: { show: false },
         progress: {
-          show: true,
+          show: value > 0,
           width: 10,
+          roundCap: true,
           itemStyle: { color: PURPLE_600 },
         },
         axisLine: {
@@ -187,7 +188,7 @@ export function Gauge({
         notMerge
       />
       {threshold != null ? (
-        <p className="-mt-2 text-xs text-fg-3">
+        <p className="-mt-8 text-xs text-fg-3">
           {thresholdLabel ?? `Action threshold ${formatValue(threshold)}`}
         </p>
       ) : null}

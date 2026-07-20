@@ -24,6 +24,7 @@ import {
   runAgent,
   type TireRangePoint,
 } from '@/lib/api/strategy'
+import { compoundVariant } from '@/lib/compounds'
 import { LAB_YEAR } from '../search'
 import { StintRunway } from '../components/StintRunway'
 import { selectActiveRun, useLabStore, type LabRun } from '../store'
@@ -49,11 +50,22 @@ export const TYRE_META: ModelMeta = {
   control: 'lap',
 }
 
-/** One lap count, formatted "L18", the same shorthand StintRunway already
- *  uses for tyre age and the cliff quantiles, so the StatCards and the strip
- *  read as one vocabulary. */
+/** Formats an ABSOLUTE lap number as "L46", the same shorthand the runway
+ *  strip and the rest of the app use for a specific lap. Reserved strictly
+ *  for absolute laps: a relative count (tyre age, laps-to-cliff) is a number
+ *  of laps FROM NOW, not a lap on the calendar, and printing it as "L<n>"
+ *  reads as the wrong lap entirely (see the cliff StatCard below). */
 function fmtLap(n: number): string {
   return `L${Math.round(n)}`
+}
+
+/** True when the agent's compound verdict is a Pirelli C-number ("C4")
+ *  rather than a named compound ("SOFT"). The tyre model reports whichever
+ *  one it was trained on; the branded CompoundPill only knows named
+ *  compounds, so a C-number verdict needs the lap's own compound name to
+ *  pick its colour (see `compoundName` below). */
+function isCNumber(compound: string): boolean {
+  return /^C\d$/i.test(compound)
 }
 
 /** Pill tone for the agent's warning level. PIT_SOON is the only urgent call,
@@ -146,6 +158,16 @@ export function TyreResultView({ gp, driver, lap }: ResultViewProps) {
 
   const stale = run.context.gp !== gp || run.context.driver !== driver || run.context.lap !== lap
 
+  // The compound name for the run's own lap, read back from the trajectory
+  // points already fetched for the chart (no extra call). When the agent's
+  // verdict is a C-number, this is the only way to know which brand colour
+  // it refers to; otherwise the agent's own compound string is used as-is.
+  const rangeCompoundAtLap = range.find((p) => p.lap === run.context.lap)?.compound
+  const compoundName = isCNumber(agent.compound) ? rangeCompoundAtLap : agent.compound
+  const brandedVariant = isCNumber(agent.compound)
+    ? compoundVariant(rangeCompoundAtLap ?? '')
+    : null
+
   return (
     <div className="flex flex-col gap-4">
       <RunHeader
@@ -167,14 +189,23 @@ export function TyreResultView({ gp, driver, lap }: ResultViewProps) {
       ) : null}
 
       <VerdictRow>
-        <Pill tone={warningTone(agent.warning_level)}>{agent.warning_level}</Pill>
-        <CompoundPill compound={agent.compound} />
-        <StatCard eyebrow="Tyre life" value={fmtLap(agent.current_tyre_life)} />
+        <div className="flex flex-col items-start justify-center gap-1.5 rounded-2xl border border-hairline bg-bg-3 px-4 py-3 shadow-[var(--shadow-card)]">
+          <span className="text-xs font-medium uppercase tracking-widest text-fg-3">Verdict</span>
+          <div className="flex items-center gap-1.5">
+            <Pill tone={warningTone(agent.warning_level)}>{agent.warning_level}</Pill>
+            {brandedVariant ? (
+              <Pill compound={brandedVariant}>{agent.compound}</Pill>
+            ) : (
+              <CompoundPill compound={agent.compound} />
+            )}
+          </div>
+        </div>
+        <StatCard eyebrow="Tyre life" value={`${Math.round(agent.current_tyre_life)} laps`} />
         <StatCard eyebrow="Deg rate" value={`${agent.deg_rate.toFixed(3)} s/lap`} />
         <StatCard
-          eyebrow="Cliff P50"
-          value={fmtLap(agent.laps_to_cliff_p50)}
-          hint={`P10 ${fmtLap(agent.laps_to_cliff_p10)} · P90 ${fmtLap(agent.laps_to_cliff_p90)}`}
+          eyebrow="Laps to cliff"
+          value={`+${Math.round(agent.laps_to_cliff_p50)}`}
+          hint={`≈ ${fmtLap(agent.current_tyre_life + agent.laps_to_cliff_p50)} · P10 +${Math.round(agent.laps_to_cliff_p10)} · P90 +${Math.round(agent.laps_to_cliff_p90)}`}
         />
       </VerdictRow>
 
@@ -183,14 +214,15 @@ export function TyreResultView({ gp, driver, lap }: ResultViewProps) {
         cliffP10={agent.laps_to_cliff_p10}
         cliffP50={agent.laps_to_cliff_p50}
         cliffP90={agent.laps_to_cliff_p90}
+        compound={compoundName}
       />
 
-      <ChartCard title="Tyre degradation trajectory">
+      <ChartCard title="Tyre degradation trajectory (s vs. fresh tyre)">
         <AgentModelChart
           points={toChartPoints(range)}
           actualLabel="Actual"
           predLabel="TCN estimate"
-          yUnit=""
+          yUnit="s"
           compoundDots
           height={220}
         />
