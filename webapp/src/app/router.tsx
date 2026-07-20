@@ -10,6 +10,7 @@ import { validateDashboardSearch } from '@/features/dashboard/search'
 import { validateStrategySearch } from '@/features/strategy/search'
 import { validateComparisonSearch } from '@/features/comparison/search'
 import { validateRaceSearch } from '@/features/race/search'
+import { validateLabSearch } from '@/features/lab/search'
 
 // Each feature page is a LAZY route component so the first paint of a light tab
 // (Home) doesn't download every other tab's code — the chart-heavy pages
@@ -31,6 +32,7 @@ const ComparisonPage = lazyRouteComponent(
   'ComparisonPage',
 )
 const RacePage = lazyRouteComponent(() => import('@/features/race/RacePage'), 'RacePage')
+const LabPage = lazyRouteComponent(() => import('@/features/lab/LabPage'), 'LabPage')
 const ThemePreview = lazyRouteComponent(() => import('@/features/dev/ThemePreview'), 'ThemePreview')
 
 // Route tree wiring (#33). Root renders the app shell (acrylic rail + routed
@@ -98,10 +100,13 @@ const raceRoute = createRoute({
   component: RacePage,
 })
 
+// Model Lab (#38) — the model inspector: one of six predictors on the bench,
+// fed a race moment, with its prediction / uncertainty / threshold / reasoning.
 const labRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/lab',
-  component: () => <ComingSoon title="Lab" />,
+  validateSearch: validateLabSearch,
+  component: LabPage,
 })
 
 // Comparison (#36) — the flagship time-clock replay. Shares the Dashboard's
