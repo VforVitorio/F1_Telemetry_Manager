@@ -60,9 +60,16 @@ export function LabContextBar({ search, onPatch, control }: LabContextBarProps) 
     label: d,
   }))
 
+  // Read-out values for the mono chip beside each slider (kept out of the
+  // Slider's own top-left caption, which we blank via `formatValue`, so the
+  // number lives next to the thumb instead of far away from it).
+  const lapWindow: [number, number] =
+    search.laps ?? (range ? [range.min_lap, range.max_lap] : [0, 0])
+  const lapValue = search.lap ?? range?.max_lap ?? 0
+
   return (
     <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
-      <span className="hidden shrink-0 items-center rounded-full border border-hairline bg-bg-4 px-2 py-1 font-mono text-xs text-fg-3 sm:inline-flex">
+      <span className="mb-1 hidden shrink-0 items-center rounded-full border border-hairline bg-bg-4 px-2 py-1 font-mono text-xs text-fg-3 sm:inline-flex">
         {LAB_YEAR} season
       </span>
 
@@ -92,30 +99,40 @@ export function LabContextBar({ search, onPatch, control }: LabContextBarProps) 
       </div>
 
       {control === 'window' && range ? (
-        <div className="flex flex-col gap-1.5 sm:min-w-72 sm:flex-1">
+        <div className="flex flex-col gap-1.5 sm:w-80 lg:w-96">
           <span className={EYEBROW}>Lap window</span>
-          <DualRangeSlider
-            min={range.min_lap}
-            max={range.max_lap}
-            value={search.laps ?? [range.min_lap, range.max_lap]}
-            onValueChange={(laps) => onPatch({ laps })}
-            formatValue={(v) => `L${v}`}
-          />
+          <div className="flex items-center gap-3">
+            <DualRangeSlider
+              min={range.min_lap}
+              max={range.max_lap}
+              value={search.laps ?? [range.min_lap, range.max_lap]}
+              onValueChange={(laps) => onPatch({ laps })}
+              formatValue={() => ''}
+              className="flex-1"
+            />
+            <span className="shrink-0 font-mono text-xs tabular-nums text-fg-2">
+              L{lapWindow[0]} - L{lapWindow[1]}
+            </span>
+          </div>
         </div>
       ) : null}
 
       {control === 'lap' && range ? (
-        <div className="flex flex-col gap-1.5 sm:min-w-56 sm:flex-1">
+        <div className="flex flex-col gap-1.5 sm:w-72 lg:w-80">
           <span className={EYEBROW}>Lap</span>
-          <Slider
-            min={range.min_lap}
-            max={range.max_lap}
-            value={search.lap ?? range.max_lap}
-            onValueChange={(lap) => onPatch({ lap })}
-            formatValue={(v) => `L${v}`}
-          />
+          <div className="flex items-center gap-3">
+            <Slider
+              min={range.min_lap}
+              max={range.max_lap}
+              value={search.lap ?? range.max_lap}
+              onValueChange={(lap) => onPatch({ lap })}
+              formatValue={() => ''}
+              className="flex-1"
+            />
+            <span className="shrink-0 font-mono text-xs tabular-nums text-fg-2">L{lapValue}</span>
+          </div>
           {lapState ? (
-            <div className="flex items-center gap-2">
+            <div className="mt-1 flex items-center gap-2">
               <CompoundPill compound={lapState.driver.compound} />
               <MetricRow
                 items={[

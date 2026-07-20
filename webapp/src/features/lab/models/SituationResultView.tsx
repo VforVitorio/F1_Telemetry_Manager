@@ -7,6 +7,7 @@
 import { useMutation } from '@tanstack/react-query'
 import { ArrowDown, ArrowUp, ShieldAlert, Swords } from 'lucide-react'
 import { Gauge } from '@/charts/Gauge'
+import { ChartCard } from '@/components/ChartCard'
 import { MetricRow } from '@/components/StatCard'
 import { Pill } from '@/components/Pill'
 import { Skeleton } from '@/components/Skeleton'
@@ -122,7 +123,7 @@ function BarRow({
   return (
     <div className="flex items-center gap-2">
       <span className="w-24 shrink-0 text-xs text-fg-4">{label}</span>
-      <div className="h-2 flex-1 rounded-full bg-bg-5" aria-hidden="true">
+      <div className="h-2 flex-1 rounded-full bg-fg-1/10" aria-hidden="true">
         <div className={`h-2 rounded-full ${tone}`} style={{ width: `${pct}%` }} />
       </div>
       <span className="w-12 shrink-0 text-right font-mono text-xs tabular-nums text-fg-1">
@@ -241,10 +242,6 @@ export function SituationResultView({
           </>
         }
       />
-      <p className="text-xs text-fg-4">
-        Shared run, the situation agent scores both overtake and safety car.
-      </p>
-
       {stale ? (
         <StaleBanner
           message={`Result is for ${run.label}. Re-run for the current lap.`}
@@ -256,26 +253,27 @@ export function SituationResultView({
         <Pill tone={threatTone(agent.threat_level)}>{agent.threat_level} threat</Pill>
       </VerdictRow>
 
-      <SituationFacts agent={agent} />
+      <ChartCard title={lens === 'overtake' ? 'Overtake probability' : 'SC probability (3 laps)'}>
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,20rem)_1fr] lg:items-center">
+          <div className="mx-auto w-full max-w-xs">
+            <Gauge
+              value={lens === 'overtake' ? agent.overtake_prob : agent.sc_prob_3lap}
+              label={lens === 'overtake' ? 'Overtake' : 'SC in 3 laps'}
+              threshold={lens === 'overtake' ? 0.8 : 0.3}
+              thresholdLabel={lens === 'overtake' ? 'Action threshold 80%' : 'Alert threshold 30%'}
+              height={170}
+            />
+          </div>
+          <div className="flex flex-col gap-3">
+            <SituationFacts agent={agent} />
+            {lens === 'safetycar' ? <BaselineLiftBar current={agent.sc_prob_3lap} /> : null}
+          </div>
+        </div>
+      </ChartCard>
 
-      {lens === 'overtake' ? (
-        <Gauge
-          value={agent.overtake_prob}
-          label="Overtake"
-          threshold={0.8}
-          thresholdLabel="Action threshold 80%"
-        />
-      ) : (
-        <>
-          <Gauge
-            value={agent.sc_prob_3lap}
-            label="SC in 3 laps"
-            threshold={0.3}
-            thresholdLabel="Alert threshold 30%"
-          />
-          <BaselineLiftBar current={agent.sc_prob_3lap} />
-        </>
-      )}
+      <p className="text-xs text-fg-4">
+        One run scores both lenses. Overtake and Safety car share the situation agent.
+      </p>
 
       <ReasoningDisclosure reasoning={agent.reasoning} />
     </div>

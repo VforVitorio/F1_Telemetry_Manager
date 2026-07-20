@@ -6,7 +6,7 @@
 // VerdictRow, ModelTypeChip) keep each ResultView thin and consistent.
 
 import { useEffect, useState } from 'react'
-import { Brain, Play, RotateCw, TriangleAlert, X } from 'lucide-react'
+import { Brain, ChevronRight, Play, RotateCw, TriangleAlert, X } from 'lucide-react'
 import { Button } from '@/components/Button'
 import { Card } from '@/components/Card'
 import { Markdown } from '@/components/Markdown'
@@ -97,9 +97,10 @@ export function RunControls({
   )
 }
 
-/** A pinned "ran for Lap 18 · 14:32" chip so a result never floats context-free. */
+/** A pinned "ran · Lap 18 · 14:32" chip so a shown result never reads as the
+ *  next run's input. */
 export function RanContextChip({ label }: { label: string }) {
-  return <span className="font-mono text-xs text-fg-3">{label}</span>
+  return <span className="font-mono text-xs text-fg-3">ran · {label}</span>
 }
 
 /** The amber stale banner: the bench moved on from the run's context. */
@@ -118,9 +119,11 @@ export function StaleBanner({ message, onRerun }: { message: string; onRerun: ()
   )
 }
 
-/** A flex row for a model's verdict pills + stat cards. */
+/** A flex row for a model's verdict pills + stat cards, stretched to one shared
+ *  height so a qualitative verdict cell reads as tall as its neighboring
+ *  StatCards instead of floating mid-height between them. */
 export function VerdictRow({ children }: { children: React.ReactNode }) {
-  return <div className="flex flex-wrap items-center gap-3">{children}</div>
+  return <div className="flex flex-wrap items-stretch gap-3">{children}</div>
 }
 
 /** The agent's reasoning, one disclosure away, never truncated. */
@@ -128,9 +131,13 @@ export function ReasoningDisclosure({ reasoning }: { reasoning: string }) {
   if (!reasoning) return null
   return (
     <details className="group">
-      <summary className="flex cursor-pointer items-center gap-1.5 text-xs font-medium tracking-wide text-fg-3 uppercase marker:content-none">
+      <summary className="flex cursor-pointer items-center gap-1.5 text-xs font-medium tracking-widest text-fg-3 uppercase marker:content-none">
         <Brain className="size-3.5" aria-hidden="true" />
         Agent reasoning
+        <ChevronRight
+          className="size-3.5 transition-transform group-open:rotate-90"
+          aria-hidden="true"
+        />
       </summary>
       <div className="prose-sm mt-2 rounded-lg bg-bg-2 px-3 py-2 text-fg-2">
         <Markdown>{reasoning}</Markdown>
@@ -156,6 +163,7 @@ export function IdleHero({
       <span className="flex size-11 items-center justify-center rounded-xl border border-hairline bg-bg-3 text-fg-2">
         <Icon className="size-5" aria-hidden="true" />
       </span>
+      <h3 className="font-display text-base font-medium text-fg-1">{meta.title}</h3>
       <div className="flex flex-col gap-1">
         <p className="max-w-md text-sm text-fg-2">{meta.blurb}</p>
         <p className="font-mono text-xs text-fg-4">
@@ -172,7 +180,7 @@ export function IdleHero({
 export function RunFrame({ def, ...props }: { def: ModelDef } & ResultViewProps) {
   const { ResultView } = def
   return (
-    <Card elevation="resting" className="flex flex-col gap-4 p-4">
+    <Card elevation="resting" className="flex flex-col gap-4 p-4 lg:min-h-120">
       <ResultView {...props} />
     </Card>
   )

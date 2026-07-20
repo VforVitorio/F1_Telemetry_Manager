@@ -20,7 +20,7 @@ export const Skeleton = forwardRef<HTMLDivElement, SkeletonProps>(function Skele
       ref={ref}
       role="presentation"
       aria-hidden="true"
-      className={cn('animate-pulse rounded-lg bg-bg-4 motion-reduce:animate-none', className)}
+      className={cn('animate-pulse rounded-lg bg-fg-1/8 motion-reduce:animate-none', className)}
       {...props}
     />
   )

@@ -27,22 +27,22 @@ export function RunHistoryStrip({ model }: { model: ModelId }) {
 
   return (
     <div className="flex flex-col gap-1.5">
-      <span className="text-xs font-medium tracking-wide text-fg-3 uppercase">Run history</span>
-      <div className="flex flex-col gap-1">
+      <span className="text-xs font-medium tracking-widest text-fg-3 uppercase">Run history</span>
+      <div className="flex flex-wrap items-center gap-1.5">
         {modelRuns.map((run) => (
           <button
             key={run.id}
             type="button"
             onClick={() => setActiveRun(model, run.id)}
             className={cn(
-              'flex items-center justify-between gap-3 rounded-lg border px-3 py-1.5 text-left text-sm transition-colors',
+              'inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs transition-colors',
               run.id === activeId
                 ? 'border-purple-500/50 bg-bg-4 text-fg-1'
-                : 'border-hairline bg-bg-3 text-fg-2 hover:bg-bg-4 hover:text-fg-1',
+                : 'border-hairline bg-bg-3 text-fg-3 hover:bg-bg-4 hover:text-fg-1',
             )}
           >
-            <span className="truncate">{run.label}</span>
-            <span className="shrink-0 font-mono text-xs text-fg-4">{clockLabel(run.ranAt)}</span>
+            {run.label}
+            <span className="font-mono text-fg-4">{clockLabel(run.ranAt)}</span>
           </button>
         ))}
       </div>

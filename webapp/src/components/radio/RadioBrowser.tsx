@@ -133,11 +133,7 @@ export function RadioBrowser({
                 className="flex items-center gap-1 font-mono text-xs text-fg-3"
                 title={`${total} radio message${total === 1 ? '' : 's'}, ${withTranscript} with transcript`}
               >
-                {withTranscript > 0 ? (
-                  <Mic className="size-3" aria-hidden="true" />
-                ) : (
-                  <MicOff className="size-3 text-fg-4" aria-hidden="true" />
-                )}
+                {withTranscript > 0 ? <Mic className="size-3" aria-hidden="true" /> : null}
                 {total}
               </span>
             </button>
@@ -155,7 +151,12 @@ export function RadioBrowser({
             description={`Audio-only radio for ${activeDriver}. Try another driver or use free text.`}
             action={
               onOpenComposer ? (
-                <Button variant="ghost" size="sm" onClick={onOpenComposer}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={onOpenComposer}
+                  className="border border-hairline bg-bg-3 hover:bg-bg-4"
+                >
                   Use free text
                 </Button>
               ) : undefined
