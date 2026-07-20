@@ -23,12 +23,14 @@ The whole module is async because the FastMCP client is async; the LLM
 provider calls remain blocking ``requests`` calls but run inside the
 event loop without harm at the chat's traffic levels.
 
-Note on streaming: we do NOT chunk the summary text artificially.  An
-earlier version sliced the finished text into 12-char fakes to mimic a
-typing animation, but that was visual only and confused readers about
-where real tokens come from.  When we move to native provider streaming
-(``stream=True``) we will emit live deltas; until then the response
-arrives in a single ``token`` event.
+Note on streaming: by default the summary text still arrives as a single
+``token`` event — we do NOT chunk it artificially just to fake a typing
+animation.  Callers may opt into live deltas by passing
+``stream_tokens=True`` to ``stream_response``; that switches the
+tool-summary call onto the provider's native ``stream=True`` path and
+emits one ``token`` event per delta instead.  The first call (the model
+deciding whether to call a tool) always stays non-streaming — its
+casual-chat replies are short enough that one event is fine.
 """
 
 from __future__ import annotations
@@ -36,11 +38,11 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from typing import Any, AsyncGenerator
+from typing import Any, AsyncGenerator, Callable, Generator
 
 from backend.core.config import clamp_max_tokens
 from backend.models.tool_schemas import DisplayType, TOOL_DISPLAY_MAP, ToolName, is_tool_allowed
-from backend.services.chatbot.llm_service import build_messages, send_message
+from backend.services.chatbot.llm_service import build_messages, send_message, stream_message
 from backend.services.chatbot.mcp_bridge import (
     call_mcp_tool,
     coerce_tool_arguments,
@@ -56,6 +58,11 @@ logger = logging.getLogger(__name__)
 # single message. ``_first_tool_call`` enforces it by construction — do not widen
 # it to return a list without re-checking this invariant.
 _MAX_TOOLS_PER_TURN = 1
+
+# Sentinel returned by ``next(iterator, default)`` in ``_bridge_sync_stream``
+# once the wrapped generator is exhausted — distinct from any real chunk value
+# (including an empty string), so it can never be mistaken for streamed text.
+_SYNC_STREAM_DONE = object()
 
 
 # Pirelli-style brevity for the chat: short, expert, bilingual.  The model
@@ -136,6 +143,7 @@ async def stream_response(
     model: str | None = None,
     temperature: float = 0.3,
     max_tokens: int = 800,
+    stream_tokens: bool = False,
 ) -> AsyncGenerator[tuple[str, dict[str, Any]], None]:
     """Stream the chat response as a sequence of (event_name, payload) tuples.
 
@@ -143,10 +151,18 @@ async def stream_response(
     yielded tuple — keeping the engine framework-agnostic so it can also
     feed a future WebSocket / CLI consumer without changes.
 
+    Args:
+        stream_tokens: When True, the tool-summary leg (the second LLM
+            call, made after a tool result comes back) emits live token
+            deltas instead of one full-text event. Default False leaves
+            every existing caller on today's single-``token`` turn.
+
     Yielded events:
         ("stage", {"stage": <name>})           — backend phase advanced
         ("tool_result", {"tool_result": ...})  — structured tool output
-        ("token", {"token": <chunk>})          — LLM text chunk
+        ("token", {"token": <chunk>})          — LLM text chunk (one delta
+                                                   per event when
+                                                   stream_tokens=True)
         ("done", {...})                         — final marker + metadata
     """
     # Cost cap A3 (#224): clamp the client-controlled budget down to the server
@@ -191,6 +207,7 @@ async def stream_response(
         model=model,
         temperature=temperature,
         max_tokens=max_tokens,
+        stream_tokens=stream_tokens,
     ):
         yield event
 
@@ -288,6 +305,7 @@ async def _stream_tool_response(
     model: str | None,
     temperature: float,
     max_tokens: int,
+    stream_tokens: bool = False,
 ) -> AsyncGenerator[tuple[str, dict[str, Any]], None]:
     """Dispatch the model's tool_call, stream the tool_result + summary."""
     tool_name = tool_call["function"]["name"]
@@ -319,6 +337,14 @@ async def _stream_tool_response(
         tool_data=tool_data,
         tool_error=tool_error,
     )
+
+    if stream_tokens:
+        async for event in _stream_summary_deltas(
+            summary_messages, model, temperature, max_tokens, tool_name, tool_error,
+        ):
+            yield event
+        return
+
     summary_response = await _safe_send(
         summary_messages,
         model=model,
@@ -330,6 +356,56 @@ async def _stream_tool_response(
     yield ("token", {"token": summary_text})
 
     yield ("done", _done_metadata(summary_response))
+
+
+async def _stream_summary_deltas(
+    summary_messages: list[dict[str, Any]],
+    model: str | None,
+    temperature: float,
+    max_tokens: int,
+    tool_name: str,
+    tool_error: str | None,
+) -> AsyncGenerator[tuple[str, dict[str, Any]], None]:
+    """Stream the tool-summary LLM call as live token deltas.
+
+    Opt-in counterpart to the single ``token`` event the caller emits by
+    default.  If the provider's stream fails before any text arrives — a
+    model/provider combination that does not honour ``stream=True``, a
+    dropped connection, and so on — we fall back to the ordinary
+    non-streaming call, so turning this flag on can only add live deltas,
+    never turn a turn that used to work into a failed one.
+    """
+    collected = ""
+    try:
+        async for delta in _bridge_sync_stream(
+            lambda: stream_message(
+                messages=summary_messages,
+                model=model,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+        ):
+            collected += delta
+            yield ("token", {"token": delta})
+    except Exception:
+        logger.exception("Token streaming failed for the summary call")
+        if not collected:
+            summary_response = await _safe_send(
+                summary_messages, model=model, temperature=temperature, max_tokens=max_tokens,
+            )
+            summary_text = _extract_text(summary_response) or _fallback_summary(tool_name, tool_error)
+            yield ("token", {"token": summary_text})
+            yield ("done", _done_metadata(summary_response))
+            return
+        # Some deltas already reached the client — do not replay a fallback
+        # summary on top of them, just close the turn out cleanly.
+        yield ("done", {"llm_model": model, "tokens_used": None})
+        return
+
+    if not collected.strip():
+        yield ("token", {"token": _fallback_summary(tool_name, tool_error)})
+
+    yield ("done", {"llm_model": model, "tokens_used": None})
 
 
 # ---------------------------------------------------------------------------
@@ -388,6 +464,25 @@ async def _safe_send(
     except Exception:
         logger.exception("LLM provider call failed")
         return {}
+
+
+async def _bridge_sync_stream(make_generator: Callable[[], Generator[str, None, None]]) -> AsyncGenerator[str, None]:
+    """Turn a blocking text generator into an async one without stalling the loop.
+
+    ``stream_message`` is a plain ``requests``-based generator — there is no
+    async provider client — so every ``next()`` call blocks on network I/O
+    while it waits for the next chunk. Running each ``next()`` through
+    ``asyncio.to_thread`` keeps that wait off the event loop, the same
+    reasoning ``_safe_send`` already applies to the non-streaming call, so
+    concurrent SSE streams (the sim, voice, other chat turns) stay responsive
+    while this one is mid-response.
+    """
+    iterator = iter(make_generator())
+    while True:
+        chunk = await asyncio.to_thread(next, iterator, _SYNC_STREAM_DONE)
+        if chunk is _SYNC_STREAM_DONE:
+            return
+        yield chunk
 
 
 def _extract_message(response: dict[str, Any]) -> dict[str, Any]:

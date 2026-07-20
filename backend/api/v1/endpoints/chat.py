@@ -306,6 +306,7 @@ async def tool_message_stream(
                 model=request.model,
                 temperature=request.temperature,
                 max_tokens=request.max_tokens,
+                stream_tokens=request.stream_tokens,
             ):
                 yield _sse(event_name, payload)
         except Exception as exc:

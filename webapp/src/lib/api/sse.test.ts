@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import type { EventSourceMessage } from 'eventsource-parser'
-import { postStream } from './sse'
+import { postStream, SseError } from './sse'
 
 // Builds a streamed SSE Response from raw chunks (chunk boundaries deliberately
 // fall mid-frame to prove the parser reassembles across reads).
@@ -52,6 +52,19 @@ describe('postStream', () => {
     const onError = vi.fn()
     await expect(postStream('/api/v1/x', {}, { onEvent: () => {}, onError })).rejects.toThrow(/500/)
     expect(onError).toHaveBeenCalledOnce()
+  })
+
+  it('rejects with a typed SseError carrying the real status code', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(new Response('too many requests', { status: 429, statusText: 'Too Many Requests' })),
+    )
+
+    await expect(postStream('/api/v1/x', {}, { onEvent: () => {} })).rejects.toMatchObject({
+      name: 'SseError',
+      status: 429,
+    })
+    await expect(postStream('/api/v1/x', {}, { onEvent: () => {} })).rejects.toBeInstanceOf(SseError)
   })
 
   it('swallows an aborted stream (Stop button) without erroring', async () => {

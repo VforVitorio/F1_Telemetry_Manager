@@ -4,13 +4,13 @@ import {
   createRouter,
   lazyRouteComponent,
 } from '@tanstack/react-router'
-import { Header } from './Header'
 import { Shell } from './Shell'
 import { validateDashboardSearch } from '@/features/dashboard/search'
 import { validateStrategySearch } from '@/features/strategy/search'
 import { validateComparisonSearch } from '@/features/comparison/search'
 import { validateRaceSearch } from '@/features/race/search'
 import { validateLabSearch } from '@/features/lab/search'
+import { validateChatSearch } from '@/features/chat/search'
 
 // Each feature page is a LAZY route component so the first paint of a light tab
 // (Home) doesn't download every other tab's code — the chart-heavy pages
@@ -33,17 +33,20 @@ const ComparisonPage = lazyRouteComponent(
 )
 const RacePage = lazyRouteComponent(() => import('@/features/race/RacePage'), 'RacePage')
 const LabPage = lazyRouteComponent(() => import('@/features/lab/LabPage'), 'LabPage')
+const ChatPage = lazyRouteComponent(() => import('@/features/chat/ChatPage'), 'ChatPage')
 const ThemePreview = lazyRouteComponent(() => import('@/features/dev/ThemePreview'), 'ThemePreview')
 
 // Route tree wiring (#33). Root renders the app shell (acrylic rail + routed
 // content plane, see Shell.tsx); the shell's <Outlet/> renders whichever leaf
 // route matched below. '/' is the real Home (the Pit Wall launcher hub); the
 // old theme-preview palette moved to the dev-only '/dev/theme' (not in the
-// rail). The feature-less tabs are "coming soon" placeholders until their
-// features ship (one sprint at a time). Each `createRoute` call keeps its
-// `path` a literal string at the call site (not threaded through a prop/array)
-// so TanStack Router's typed route tree infers the exact path union — that's
-// what makes <Link to="..."> in Rail.tsx type-checked.
+// rail). Every rail tab now has a real feature page (Chat/#39 was the last
+// "coming soon" placeholder); only Voice (#40) remains reserved, as a disabled
+// toggle inside the Chat sidebar rather than a separate route. Each
+// `createRoute` call keeps its `path` a literal string at the call site (not
+// threaded through a prop/array) so TanStack Router's typed route tree infers
+// the exact path union — that's what makes <Link to="..."> in Rail.tsx
+// type-checked.
 const rootRoute = createRootRoute({ component: () => <Shell /> })
 
 const indexRoute = createRoute({
@@ -51,18 +54,6 @@ const indexRoute = createRoute({
   path: '/',
   component: HomePage,
 })
-
-/** Shared body for routes without a feature yet. */
-function ComingSoon({ title }: { title: string }) {
-  return (
-    <>
-      <Header title={title} />
-      <div className="flex flex-1 items-center justify-center">
-        <p className="text-fg-3">{title} — coming soon</p>
-      </div>
-    </>
-  )
-}
 
 const dashboardRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -119,10 +110,15 @@ const comparisonRoute = createRoute({
   component: ComparisonPage,
 })
 
+// Chat (#39) — the MCP-tool-calling assistant: real SSE token streaming, one
+// tool result inline per turn. Its own search shape (active chat id, the
+// text/voice mode toggle reserved for Voice #40, a never-auto-firing `ask`
+// deep-link prefill).
 const chatRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/chat',
-  component: () => <ComingSoon title="Chat" />,
+  validateSearch: validateChatSearch,
+  component: ChatPage,
 })
 
 const routeTree = rootRoute.addChildren([
