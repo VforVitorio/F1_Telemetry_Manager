@@ -37,7 +37,11 @@ function parseLapTimeRecords(data: unknown): LapTimeRecord[] | null {
       lapNumber,
       lapTime: asNumberOrNull(row.lap_time),
       isValid: asBoolean(row.is_valid, true),
-      compound: asString(row.compound, '').toUpperCase() || 'UNK',
+      // Left empty (never defaulted) when absent: the pit detector's
+      // compound-change signal skips empty values, exactly like the Python
+      // detector reading the raw row — a placeholder here would manufacture
+      // a phantom pit line at every gap in the compound data.
+      compound: asString(row.compound, '').toUpperCase(),
     })
   }
   return records

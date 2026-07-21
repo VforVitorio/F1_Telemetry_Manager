@@ -8,6 +8,7 @@ import {
   type ToolResult,
 } from '@/lib/api/chat'
 import { useToast } from '@/components/Toast'
+import { isToolError } from './components/toolResultParsing'
 import { stageLabel, toolNameFromStage } from './stageLabels'
 import { useChatStore, type ChatMessage } from './store'
 
@@ -79,7 +80,9 @@ export function applyStreamEvent(turn: ActiveTurn, event: ChatStreamEvent): Acti
       }
     }
     case 'tool_result': {
-      const hasError = 'error' in event.toolResult.data
+      // Same detector ToolResultCard routes on — a successful payload that
+      // merely CONTAINS an `error`-named field must not flip the badge red.
+      const hasError = isToolError(event.toolResult.data)
       return {
         ...turn,
         toolResultMessage: newToolResultMessage(event.toolResult),
@@ -143,6 +146,11 @@ export interface UseChatStreamResult {
    *  first message. Drives the ticker (stage label + tool badge) — message
    *  CONTENT itself lives in the store and needs no separate draft to render. */
   turn: ActiveTurn | null
+  /** Which chat `turn` belongs to. The hook survives a mid-stream chat switch
+   *  (tokens keep landing in the chat the turn started in), so the page must
+   *  compare this against the ACTIVE chat before rendering the ticker — the
+   *  stage line for chat A must not appear inside chat B's thread. */
+  turnChatId?: string
   isStreaming: boolean
   /** `image` is a data URI already downscaled by the composer — it rides in
    *  the request's own `image` field, never in wire history, and is attached
@@ -161,6 +169,7 @@ export interface UseChatStreamResult {
 export function useChatStream(chatId: string | undefined): UseChatStreamResult {
   const [turn, setTurn] = useState<ActiveTurn | null>(null)
   const turnRef = useRef<ActiveTurn>(createActiveTurn())
+  const turnChatIdRef = useRef<string | undefined>(undefined)
   const assistantMessageIdRef = useRef<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
   const { toast } = useToast()
@@ -219,6 +228,11 @@ export function useChatStream(chatId: string | undefined): UseChatStreamResult {
       } else if (turnRef.current.status !== 'error' && isEmptyTurn(turnRef.current)) {
         turnRef.current = { ...turnRef.current, status: 'error' }
         commitAssistantDelta(EMPTY_STREAM_NOTICE)
+      } else if (turnRef.current.status === 'streaming') {
+        // The server closed the stream without a `done` frame (proxy drop,
+        // backend crash after some tokens landed): the turn is over — never
+        // leave the composer stuck on a Stop button for a dead connection.
+        turnRef.current = { ...turnRef.current, status: 'done' }
       }
       setTurn(turnRef.current)
       abortRef.current = null
@@ -229,7 +243,10 @@ export function useChatStream(chatId: string | undefined): UseChatStreamResult {
   const send = useCallback(
     (text: string, image?: string) => {
       const trimmed = text.trim()
-      if (!trimmed || !chatId || turn?.status === 'streaming') return
+      // `abortRef` is the synchronous in-flight guard: the `turn` state check
+      // alone is stale for a same-tick double invoke (state updates are async)
+      // and two concurrent streams would interleave into the shared refs.
+      if (!trimmed || !chatId || abortRef.current || turn?.status === 'streaming') return
 
       const priorMessages = useChatStore.getState().chats[chatId]?.messages ?? []
       appendMessage(chatId, {
@@ -242,6 +259,7 @@ export function useChatStream(chatId: string | undefined): UseChatStreamResult {
       })
 
       turnRef.current = createActiveTurn()
+      turnChatIdRef.current = chatId
       assistantMessageIdRef.current = null
       setTurn(turnRef.current)
 
@@ -279,5 +297,11 @@ export function useChatStream(chatId: string | undefined): UseChatStreamResult {
     abortRef.current?.abort()
   }, [])
 
-  return { turn, isStreaming: turn?.status === 'streaming', send, stop }
+  return {
+    turn,
+    turnChatId: turnChatIdRef.current,
+    isStreaming: turn?.status === 'streaming',
+    send,
+    stop,
+  }
 }
