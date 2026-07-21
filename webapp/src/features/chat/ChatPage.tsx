@@ -69,7 +69,7 @@ export function ChatPage() {
   const messages = activeChat?.messages ?? NO_MESSAGES
   const chatsList = useMemo(() => chatList(chats), [chats])
 
-  const { turn, isStreaming, send, stop } = useChatStream(activeChatId)
+  const { turn, turnChatId, isStreaming, send, stop } = useChatStream(activeChatId)
   const [draft, setDraft] = useState(() => search.ask ?? '')
   const [attachment, setAttachment] = useState<string | null>(null)
 
@@ -102,7 +102,10 @@ export function ChatPage() {
   }, [])
 
   function handleSend() {
-    if (!draft.trim()) return
+    // While a reply streams the user can keep TYPING the next message, but
+    // Enter must not clear it: `send` would reject the turn (one stream at a
+    // time) and wiping the draft here would silently lose the text.
+    if (!draft.trim() || isStreaming) return
     send(draft, attachment ?? undefined)
     setDraft('')
     setAttachment(null)
@@ -119,8 +122,11 @@ export function ChatPage() {
     if (wasActive) patch({ c: newChat() })
   }
 
+  // Gate on `turnChatId`: a turn keeps streaming into the chat it STARTED in
+  // even if the user switches conversations mid-stream, and its stage ticker
+  // must not appear inside an unrelated thread.
   const streamingFooter =
-    turn && turn.status === 'streaming' ? (
+    turn && turn.status === 'streaming' && turnChatId === activeChatId ? (
       <div className="flex items-center gap-2 px-1 py-2">
         <span className="size-1.5 animate-pulse rounded-full bg-purple-400" aria-hidden="true" />
         <span className="text-xs text-fg-3">{turn.stageLabel}</span>

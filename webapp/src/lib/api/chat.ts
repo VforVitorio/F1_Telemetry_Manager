@@ -115,17 +115,32 @@ function toToolResult(raw: unknown): ToolResult | null {
   }
 }
 
+/** Parse a frame's JSON payload, tolerating the bare `NaN`/`Infinity` literals
+ *  Python's `json.dumps` emits for non-finite floats (predict_pace's
+ *  `delta_vs_median` is documented NaN at new circuits) — strictly invalid
+ *  JSON that would otherwise silently drop the whole tool_result frame. The
+ *  strict parse runs first, so well-formed frames never pay for the fallback;
+ *  the sanitized retry nulls those literals out instead of losing the frame. */
+function parseFramePayload(raw: string): Record<string, unknown> | null {
+  try {
+    return asRecord(JSON.parse(raw))
+  } catch {
+    try {
+      const sanitized = raw.replace(/-?\bInfinity\b/g, 'null').replace(/\bNaN\b/g, 'null')
+      return asRecord(JSON.parse(sanitized))
+    } catch {
+      return null
+    }
+  }
+}
+
 /** Parse one raw SSE frame into a typed `ChatStreamEvent`, or null for a frame
  *  this client does not understand (an unrecognised event name, or a payload
  *  missing its required fields) — dropped rather than thrown, so one bad frame
  *  cannot tear down an otherwise-good turn. */
 function parseChatFrame(message: EventSourceMessage): ChatStreamEvent | null {
-  let payload: Record<string, unknown>
-  try {
-    payload = asRecord(JSON.parse(message.data))
-  } catch {
-    return null
-  }
+  const payload = parseFramePayload(message.data)
+  if (payload == null) return null
   switch (message.event) {
     case 'stage':
       return typeof payload.stage === 'string' ? { event: 'stage', stage: payload.stage } : null
@@ -183,8 +198,9 @@ export interface HistorySourceMessage {
   content: string
   /** Present only on a `tool_result` message. `buildWireHistory` ignores it (a
    *  live turn's own `chat_history` stays text-only); `buildReportHistory`
-   *  reads it to fold the tool run into a one-line summary. */
-  toolResult?: { tool_name: string }
+   *  reads it to fold the tool run into a one-line summary, falling back to
+   *  `data` because the engine only fills the summary field on a FAILED call. */
+  toolResult?: { tool_name: string; data?: Record<string, unknown> }
 }
 
 /**
@@ -219,19 +235,39 @@ const REPORT_INSTRUCTION =
 const REPORT_MAX_TOKENS = 4000
 const REPORT_TEMPERATURE = 0.4
 
+/** One chat bubble's worth of raw tool output is plenty of report evidence —
+ *  chart payloads (race_data et al.) run to hundreds of rows otherwise. */
+const TOOL_LINE_MAX_CHARS = 600
+
+/** The evidence line for one past tool run: the engine's own summary when it
+ *  sent one, otherwise the (truncated) raw data. The fallback is load-bearing,
+ *  not defensive: the engine sets `summary: tool_error or ""` — it is ONLY
+ *  ever non-empty on a failed call — so without reading `data` no successful
+ *  tool run would ever reach the report at all. */
+function toolEvidenceLine(m: HistorySourceMessage): string {
+  const summary = m.content.trim()
+  if (summary !== '') return summary
+  const data = m.toolResult?.data
+  if (!data || Object.keys(data).length === 0) return ''
+  return JSON.stringify(data).slice(0, TOOL_LINE_MAX_CHARS)
+}
+
 /**
  * Build the `chat_history` for a one-shot report request. Unlike
  * `buildWireHistory` (which drops `tool_result` entries entirely — dead weight
  * server-side for a live turn), a report is SUPPOSED to summarise "the data
  * analysed", so each past tool run is folded into a short assistant line
- * ("[predict_tire] MEDIUM, cliff ~L34, ..."). Without this, `generate_report`
+ * ("[predict_tire] {...deg_rate, cliff...}"). Without this, `generate_report`
  * still only ever sees prose: `build_messages` drops raw `tool_result` entries
  * either way (`llm_service.py:499`), so nothing else describes what ran.
  */
 export function buildReportHistory(messages: HistorySourceMessage[]): WireChatMessage[] {
   const withToolLines = messages.flatMap((m): WireChatMessage[] => {
-    if (m.type === 'tool_result' && m.toolResult && m.content.trim() !== '') {
-      return [{ role: 'assistant', content: `[${m.toolResult.tool_name}] ${m.content}` }]
+    if (m.type === 'tool_result' && m.toolResult) {
+      const evidence = toolEvidenceLine(m)
+      return evidence !== ''
+        ? [{ role: 'assistant', content: `[${m.toolResult.tool_name}] ${evidence}` }]
+        : []
     }
     if (m.type === 'text' && m.content.trim() !== '') {
       return [{ role: m.role, content: m.content.slice(0, MAX_MESSAGE_CHARS) }]

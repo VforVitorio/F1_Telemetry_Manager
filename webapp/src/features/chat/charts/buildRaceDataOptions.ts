@@ -39,7 +39,10 @@ function parseRaceDataRows(data: unknown): RaceDataRow[] | null {
       lapNumber,
       position: asNumberOrNull(row.Position),
       lapTime: asNumberOrNull(row.LapTime_s),
-      compound: asString(row.Compound, '').toUpperCase() || 'UNK',
+      // Left empty (never defaulted) when absent so the pit detector's
+      // compound-change signal skips it, matching the Python detector's
+      // raw-row read — a placeholder would manufacture phantom pit lines.
+      compound: asString(row.Compound, '').toUpperCase(),
       stint: asNumberOrNull(row.Stint),
     })
   }
