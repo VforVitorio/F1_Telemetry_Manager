@@ -131,6 +131,10 @@ export function Composer({
             placeholder="Ask the pit wall anything about F1..."
             className={cn(
               'max-h-40 flex-1 resize-none rounded-xl border border-hairline bg-bg-2 px-3 py-2 text-sm text-fg-1',
+              // Hide the native scrollbar chrome (the Windows up/down arrows) —
+              // the textarea autosizes to its content and only scrolls past the
+              // max height, where wheel/keys still work without the visual noise.
+              '[scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
               'placeholder:text-fg-4 focus-visible:ring-2 focus-visible:ring-purple-400 focus-visible:outline-none',
               disabled && 'opacity-50',
             )}
