@@ -213,12 +213,12 @@ export function Rail() {
           railCollapsed ? 'justify-center px-0' : 'px-4',
         )}
       >
-        <span
+        <img
+          src="/favicon.png"
+          alt=""
           aria-hidden="true"
-          className="flex size-6 shrink-0 items-center justify-center rounded-md bg-[image:var(--grad-purple)] font-mono text-[10px] font-bold text-white"
-        >
-          F1
-        </span>
+          className="size-6 shrink-0 rounded-md"
+        />
         <span
           className={cn(
             'truncate font-display text-[15px] font-semibold tracking-tight text-fg-1',
