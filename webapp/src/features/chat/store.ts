@@ -19,6 +19,13 @@ export interface ChatMessage {
   type: ChatMessageType
   content: string
   toolResult?: ToolResult
+  /** Data-URI thumbnail of an image the user attached to THIS message.
+   *  Kept in memory for the running session (so a sent attachment stays
+   *  visible in the thread) but stripped before the store persists to
+   *  localStorage — see `withoutImages` below — and never mirrored into wire
+   *  history; the backend only ever sees the CURRENT turn's attachment via
+   *  the request's own `image` field, never through this stored copy. */
+  image?: string
   /** Set once the turn's `done` event lands — only ever present on the
    *  streaming assistant text message, never on a tool_result message. */
   model?: string
@@ -152,15 +159,39 @@ export const useChatStore = create<ChatState>()(
     }),
     {
       name: 'f1sl.chat',
-      // TODO(C4): swap to an idb-keyval storage adapter once image attachments
-      // land — a data-URI image (~100-250 kB) risks blowing the ~5 MB
-      // localStorage quota across many saved chats. Text-only chats are fine
-      // on the default adapter.
+      // Image attachments stay on localStorage (no new dependency) rather than
+      // an IndexedDB adapter: `partialize` strips each message's `image` data
+      // URI before it hits disk (see `withoutImages`), so the quota risk a
+      // photo-heavy chat would otherwise pose never materializes. The
+      // attachment IS visible in the thread for the running session — only a
+      // page reload loses it.
+      // TODO: IndexedDB (idb-keyval) if image history must survive reloads.
       storage: createJSONStorage(() => localStorage),
-      partialize: (s) => ({ chats: s.chats, activeChatId: s.activeChatId, reports: s.reports }),
+      partialize: (s) => ({
+        chats: Object.fromEntries(
+          Object.entries(s.chats).map(([id, chat]) => [id, withoutImages(chat)]),
+        ),
+        activeChatId: s.activeChatId,
+        reports: s.reports,
+      }),
     },
   ),
 )
+
+/** Drop the `image` data URI from every message of a chat before it is
+ *  persisted (see the `partialize` option above). Only allocates a new
+ *  message object for the ones that actually carry an image, so a text-only
+ *  chat — the common case — persists with no extra copying. */
+function withoutImages(chat: ChatSession): ChatSession {
+  return {
+    ...chat,
+    messages: chat.messages.map((message) => {
+      if (!message.image) return message
+      const { id, role, type, content, toolResult, model, tokens, ts } = message
+      return { id, role, type, content, toolResult, model, tokens, ts }
+    }),
+  }
+}
 
 /** The last-activity timestamp for a chat: its newest message, or its creation
  *  time for a chat with none yet. */

@@ -181,6 +181,10 @@ export interface HistorySourceMessage {
   role: 'user' | 'assistant'
   type: 'text' | 'tool_result'
   content: string
+  /** Present only on a `tool_result` message. `buildWireHistory` ignores it (a
+   *  live turn's own `chat_history` stays text-only); `buildReportHistory`
+   *  reads it to fold the tool run into a one-line summary. */
+  toolResult?: { tool_name: string }
 }
 
 /**
@@ -198,4 +202,85 @@ export function buildWireHistory(messages: HistorySourceMessage[]): WireChatMess
     .filter((m) => m.type === 'text' && m.content.trim() !== '')
     .map((m): WireChatMessage => ({ role: m.role, content: m.content.slice(0, MAX_MESSAGE_CHARS) }))
   return textOnly.slice(-MAX_HISTORY_MESSAGES)
+}
+
+// ── Report generation ────────────────────────────────────────────────────────
+
+const REPORT_INSTRUCTION =
+  'Generate a comprehensive Markdown summary report of our conversation, with ' +
+  'sections for the questions asked, the data analysed, and the strategic ' +
+  'conclusions reached.'
+
+/** Requested `max_tokens` for a report: the backend clamps every
+ *  `ToolMessageRequest` to `F1_CHAT_MAX_TOKENS` (2048 by default,
+ *  `backend/core/config.py:60,79-81`) regardless of what is asked for here.
+ *  Requesting 4000 anyway matches the Streamlit report flow's own request
+ *  (`chat_service.py:415`) and costs nothing if that ceiling is ever raised. */
+const REPORT_MAX_TOKENS = 4000
+const REPORT_TEMPERATURE = 0.4
+
+/**
+ * Build the `chat_history` for a one-shot report request. Unlike
+ * `buildWireHistory` (which drops `tool_result` entries entirely — dead weight
+ * server-side for a live turn), a report is SUPPOSED to summarise "the data
+ * analysed", so each past tool run is folded into a short assistant line
+ * ("[predict_tire] MEDIUM, cliff ~L34, ..."). Without this, `generate_report`
+ * still only ever sees prose: `build_messages` drops raw `tool_result` entries
+ * either way (`llm_service.py:499`), so nothing else describes what ran.
+ */
+export function buildReportHistory(messages: HistorySourceMessage[]): WireChatMessage[] {
+  const withToolLines = messages.flatMap((m): WireChatMessage[] => {
+    if (m.type === 'tool_result' && m.toolResult && m.content.trim() !== '') {
+      return [{ role: 'assistant', content: `[${m.toolResult.tool_name}] ${m.content}` }]
+    }
+    if (m.type === 'text' && m.content.trim() !== '') {
+      return [{ role: m.role, content: m.content.slice(0, MAX_MESSAGE_CHARS) }]
+    }
+    return []
+  })
+  return withToolLines.slice(-MAX_HISTORY_MESSAGES)
+}
+
+export interface GenerateReportOptions {
+  chatHistory: WireChatMessage[]
+  context?: ChatContextPayload
+  signal?: AbortSignal
+}
+
+/** Parse `/chat/tool-message`'s JSON body, throwing a readable message on a
+ *  non-2xx response (mirrors FastAPI's `{detail}` error shape). */
+async function parseReportResponse(res: Response): Promise<string> {
+  const body: unknown = await res.json().catch(() => null)
+  if (!res.ok) {
+    const detail = (body as { detail?: unknown } | null)?.detail
+    throw new Error(typeof detail === 'string' ? detail : `Report request failed (${res.status})`)
+  }
+  const response = (body as { response?: string } | null)?.response
+  return response?.trim() ? response : 'The model returned an empty report.'
+}
+
+/**
+ * One-click chat report: the NON-streaming `/chat/tool-message` endpoint,
+ * instructed to summarise the conversation (parity: Streamlit's
+ * `generate_report`, `chat_service.py:380-425`). A single JSON response, not
+ * an SSE turn, so this bypasses `sendChatTurn`/`postStream` entirely.
+ */
+export async function generateReport({
+  chatHistory,
+  context,
+  signal,
+}: GenerateReportOptions): Promise<string> {
+  const res = await fetch('/api/v1/chat/tool-message', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      text: REPORT_INSTRUCTION,
+      chat_history: chatHistory,
+      context: context ?? {},
+      temperature: REPORT_TEMPERATURE,
+      max_tokens: REPORT_MAX_TOKENS,
+    } satisfies ToolMessageRequestBody),
+    signal,
+  })
+  return parseReportResponse(res)
 }

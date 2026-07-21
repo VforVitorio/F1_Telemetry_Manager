@@ -21,6 +21,10 @@ import { ToolBadge } from './components/ToolBadge'
 const routeApi = getRouteApi('/chat')
 const NO_MESSAGES: never[] = []
 
+/** Cmd/Ctrl+Shift+O — the "new chat" shortcut noted in the sidebar's own New
+ *  Chat button tooltip. */
+const NEW_CHAT_SHORTCUT_KEY = 'o'
+
 export function ChatPage() {
   const raw = routeApi.useSearch()
   const navigate = routeApi.useNavigate()
@@ -30,6 +34,7 @@ export function ChatPage() {
   const storeActiveId = useChatStore((s) => s.activeChatId)
   const newChat = useChatStore((s) => s.newChat)
   const setActive = useChatStore((s) => s.setActive)
+  const deleteChat = useChatStore((s) => s.deleteChat)
 
   /** Apply a search patch and push it into the URL. No key here cascades off
    *  another (unlike Race/Lab), so a plain merge is enough — no
@@ -65,14 +70,53 @@ export function ChatPage() {
   const chatsList = useMemo(() => chatList(chats), [chats])
 
   const { turn, isStreaming, send, stop } = useChatStream(activeChatId)
-  const [draft, setDraft] = useState(search.ask ?? '')
+  const [draft, setDraft] = useState(() => search.ask ?? '')
+  const [attachment, setAttachment] = useState<string | null>(null)
 
   const health = useChatHealth()
 
+  // ?ask= deep-link prefill: the lazy initializer above already seeded
+  // `draft` from whatever `ask` was present on the FIRST render (no flash),
+  // so this mount-once effect only has to strip the param back out of the
+  // URL — a deep link never auto-sends, the user still presses Send once the
+  // composer is prefilled (same "never auto-fire" grammar as Race's `q`).
+  useEffect(() => {
+    if (search.ask != null) patch({ ask: undefined })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // New-chat keyboard shortcut, advertised on the sidebar's own button.
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      const isShortcut =
+        event.shiftKey &&
+        (event.metaKey || event.ctrlKey) &&
+        event.key.toLowerCase() === NEW_CHAT_SHORTCUT_KEY
+      if (!isShortcut) return
+      event.preventDefault()
+      patch({ c: newChat() })
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   function handleSend() {
     if (!draft.trim()) return
-    send(draft)
+    send(draft, attachment ?? undefined)
     setDraft('')
+    setAttachment(null)
+  }
+
+  /** Delete a chat once the sidebar's undo window has elapsed. Reads the
+   *  store's LIVE `activeChatId` rather than closing over this render's
+   *  `activeChatId` — the sidebar's timer can fire seconds after the click,
+   *  by which point the user may have switched chats, and a stale check here
+   *  would navigate away from the wrong (still-open) chat. */
+  function handleDeleteChat(id: string) {
+    const wasActive = useChatStore.getState().activeChatId === id
+    deleteChat(id)
+    if (wasActive) patch({ c: newChat() })
   }
 
   const streamingFooter =
@@ -104,6 +148,7 @@ export function ChatPage() {
           onSelectChat={(id) => patch({ c: id })}
           onNewChat={() => patch({ c: newChat() })}
           onModeChange={(mode: ChatMode) => patch({ mode })}
+          onDeleteChat={handleDeleteChat}
         />
 
         <div className="flex min-h-0 flex-1 flex-col">
@@ -121,6 +166,8 @@ export function ChatPage() {
             onSend={handleSend}
             isStreaming={isStreaming}
             onStop={stop}
+            attachment={attachment}
+            onAttachmentChange={setAttachment}
           />
         </div>
       </div>
