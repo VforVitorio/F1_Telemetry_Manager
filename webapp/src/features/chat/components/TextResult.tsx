@@ -9,11 +9,16 @@ import { toLapRange, toRagResultData, toStringChips } from './toolResultParsing'
 // card (citations + source passages); the three listing/lookup tools get a
 // small chip list or one-liner instead of the raw JSON a fallback would show.
 
-/** A chip per entry — `list_available_gps` / `list_available_drivers`. */
+/** A chip per entry — `list_available_gps` / `list_available_drivers`. The
+ *  header carries a mono count so the card reads as a data receipt at a
+ *  glance, even when the chip rows wrap. */
 function ChipList({ label, items }: { label: string; items: string[] }) {
   return (
     <div className="flex flex-col gap-2">
-      <span className="text-xs font-medium tracking-widest text-fg-3 uppercase">{label}</span>
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="text-xs font-medium tracking-widest text-fg-3 uppercase">{label}</span>
+        <span className="font-mono text-[11px] text-fg-4">{items.length}</span>
+      </div>
       <div className="flex flex-wrap gap-1.5">
         {items.map((item) => (
           <Pill key={item} tone="neutral">

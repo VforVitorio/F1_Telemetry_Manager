@@ -15,12 +15,26 @@ const STATUS_TONE: Record<ToolBadgeStatus, 'purple' | 'success' | 'danger'> = {
   error: 'danger',
 }
 
+/** Domain initialisms that must keep their casing when a snake_case tool
+ *  name is spelled out — "list_available_gps" should read "List available
+ *  GPs", not "gps" (which scans as satellite GPS). */
+const ACRONYMS: Record<string, string> = {
+  gps: 'GPs',
+  fia: 'FIA',
+  sc: 'SC',
+  drs: 'DRS',
+  llm: 'LLM',
+}
+
 /** "predict_pace" -> "Predict pace". Tool names are already readable
  *  snake_case; this borrows the same sentence-case rendering the stage-label
  *  fallback uses (`../stageLabels.ts`) so a badge and its ticker line never
  *  disagree in tone. */
 function humanize(toolName: string): string {
-  const words = toolName.split('_').join(' ')
+  const words = toolName
+    .split('_')
+    .map((word) => ACRONYMS[word] ?? word)
+    .join(' ')
   return `${words.charAt(0).toUpperCase()}${words.slice(1)}`
 }
 

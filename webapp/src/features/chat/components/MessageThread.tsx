@@ -39,15 +39,16 @@ export function MessageThread({ messages, streamingFooter }: MessageThreadProps)
     el.scrollTo({ top: el.scrollHeight, behavior })
   }
 
+  // Auto-follow the bottom as content arrives — a NEW message, the streaming
+  // footer appearing/disappearing, AND the in-flight message's own text growing
+  // token by token (its length is the signal). The `isAtBottom` guard means a
+  // reader who scrolled up to re-read an earlier turn is never yanked back down;
+  // once they return to the bottom, following resumes.
+  const streamingLength = messages.length > 0 ? messages[messages.length - 1].content.length : 0
   useEffect(() => {
     if (isAtBottom) scrollToBottom('auto')
-    // Only a NEW message (or the footer appearing/disappearing) should trigger
-    // auto-follow. A streaming message's own content grows on every token —
-    // re-running this on every character would fight the reader's scroll
-    // position mid-turn far too often, so `messages.length` is the real
-    // dependency, not `messages` itself.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [messages.length, streamingFooter != null])
+  }, [messages.length, streamingLength, streamingFooter != null])
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
@@ -57,12 +58,24 @@ export function MessageThread({ messages, streamingFooter }: MessageThreadProps)
         role="log"
         aria-live="polite"
         aria-relevant="additions"
-        className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4 py-4"
+        className="min-h-0 flex-1 overflow-y-auto px-4 py-6"
       >
-        {messages.map((message) => (
-          <MessageBubble key={message.id} message={message} />
-        ))}
-        {streamingFooter}
+        {/* Centered reading column: caps the measure on wide screens so long
+            answers stay readable. Spacing is turn-grouped rather than uniform —
+            a user message opens a new turn with a wider gap, while the tool
+            cards and prose that answer it stack tight underneath, so one
+            question-and-answer reads as a single unit. */}
+        <div className="mx-auto flex w-full max-w-3xl flex-col">
+          {messages.map((message, index) => (
+            <div
+              key={message.id}
+              className={cn(index > 0 && (message.role === 'user' ? 'mt-6' : 'mt-3'))}
+            >
+              <MessageBubble message={message} />
+            </div>
+          ))}
+          {streamingFooter}
+        </div>
       </div>
 
       {!isAtBottom && (
@@ -80,6 +93,13 @@ export function MessageThread({ messages, streamingFooter }: MessageThreadProps)
   )
 }
 
+/**
+ * One message in the thread. Three deliberate treatments, not one bubble
+ * template: the user speaks in a purple pill, tool results stand as bordered
+ * data cards, and the assistant answers as unboxed flowing prose — so a card
+ * always reads as "the data" and the prose as "the interpretation" instead of
+ * two competing boxes saying the same thing.
+ */
 function MessageBubble({ message }: { message: ChatMessage }) {
   if (message.type === 'tool_result' && message.toolResult) {
     return <ToolResultCard toolResult={message.toolResult} />
@@ -99,8 +119,10 @@ function MessageBubble({ message }: { message: ChatMessage }) {
     >
       <div
         className={cn(
-          'max-w-[85%] rounded-2xl px-4 py-2.5 text-sm',
-          isUser ? 'bg-purple-600/90 text-fg-1' : 'border border-hairline bg-bg-3',
+          'text-sm',
+          isUser
+            ? 'max-w-[85%] rounded-2xl bg-purple-600/90 px-4 py-2.5 text-fg-1'
+            : 'w-full space-y-2 px-1',
         )}
       >
         {message.image ? (

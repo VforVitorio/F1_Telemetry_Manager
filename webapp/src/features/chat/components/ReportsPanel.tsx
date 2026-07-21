@@ -75,7 +75,7 @@ export function ReportsPanel({ activeChat }: ReportsPanelProps) {
 
   return (
     <div className="flex flex-col gap-2 border-t border-hairline pt-3">
-      <span className="px-1 text-xs font-medium tracking-wide text-fg-4 uppercase">Reports</span>
+      <span className="px-1 text-xs font-medium tracking-widest text-fg-4 uppercase">Reports</span>
 
       <Button
         size="sm"
