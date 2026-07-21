@@ -103,6 +103,13 @@ function MessageBubble({ message }: { message: ChatMessage }) {
           isUser ? 'bg-purple-600/90 text-fg-1' : 'border border-hairline bg-bg-3',
         )}
       >
+        {message.image ? (
+          <img
+            src={message.image}
+            alt="Attached image"
+            className={cn('max-w-full rounded-lg', message.content && 'mb-2')}
+          />
+        ) : null}
         {isUser ? (
           <p className="text-pretty">{message.content}</p>
         ) : (

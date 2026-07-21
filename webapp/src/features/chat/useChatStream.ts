@@ -144,7 +144,10 @@ export interface UseChatStreamResult {
    *  CONTENT itself lives in the store and needs no separate draft to render. */
   turn: ActiveTurn | null
   isStreaming: boolean
-  send: (text: string) => void
+  /** `image` is a data URI already downscaled by the composer — it rides in
+   *  the request's own `image` field, never in wire history, and is attached
+   *  to the optimistic user message purely for the thread to render it back. */
+  send: (text: string, image?: string) => void
   stop: () => void
 }
 
@@ -224,7 +227,7 @@ export function useChatStream(chatId: string | undefined): UseChatStreamResult {
   )
 
   const send = useCallback(
-    (text: string) => {
+    (text: string, image?: string) => {
       const trimmed = text.trim()
       if (!trimmed || !chatId || turn?.status === 'streaming') return
 
@@ -234,6 +237,7 @@ export function useChatStream(chatId: string | undefined): UseChatStreamResult {
         role: 'user',
         type: 'text',
         content: trimmed,
+        ...(image ? { image } : {}),
         ts: Date.now(),
       })
 
@@ -247,6 +251,7 @@ export function useChatStream(chatId: string | undefined): UseChatStreamResult {
       const body: ToolMessageRequestBody = {
         text: trimmed,
         chat_history: buildWireHistory(priorMessages),
+        ...(image ? { image } : {}),
       }
 
       sendChatTurn(body, { onEvent: handleEvent, signal: controller.signal })
