@@ -24,29 +24,50 @@ export interface MessageThreadProps {
  */
 export function MessageThread({ messages, streamingFooter }: MessageThreadProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
-  const [isAtBottom, setIsAtBottom] = useState(true)
-
-  function handleScroll() {
-    const el = scrollRef.current
-    if (!el) return
-    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
-    setIsAtBottom(distanceFromBottom <= BOTTOM_THRESHOLD_PX)
-  }
+  // Whether to keep the viewport pinned to the latest content. A REF (not
+  // state) so the streaming loop reads the live value without a render lag.
+  const stickToBottomRef = useRef(true)
+  // Set right before a programmatic scroll so the scroll event IT fires is not
+  // mistaken for the reader scrolling away. Without this, a long fast reply
+  // races its own auto-scroll: content grows a chunk before the previous
+  // scroll event is handled, that event reads a transient gap, flips stick
+  // off, and the auto-follow freezes mid-answer. Only a genuine user scroll
+  // (no flag set) ever stops following.
+  const ignoreNextScrollRef = useRef(false)
+  const [showJumpButton, setShowJumpButton] = useState(false)
 
   function scrollToBottom(behavior: ScrollBehavior = 'smooth') {
     const el = scrollRef.current
     if (!el) return
+    ignoreNextScrollRef.current = true
     el.scrollTo({ top: el.scrollHeight, behavior })
   }
 
+  function handleScroll() {
+    const el = scrollRef.current
+    if (!el) return
+    if (ignoreNextScrollRef.current) {
+      ignoreNextScrollRef.current = false
+      return
+    }
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+    stickToBottomRef.current = distanceFromBottom <= BOTTOM_THRESHOLD_PX
+    setShowJumpButton(!stickToBottomRef.current)
+  }
+
+  function jumpToLatest() {
+    stickToBottomRef.current = true
+    setShowJumpButton(false)
+    scrollToBottom()
+  }
+
   // Auto-follow the bottom as content arrives — a NEW message, the streaming
-  // footer appearing/disappearing, AND the in-flight message's own text growing
-  // token by token (its length is the signal). The `isAtBottom` guard means a
-  // reader who scrolled up to re-read an earlier turn is never yanked back down;
-  // once they return to the bottom, following resumes.
+  // footer, AND the in-flight message's own text growing token by token (its
+  // length is the signal). Following stops only when the reader scrolls up;
+  // "Jump to latest" (or scrolling back to the bottom) resumes it.
   const streamingLength = messages.length > 0 ? messages[messages.length - 1].content.length : 0
   useEffect(() => {
-    if (isAtBottom) scrollToBottom('auto')
+    if (stickToBottomRef.current) scrollToBottom('auto')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages.length, streamingLength, streamingFooter != null])
 
@@ -78,11 +99,11 @@ export function MessageThread({ messages, streamingFooter }: MessageThreadProps)
         </div>
       </div>
 
-      {!isAtBottom && (
+      {showJumpButton && (
         <Button
           size="sm"
           variant="ghost"
-          onClick={() => scrollToBottom()}
+          onClick={jumpToLatest}
           className="absolute bottom-3 left-1/2 -translate-x-1/2 border border-hairline bg-bg-3 shadow-[var(--shadow-elev)]"
         >
           <ArrowDown className="size-3.5" aria-hidden="true" />

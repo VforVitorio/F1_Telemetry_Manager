@@ -31,10 +31,18 @@ export function Shell() {
   const pathname = useLocation({ select: (location) => location.pathname })
 
   return (
-    <div className="flex min-h-dvh">
+    // Fixed to the viewport (h-dvh + overflow-hidden), NOT min-h-dvh: the route
+    // wrapper below is the single scroll container, so the Rail stays put and an
+    // app-like page (Chat) can keep its own composer/sidebar fixed while only an
+    // inner region scrolls. Content pages still scroll — just inside the wrapper
+    // rather than the body, with their sticky header/bars unchanged.
+    <div className="flex h-dvh overflow-hidden">
       <Rail />
-      <div className="flex flex-1 flex-col bg-bg-0 bg-[image:var(--grad-hero)] bg-top bg-no-repeat">
-        <div key={pathname} className="f1sl-route-enter flex flex-1 flex-col gap-6 p-6">
+      <div className="flex min-h-0 flex-1 flex-col bg-bg-0 bg-[image:var(--grad-hero)] bg-top bg-no-repeat">
+        <div
+          key={pathname}
+          className="f1sl-route-enter flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto p-6"
+        >
           <Outlet />
         </div>
       </div>
