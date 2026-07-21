@@ -195,7 +195,16 @@ async def stream_response(
     tool_call = _first_tool_call(assistant_msg)
 
     if tool_call is None:
-        async for event in _stream_plain_response(assistant_msg, request_id, first_response):
+        async for event in _stream_plain_response(
+            assistant_msg,
+            request_id,
+            first_response,
+            base_messages=base_messages,
+            model=model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            stream_tokens=stream_tokens,
+        ):
             yield event
         return
 
@@ -264,8 +273,22 @@ async def _stream_plain_response(
     assistant_msg: dict[str, Any],
     request_id: str,
     raw_response: dict[str, Any],
+    *,
+    base_messages: list[dict[str, Any]],
+    model: str | None,
+    temperature: float,
+    max_tokens: int,
+    stream_tokens: bool = False,
 ) -> AsyncGenerator[tuple[str, dict[str, Any]], None]:
-    """Stream the LLM's plain text reply (no tool was called)."""
+    """Stream the LLM's plain text reply (no tool was called).
+
+    The tool-router first call must be non-streaming (it has to see the whole
+    response to know whether a tool_call was requested), so its text arrives
+    whole. When ``stream_tokens`` is set we re-issue that reply as a live
+    token stream — no ``tools=`` — so casual chat animates for parity with the
+    tool-summary leg; the already-produced text is the fallback if streaming
+    fails.
+    """
     text = _strip_leaked_tool_call((assistant_msg.get("content") or "").strip())
     if not text:
         text = (
@@ -275,8 +298,15 @@ async def _stream_plain_response(
 
     set_stage(request_id, "composing_response")
     yield ("stage", {"stage": "composing_response"})
-    yield ("token", {"token": text})
 
+    if stream_tokens:
+        async for event in _stream_plain_deltas(
+            base_messages, model, temperature, max_tokens, fallback_text=text
+        ):
+            yield event
+        return
+
+    yield ("token", {"token": text})
     yield ("done", _done_metadata(raw_response))
 
 
@@ -404,6 +434,49 @@ async def _stream_summary_deltas(
 
     if not collected.strip():
         yield ("token", {"token": _fallback_summary(tool_name, tool_error)})
+
+    yield ("done", {"llm_model": model, "tokens_used": None})
+
+
+async def _stream_plain_deltas(
+    messages: list[dict[str, Any]],
+    model: str | None,
+    temperature: float,
+    max_tokens: int,
+    *,
+    fallback_text: str,
+) -> AsyncGenerator[tuple[str, dict[str, Any]], None]:
+    """Stream a plain (no-tool) reply as live token deltas.
+
+    The no-tool counterpart to ``_stream_summary_deltas``: re-issues the
+    reply through the provider's streaming path (no ``tools=``) so casual
+    chat animates like a tool answer instead of arriving whole.
+    ``fallback_text`` is the text the non-streaming first call already
+    produced — emitted verbatim if the stream yields nothing (a provider
+    that does not honour ``stream=True``, a dropped connection), so turning
+    streaming on can only add live deltas, never lose a reply that worked.
+    """
+    collected = ""
+    try:
+        async for delta in _bridge_sync_stream(
+            lambda: stream_message(
+                messages=messages,
+                model=model,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+        ):
+            collected += delta
+            yield ("token", {"token": delta})
+    except Exception:
+        logger.exception("Token streaming failed for the plain reply")
+        if not collected:
+            yield ("token", {"token": fallback_text})
+        yield ("done", {"llm_model": model, "tokens_used": None})
+        return
+
+    if not collected.strip():
+        yield ("token", {"token": fallback_text})
 
     yield ("done", {"llm_model": model, "tokens_used": None})
 
@@ -581,6 +654,17 @@ def _build_summary_messages(
                 "explain to me what went wrong and suggest one concrete fix — for "
                 "example a different lap, driver, or Grand Prix.  Reply in my "
                 "original language.  Do not repeat the raw error string."
+            ),
+        })
+    else:
+        messages.append({
+            "role": "user",
+            "content": (
+                "The tool's result is ALREADY shown to me as a card, chart, or "
+                "table right above your reply, so do NOT restate the raw numbers "
+                "or re-list the items — that would just duplicate what I can see.  "
+                "In one or two short sentences, add the insight: what stands out "
+                "and what it means for strategy.  Reply in my original language."
             ),
         })
     return messages

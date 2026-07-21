@@ -121,7 +121,7 @@ function MessageBubble({ message }: { message: ChatMessage }) {
         className={cn(
           'text-sm',
           isUser
-            ? 'max-w-[85%] rounded-2xl bg-purple-600/90 px-4 py-2.5 text-fg-1'
+            ? 'max-w-[85%] rounded-2xl bg-purple-600/90 px-4 py-2.5 text-white'
             : 'w-full space-y-2 px-1',
         )}
       >

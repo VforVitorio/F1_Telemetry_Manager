@@ -9,9 +9,12 @@ type Variant = 'primary' | 'ghost' | 'danger'
 type Size = 'sm' | 'md'
 
 const VARIANTS: Record<Variant, string> = {
-  primary: 'bg-purple-600 text-fg-1 hover:bg-purple-500 shadow-[var(--shadow-card)]',
+  // text-white (not text-fg-1) on the saturated fills: fg-1 flips to near-black
+  // in the light theme, dropping contrast on the purple/red to ~3.4:1 — white
+  // reads correctly on both since these fills stay dark in both themes.
+  primary: 'bg-purple-600 text-white hover:bg-purple-500 shadow-[var(--shadow-card)]',
   ghost: 'bg-transparent text-fg-2 hover:bg-bg-4 hover:text-fg-1',
-  danger: 'bg-danger/90 text-fg-1 hover:bg-danger',
+  danger: 'bg-danger/90 text-white hover:bg-danger',
 }
 
 const SIZES: Record<Size, string> = {
