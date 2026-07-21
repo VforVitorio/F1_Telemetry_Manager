@@ -85,63 +85,67 @@ export function Composer({
   }
 
   return (
-    <div className="flex flex-col gap-2 border-t border-hairline bg-bg-1 p-3">
-      {isPickingFile && !attachment ? (
-        <FileDrop
-          accept="image/*"
-          onFile={(file) => void attachFile(file)}
-          label="Drop an image, or click to browse"
-          className="py-4"
-        />
-      ) : null}
+    <div className="border-t border-hairline bg-bg-1 p-3">
+      {/* Shares the thread's centered reading column so the input lines up
+          with the prose above it instead of stretching edge to edge. */}
+      <div className="mx-auto flex w-full max-w-3xl flex-col gap-2">
+        {isPickingFile && !attachment ? (
+          <FileDrop
+            accept="image/*"
+            onFile={(file) => void attachFile(file)}
+            label="Drop an image, or click to browse"
+            className="py-4"
+          />
+        ) : null}
 
-      {attachment ? (
-        <AttachmentChip src={attachment} onRemove={() => onAttachmentChange(null)} />
-      ) : null}
+        {attachment ? (
+          <AttachmentChip src={attachment} onRemove={() => onAttachmentChange(null)} />
+        ) : null}
 
-      <div className="flex items-end gap-2">
-        <button
-          type="button"
-          onClick={() => setIsPickingFile((v) => !v)}
-          title="Attach an image"
-          aria-pressed={isPickingFile}
-          className={cn(
-            'flex size-9 shrink-0 items-center justify-center rounded-lg text-fg-3 transition-colors',
-            'hover:bg-bg-3 hover:text-fg-1',
-            isPickingFile && 'bg-bg-3 text-fg-1',
+        <div className="flex items-end gap-2">
+          <button
+            type="button"
+            onClick={() => setIsPickingFile((v) => !v)}
+            title="Attach an image"
+            aria-pressed={isPickingFile}
+            className={cn(
+              'flex size-9 shrink-0 items-center justify-center rounded-lg text-fg-3 transition-colors',
+              'hover:bg-bg-3 hover:text-fg-1',
+              isPickingFile && 'bg-bg-3 text-fg-1',
+            )}
+          >
+            <Paperclip className="size-4" aria-hidden="true" />
+          </button>
+
+          <textarea
+            ref={textareaRef}
+            value={value}
+            onChange={(e) => {
+              onChange(e.target.value)
+              autosize()
+            }}
+            onKeyDown={handleKeyDown}
+            onPaste={handlePaste}
+            disabled={disabled}
+            rows={1}
+            placeholder="Ask the pit wall anything about F1..."
+            className={cn(
+              'max-h-40 flex-1 resize-none rounded-xl border border-hairline bg-bg-2 px-3 py-2 text-sm text-fg-1',
+              'placeholder:text-fg-4 focus-visible:ring-2 focus-visible:ring-purple-400 focus-visible:outline-none',
+              disabled && 'opacity-50',
+            )}
+          />
+
+          {isStreaming ? (
+            <Button variant="danger" onClick={onStop} aria-label="Stop the response">
+              <Square className="size-4" aria-hidden="true" />
+            </Button>
+          ) : (
+            <Button onClick={onSend} disabled={disabled || !value.trim()} aria-label="Send message">
+              <Send className="size-4" aria-hidden="true" />
+            </Button>
           )}
-        >
-          <Paperclip className="size-4" aria-hidden="true" />
-        </button>
-
-        <textarea
-          ref={textareaRef}
-          value={value}
-          onChange={(e) => {
-            onChange(e.target.value)
-            autosize()
-          }}
-          onKeyDown={handleKeyDown}
-          onPaste={handlePaste}
-          disabled={disabled}
-          rows={1}
-          placeholder="Ask me anything about F1..."
-          className={cn(
-            'max-h-40 flex-1 resize-none rounded-xl border border-hairline bg-bg-2 px-3 py-2 text-sm text-fg-1',
-            'placeholder:text-fg-4 focus-visible:ring-2 focus-visible:ring-purple-400 focus-visible:outline-none',
-            disabled && 'opacity-50',
-          )}
-        />
-
-        {isStreaming ? (
-          <Button variant="danger" onClick={onStop} aria-label="Stop the response">
-            <Square className="size-4" aria-hidden="true" />
-          </Button>
-        ) : (
-          <Button onClick={onSend} disabled={disabled || !value.trim()} aria-label="Send message">
-            <Send className="size-4" aria-hidden="true" />
-          </Button>
-        )}
+        </div>
       </div>
     </div>
   )

@@ -31,26 +31,32 @@ export interface ExamplePromptsProps {
 }
 
 /**
- * The empty-chat starting point: a hint line plus four example prompts.
- * Clicking one sends it immediately — the same behaviour as the Streamlit
- * example cards (parity, `chat_history.py:229-236`), not just a prefill.
+ * The empty-chat starting point: a display heading, a hint line, and four
+ * example prompts. Clicking one sends it immediately — the same behaviour as
+ * the Streamlit example cards (parity, `chat_history.py:229-236`), not just a
+ * prefill — so each card shows the actual prompt it will send, keeping the
+ * click informed rather than a surprise.
  */
 export function ExamplePrompts({ onSelect }: ExamplePromptsProps) {
   return (
-    <div className="flex flex-col items-center gap-4 px-6 py-10 text-center">
-      <p className="max-w-sm text-sm text-fg-3">
-        Mention a <span className="font-medium text-fg-2">driver</span>,{' '}
-        <span className="font-medium text-fg-2">GP</span>, and{' '}
-        <span className="font-medium text-fg-2">lap</span> to trigger an analysis, or try an example
-        below.
-      </p>
-      <div className="grid w-full max-w-lg grid-cols-1 gap-2 sm:grid-cols-2">
+    <div className="flex flex-col items-center gap-6 px-6 py-10 text-center">
+      <div className="flex flex-col items-center gap-2">
+        <h2 className="font-display text-2xl font-semibold tracking-tight text-fg-1">
+          Ask the pit wall
+        </h2>
+        <p className="max-w-sm text-sm text-fg-3">
+          Mention a <span className="font-medium text-fg-2">driver</span>,{' '}
+          <span className="font-medium text-fg-2">GP</span>, and{' '}
+          <span className="font-medium text-fg-2">lap</span> to trigger an analysis, or start from
+          an example.
+        </p>
+      </div>
+      <div className="grid w-full max-w-xl grid-cols-1 gap-2.5 sm:grid-cols-2">
         {EXAMPLE_PROMPTS.map(({ Icon, label, prompt }) => (
           <Card
             key={label}
             role="button"
             tabIndex={0}
-            title={prompt}
             onClick={() => onSelect(prompt)}
             onKeyDown={(event) => {
               if (event.key === 'Enter' || event.key === ' ') {
@@ -58,10 +64,13 @@ export function ExamplePrompts({ onSelect }: ExamplePromptsProps) {
                 onSelect(prompt)
               }
             }}
-            className="flex cursor-pointer items-center gap-2 p-3 text-left transition-colors hover:bg-bg-4 focus-visible:ring-2 focus-visible:ring-purple-400 focus-visible:outline-none"
+            className="flex cursor-pointer flex-col items-start gap-1.5 p-3.5 text-left transition-colors hover:bg-bg-4 focus-visible:ring-2 focus-visible:ring-purple-400 focus-visible:outline-none"
           >
-            <Icon className="size-4 shrink-0 text-purple-300" aria-hidden="true" />
-            <span className="text-sm font-medium text-fg-1">{label}</span>
+            <span className="flex items-center gap-2">
+              <Icon className="size-4 shrink-0 text-purple-300" aria-hidden="true" />
+              <span className="text-sm font-medium text-fg-1">{label}</span>
+            </span>
+            <span className="line-clamp-2 text-xs leading-relaxed text-fg-3">{prompt}</span>
           </Card>
         ))}
       </div>

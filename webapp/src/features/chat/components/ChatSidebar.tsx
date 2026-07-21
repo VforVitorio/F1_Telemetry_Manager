@@ -96,9 +96,9 @@ export function ChatSidebar({
         variant="ghost"
         onClick={onNewChat}
         title="New chat (Ctrl/Cmd+Shift+O)"
-        className="justify-start gap-2 border border-hairline bg-bg-3"
+        className="justify-start gap-2 border border-hairline bg-bg-3 text-fg-1"
       >
-        <Plus className="size-4" aria-hidden="true" />
+        <Plus className="size-4 text-purple-300" aria-hidden="true" />
         New chat
       </Button>
 

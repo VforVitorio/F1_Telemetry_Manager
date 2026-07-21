@@ -97,7 +97,7 @@ function ChartedPane({ option, title }: { option: EChartsOption; title: string }
   const chartTheme = useChartTheme()
   const paintedOption = useFirstPaintAnimation(option)
   return (
-    <ChartCard title={title}>
+    <ChartCard title={title} maximizable={false}>
       <div role="img" aria-label={title}>
         <ReactECharts
           theme={chartTheme}
