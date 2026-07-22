@@ -1,14 +1,14 @@
 // Chat page (#39, C1 foundation): assembles the sidebar, message thread and
-// composer around `useChatStream`. Owns the URL (which chat is open, the
-// reserved text/voice mode) and resolves it against the persisted store on
-// mount — everything else (turn content, stage ticker) is either store state
-// or the stream hook's ephemeral `turn`.
+// composer around `useChatStream`. Owns the URL (which chat is open) and
+// resolves it against the persisted store on mount — everything else (turn
+// content, stage ticker) is either store state or the stream hook's
+// ephemeral `turn`.
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { getRouteApi } from '@tanstack/react-router'
 import { Header } from '@/app/Header'
 import { Pill } from '@/components/Pill'
-import { fromRaw, toRaw, type ChatMode, type ChatSearch } from './search'
+import { fromRaw, toRaw, type ChatSearch } from './search'
 import { useChatStore, chatList } from './store'
 import { useChatHealth } from './queries'
 import { useChatStream } from './useChatStream'
@@ -150,10 +150,8 @@ export function ChatPage() {
         <ChatSidebar
           chats={chatsList}
           activeChatId={activeChatId}
-          mode={search.mode}
           onSelectChat={(id) => patch({ c: id })}
           onNewChat={() => patch({ c: newChat() })}
-          onModeChange={(mode: ChatMode) => patch({ mode })}
           onDeleteChat={handleDeleteChat}
         />
 

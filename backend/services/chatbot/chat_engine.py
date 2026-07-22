@@ -520,7 +520,7 @@ async def _safe_send(
 
     The blocking ``requests`` call runs in a worker thread (``asyncio.to_thread``)
     so a slow LLM turn does not stall the event loop - and with it the concurrent
-    SSE sim + voice streams (LLM-cost L-3). Caller treats an empty response as
+    SSE sim streams (LLM-cost L-3). Caller treats an empty response as
     "no tool call, no text" and degrades to a fallback message rather than
     crashing the SSE stream; a failure also invalidates the provider preflight.
     """
@@ -547,7 +547,7 @@ async def _bridge_sync_stream(make_generator: Callable[[], Generator[str, None, 
     while it waits for the next chunk. Running each ``next()`` through
     ``asyncio.to_thread`` keeps that wait off the event loop, the same
     reasoning ``_safe_send`` already applies to the non-streaming call, so
-    concurrent SSE streams (the sim, voice, other chat turns) stay responsive
+    concurrent SSE streams (the sim, other chat turns) stay responsive
     while this one is mid-response.
     """
     iterator = iter(make_generator())

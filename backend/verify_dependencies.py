@@ -35,8 +35,7 @@ def main():
     print("=" * 60)
 
     results = {
-        "Core Dependencies": [],
-        "Voice Dependencies": []
+        "Core Dependencies": []
     }
 
     # Core Dependencies
@@ -48,24 +47,14 @@ def main():
     results["Core Dependencies"].append(check_import("pandas"))
     results["Core Dependencies"].append(check_import("fastf1"))
 
-    # Voice Dependencies
-    print("\n🎤 Voice Dependencies:")
-    results["Voice Dependencies"].append(check_import("whisper", "openai-whisper"))
-    results["Voice Dependencies"].append(check_import("pyttsx3"))
-    results["Voice Dependencies"].append(check_import("pydub"))
-    results["Voice Dependencies"].append(check_import("soundfile"))
-    results["Voice Dependencies"].append(check_import("aiofiles"))
-
     # Version info for critical packages
     print("\n📊 Version Details:")
     try:
         import numpy as np
         import pandas as pd
-        import whisper
 
         print(f"  numpy:  {np.__version__} (required: 1.26.4)")
         print(f"  pandas: {pd.__version__} (required: 2.2.0)")
-        print(f"  whisper: {whisper.__version__ if hasattr(whisper, '__version__') else 'installed'}")
     except Exception as e:
         print(f"  ⚠️  Could not check versions: {e}")
 
@@ -86,8 +75,6 @@ def main():
         print("\n🎉 All dependencies installed successfully!")
         print("\n📋 Next steps:")
         print("  1. Start backend: uvicorn main:app --reload --port 8000")
-        print("  2. Test services: python services/voice/tts_service.py")
-        print("  3. Run API tests: python test_voice_api.py")
         return 0
     else:
         print("\n⚠️  Some dependencies are missing!")

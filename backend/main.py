@@ -13,7 +13,7 @@ if hasattr(sys.stdout, "reconfigure"):
 if hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8")
 
-from backend.api.v1.endpoints import circuit_domination, comparison, telemetry, chat, voice, strategy
+from backend.api.v1.endpoints import circuit_domination, comparison, telemetry, chat, strategy
 from backend.core.config import FRONTEND_URL, mcp_enabled
 from backend.core.auth import ApiKeyMiddleware, enforce_startup_security
 from backend.mcp_tools import mcp as mcp_server, _mount_openapi_tools
@@ -85,9 +85,6 @@ app.include_router(comparison.router, prefix="/api/v1")
 
 # Add chat router
 app.include_router(chat.router, prefix="/api/v1")
-
-# Add voice router
-app.include_router(voice.router, prefix="/api/v1/voice", tags=["voice"])
 
 # Add strategy router (N25–N31 agent pipeline)
 app.include_router(strategy.router, prefix="/api/v1")

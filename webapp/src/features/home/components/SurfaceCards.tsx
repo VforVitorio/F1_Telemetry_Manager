@@ -105,7 +105,7 @@ export function SurfaceCards() {
           <SurfaceCardBody
             icon={MessageSquare}
             title="Chat"
-            blurb="Ask the strategy engineer: tool-calling chat and voice over your session."
+            blurb="Ask the strategy engineer: tool-calling chat over your session."
             live={false}
           />
         </Link>

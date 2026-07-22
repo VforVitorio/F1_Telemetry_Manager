@@ -1,8 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Plus } from 'lucide-react'
 import { Button } from '@/components/Button'
-import { Tabs, TabsList, TabsTrigger } from '@/components/Tabs'
-import type { ChatMode } from '../search'
 import { useChatStore, type ChatSession } from '../store'
 import { ReportsPanel } from './ReportsPanel'
 import { SessionRow } from './SessionRow'
@@ -12,10 +10,8 @@ const UNDO_WINDOW_MS = 5000
 export interface ChatSidebarProps {
   chats: ChatSession[]
   activeChatId?: string
-  mode: ChatMode
   onSelectChat: (id: string) => void
   onNewChat: () => void
-  onModeChange: (mode: ChatMode) => void
   /** Fires once the delete is FINAL — after the undo window elapses, or
    *  immediately if the sidebar unmounts mid-window. `ChatPage` owns what
    *  "final" means for the URL (navigating away if this was the active chat),
@@ -30,8 +26,8 @@ interface PendingDelete {
 
 /**
  * Chat history rail: the new-chat action, the conversation list (inline
- * rename, delete with an undo window), the text/voice mode toggle, and the
- * reports panel. Deleting a row hides it immediately but only calls
+ * rename, delete with an undo window), and the reports panel. Deleting a row
+ * hides it immediately but only calls
  * `onDeleteChat` once `UNDO_WINDOW_MS` passes without the user clicking Undo —
  * the chat's data is untouched in the store the whole time, so an Undo simply
  * clears the pending timer and the row reappears.
@@ -39,10 +35,8 @@ interface PendingDelete {
 export function ChatSidebar({
   chats,
   activeChatId,
-  mode,
   onSelectChat,
   onNewChat,
-  onModeChange,
   onDeleteChat,
 }: ChatSidebarProps) {
   const renameChat = useChatStore((s) => s.renameChat)
@@ -101,22 +95,6 @@ export function ChatSidebar({
         <Plus className="size-4 text-purple-300" aria-hidden="true" />
         New chat
       </Button>
-
-      <Tabs value={mode} onValueChange={(value) => onModeChange(value as ChatMode)}>
-        <TabsList variant="segmented" className="w-full">
-          <TabsTrigger value="text" className="flex-1 justify-center">
-            Text
-          </TabsTrigger>
-          <TabsTrigger
-            value="voice"
-            disabled
-            title="Voice chat is coming soon"
-            className="flex-1 justify-center"
-          >
-            Voice
-          </TabsTrigger>
-        </TabsList>
-      </Tabs>
 
       <div className="flex flex-1 flex-col gap-1 overflow-y-auto">
         {visibleChats.length === 0 ? (
