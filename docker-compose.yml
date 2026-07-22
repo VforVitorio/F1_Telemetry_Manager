@@ -21,33 +21,16 @@ services:
     networks:
       - f1_network
 
-  frontend:
-    build:
-      context: .
-      dockerfile: frontend/Dockerfile
-    container_name: f1_frontend
-    ports:
-      - "8501:8501"
-    environment:
-      - BACKEND_URL=http://backend:8000
-    volumes:
-      - ./frontend:/app/frontend
-      - frontend_cache:/root/.cache
-    command: streamlit run frontend/app/main.py --server.port 8501 --server.address 0.0.0.0
-    depends_on:
-      - backend
-    networks:
-      - f1_network
-
-  # Migration epic #25 (strangler): the new React SPA runs beside Streamlit.
-  # Host :3000 during the migration; takes :8501 at cutover (#43).
+  # Cutover done (#43): the React SPA owns :8501 and the Streamlit service is
+  # gone from compose. The legacy Streamlit app stays on disk under frontend/
+  # and still runs locally via f1-streamlit, it just no longer ships here.
   webapp:
     build:
       context: ./webapp
       dockerfile: Dockerfile
     container_name: f1_webapp
     ports:
-      - "3000:80"
+      - "8501:80"
     depends_on:
       - backend
     networks:
@@ -59,4 +42,3 @@ networks:
 
 volumes:
   backend_cache:
-  frontend_cache:
