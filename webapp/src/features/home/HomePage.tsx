@@ -1,7 +1,8 @@
 // Home page (issue #34 punch-list) — the "Pit Wall" launcher hub, the app's
 // landing surface. A hero moment, a session launcher that hands its
-// selection to whichever surface the user opens next, a recent-sessions
-// stub, and a data-driven grid of every surface the app offers.
+// selection to whichever surface the user opens next, the persisted
+// recent-sessions panel (#186), and a data-driven grid of every surface the
+// app offers.
 //
 // The launcher's selection lives in local component state, NOT the URL —
 // unlike DashboardPage, Home has no "view" of its own worth deep-linking to.
@@ -9,32 +10,12 @@
 // each action link's `search={toRaw(selection)}`.
 
 import { useState } from 'react'
-import { Link } from '@tanstack/react-router'
-import { History } from 'lucide-react'
 import { Header } from '@/app/Header'
-import { Button } from '@/components/Button'
-import { Card } from '@/components/Card'
-import { EmptyState } from '@/components/EmptyState'
-import { SectionHeader } from '@/features/dashboard/components/SectionHeader'
-import {
-  applySelectionPatch,
-  type DashboardSearch,
-  type RawDashboardSearch,
-} from '@/features/dashboard/search'
+import { applySelectionPatch, type DashboardSearch } from '@/features/dashboard/search'
 import { prewarmTelemetry } from '@/features/dashboard/queries'
+import { RecentSessions } from './components/RecentSessions'
 import { SessionLauncher } from './components/SessionLauncher'
 import { SurfaceCards } from './components/SurfaceCards'
-
-/** Sample session behind the "recent sessions" empty state's CTA — the one
- *  FastF1 session guaranteed to be offline-cached in every environment (the
- *  golden verify session used across the whole migration, see MEMORY.md), so
- *  a first-time visitor always gets a real, fast-loading Dashboard. */
-const SAMPLE_SESSION_SEARCH: RawDashboardSearch = {
-  year: 2023,
-  gp: 'Monaco Grand Prix',
-  session: 'R',
-  drivers: 'VER,LEC',
-}
 
 export function HomePage() {
   const [selection, setSelection] = useState<DashboardSearch>({ drivers: [] })
@@ -75,26 +56,7 @@ export function HomePage() {
             <SessionLauncher value={selection} onChange={handleChange} />
           </div>
 
-          {/* Recent sessions — a stub for this MVP (no persistence yet). Wrapped
-              in a resting Card so the column reads as a real panel next to the
-              launcher's glow card, instead of bare text floating beside it. */}
-          <div className="flex flex-col gap-4 xl:col-span-1">
-            <SectionHeader title="Recent sessions" />
-            <Card className="flex-1">
-              <EmptyState
-                icon={<History className="size-8" aria-hidden="true" />}
-                title="No sessions yet"
-                description="Sessions you open land here so you can jump straight back in."
-                action={
-                  <Link to="/dashboard" search={SAMPLE_SESSION_SEARCH}>
-                    <Button variant="ghost" size="sm">
-                      Try the sample session
-                    </Button>
-                  </Link>
-                }
-              />
-            </Card>
-          </div>
+          <RecentSessions />
         </div>
 
         <SurfaceCards />
