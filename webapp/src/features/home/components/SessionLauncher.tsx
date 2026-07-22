@@ -14,6 +14,7 @@ import { toRaw, type DashboardSearch } from '@/features/dashboard/search'
 import { Card } from '@/components/Card'
 import { Button } from '@/components/Button'
 import { Pill } from '@/components/Pill'
+import { useSessionsStore, type SessionSurface } from '../sessionsStore'
 
 export interface SessionLauncherProps {
   value: DashboardSearch
@@ -59,6 +60,18 @@ function ActionContent({
  */
 export function SessionLauncher({ value, onChange }: SessionLauncherProps) {
   const ready = value.year != null && !!value.gp && !!value.session
+  const recordSession = useSessionsStore((state) => state.recordSession)
+
+  /** Persist the launch into the recents panel (#186). Guarded on the same
+   *  fields `ready` checks so TypeScript narrows them; only reachable from
+   *  the ready branches below. */
+  function recordLaunch(surface: SessionSurface) {
+    if (value.year == null || !value.gp || !value.session) return
+    recordSession(
+      { year: value.year, gp: value.gp, session: value.session, drivers: value.drivers },
+      surface,
+    )
+  }
 
   return (
     <Card elevation="glow" className="flex flex-col gap-5 p-6">
@@ -67,7 +80,7 @@ export function SessionLauncher({ value, onChange }: SessionLauncherProps) {
 
       <div className="flex flex-wrap items-center gap-2 border-t border-hairline pt-4">
         {ready ? (
-          <Link to="/dashboard" search={toRaw(value)}>
+          <Link to="/dashboard" search={toRaw(value)} onClick={() => recordLaunch('dashboard')}>
             <Button size="md">
               <ActionContent icon={Gauge} label="Open in Dashboard" />
             </Button>
@@ -79,7 +92,7 @@ export function SessionLauncher({ value, onChange }: SessionLauncherProps) {
         )}
 
         {ready ? (
-          <Link to="/comparison" search={toRaw(value)}>
+          <Link to="/comparison" search={toRaw(value)} onClick={() => recordLaunch('comparison')}>
             <Button variant="ghost">
               <ActionContent icon={ArrowRightLeft} label="Comparison" soon />
             </Button>
@@ -96,6 +109,7 @@ export function SessionLauncher({ value, onChange }: SessionLauncherProps) {
           // the driver + optional rival for the pit-wall duel.
           <Link
             to="/strategy"
+            onClick={() => recordLaunch('strategy')}
             search={{
               ...(value.gp ? { gp: value.gp } : {}),
               ...(value.drivers[0] ? { driver: value.drivers[0] } : {}),
