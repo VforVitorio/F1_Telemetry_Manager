@@ -33,11 +33,9 @@ From the F1 StratLab repo root (recommended):
 
 ```bash
 docker compose up
-# or
-f1-streamlit
 ```
 
-`docker compose up` brings the backend up on `:8000` and the React web app on its port (`:3000` during the migration; `:8501` at cutover). The legacy Streamlit UI (`f1-streamlit`) is retained for reference.
+`docker compose up` brings the backend up on `:8000` and the React web app on `:8501`. The legacy Streamlit UI is retained for reference under [`frontend/`](frontend/) and still runs locally via `f1-streamlit`, but it no longer ships in compose.
 
 Standalone (from this directory):
 
