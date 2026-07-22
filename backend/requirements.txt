@@ -35,16 +35,6 @@ seaborn>=0.12.0
 rich>=14.3.3
 tqdm>=4.68.3
 
-# Voice Chat Dependencies — whisper excluded from Docker (triton<3 conflicts
-# with torch>=2.5 triton>=3.1).  Voice features run locally, not in Docker.
-# openai-whisper==20231117
-edge-tts==7.2.3
-nest-asyncio==1.6.0
-pydub==0.25.1
-soundfile==0.14.0
-aiofiles==23.2.1
-ffmpeg-python==0.2.0
-
 # Chat Query Routing Dependencies
 requests>=2.31.0
 

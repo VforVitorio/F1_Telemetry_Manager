@@ -1,14 +1,14 @@
 """In-process per-client rate limiting for the expensive unauthenticated endpoints.
 
 Security C2 / S-7: a single client (or a stray script) must not be able to pin
-the workers by hammering ``/simulate``, the prediction routes or voice. This is a
+the workers by hammering ``/simulate`` or the prediction routes. This is a
 local, single-process backend, so a stdlib token bucket keyed on the client IP is
 enough - no ``slowapi``/``limits`` dependency is pulled in for a few lines of code.
 
 Each ``rate_limit(...)`` call owns one bucket per route (via a closure), so the
 limits are independent. The dependency is evaluated at request admission, so an
 open SSE stream consumes exactly one token and then runs unmetered - the limiter
-never interferes with a long-lived sim/voice stream.
+never interferes with a long-lived sim stream.
 
 --- WHERE TO CHANGE IF THE LIMITS CHANGE ---
 The per-route (capacity, per_minute) pairs live at each route's

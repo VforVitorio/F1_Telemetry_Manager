@@ -2,14 +2,6 @@ FROM python:3.10-slim
 
 WORKDIR /app
 
-# Install system deps: ffmpeg decodes the WebM/Opus audio that browsers emit
-# from st.audio_input (Chrome default) so Whisper's pipeline can process it;
-# libsndfile1 is required by soundfile/librosa for reading WAV + WebM alike.
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ffmpeg \
-    libsndfile1 \
-    && rm -rf /var/lib/apt/lists/*
-
 # Install uv (fast package manager)
 RUN pip install --no-cache-dir uv
 

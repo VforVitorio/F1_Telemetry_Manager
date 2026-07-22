@@ -41,8 +41,8 @@ const ThemePreview = lazyRouteComponent(() => import('@/features/dev/ThemePrevie
 // route matched below. '/' is the real Home (the Pit Wall launcher hub); the
 // old theme-preview palette moved to the dev-only '/dev/theme' (not in the
 // rail). Every rail tab now has a real feature page (Chat/#39 was the last
-// "coming soon" placeholder); only Voice (#40) remains reserved, as a disabled
-// toggle inside the Chat sidebar rather than a separate route. Each
+// "coming soon" placeholder); the voice surface was retired (#183) and lives
+// only in the legacy Streamlit app. Each
 // `createRoute` call keeps its `path` a literal string at the call site (not
 // threaded through a prop/array) so TanStack Router's typed route tree infers
 // the exact path union — that's what makes <Link to="..."> in Rail.tsx
@@ -111,9 +111,8 @@ const comparisonRoute = createRoute({
 })
 
 // Chat (#39) — the MCP-tool-calling assistant: real SSE token streaming, one
-// tool result inline per turn. Its own search shape (active chat id, the
-// text/voice mode toggle reserved for Voice #40, a never-auto-firing `ask`
-// deep-link prefill).
+// tool result inline per turn. Its own search shape (active chat id, a
+// never-auto-firing `ask` deep-link prefill).
 const chatRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/chat',

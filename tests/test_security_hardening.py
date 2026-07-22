@@ -1,6 +1,6 @@
 """Hermetic tests for the Security Phase C hardening (#226).
 
-Covers the token-bucket rate limiter and the chat/voice request-validation
+Covers the token-bucket rate limiter and the chat request-validation
 bounds. No provider, no models - all pure Pydantic + stdlib, so these run in
 the deps-lite CI job.
 """
@@ -15,7 +15,6 @@ from backend.models.chat_models import (
     MAX_TEXT_CHARS,
     ChatRequest,
 )
-from backend.models.voice_models import TTSRequest
 
 
 def test_token_bucket_allows_burst_then_blocks():
@@ -59,9 +58,3 @@ def test_chat_text_length_is_bounded():
     """An oversized prompt text is rejected."""
     with pytest.raises(ValueError):
         ChatRequest(text="x" * (MAX_TEXT_CHARS + 1))
-
-
-def test_tts_text_is_bounded():
-    """TTS synth text is capped so a huge body cannot pin the TTS worker."""
-    with pytest.raises(ValueError):
-        TTSRequest(text="x" * 2_001)

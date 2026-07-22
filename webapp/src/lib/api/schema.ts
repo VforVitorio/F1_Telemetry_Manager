@@ -21,6 +21,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/telemetry/prewarm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Prewarm
+         * @description Warm the FastF1 session cache for (year, gp, session) in the background.
+         *
+         *     The frontend calls this when the user picks a session, so the ~2-15s parse
+         *     starts while they choose drivers — by the time lap-times/telemetry fire, the
+         *     session is already loaded and the charts fall in instead of hanging.
+         *     Returns 202 immediately; the load runs after the response is sent.
+         */
+        post: operations["prewarm_api_v1_telemetry_prewarm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/telemetry/gps": {
         parameters: {
             query?: never;
@@ -383,106 +408,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/voice/transcribe": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Transcribe audio to text
-         * @description Convert audio file to text using Whisper STT
-         */
-        post: operations["transcribe_audio_api_v1_voice_transcribe_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/voice/synthesize": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Convert text to speech
-         * @description Generate audio from text using pyttsx3 TTS
-         */
-        post: operations["synthesize_speech_api_v1_voice_synthesize_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/voice/voice-chat": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Full voice chat flow
-         * @description Complete flow: STT (Nemotron, local) → LLM (provider via F1_LLM_PROVIDER) → TTS (Qwen3, local)
-         */
-        post: operations["voice_chat_api_v1_voice_voice_chat_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/voice/health": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Health check
-         * @description Check if voice services are ready
-         */
-        get: operations["health_check_api_v1_voice_health_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/voice/voices": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get available voices
-         * @description List all available TTS voices on the system
-         */
-        get: operations["get_available_voices_api_v1_voice_voices_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/strategy/available-gps": {
         parameters: {
             query?: never;
@@ -552,10 +477,13 @@ export interface paths {
         };
         /**
          * Get Lap State
-         * @description Build the canonical lap_state dict from the featured parquet.
+         * @description Build the canonical lap_state dict for one (gp, driver, lap).
          *
-         *     Returns the same structure that RaceStateManager.get_lap_state() produces
-         *     so it can be passed directly to any agent endpoint.
+         *     Reads the featured parquet first; when that lap was dropped from it
+         *     (Safety Car / pit / out lap), falls back to the raw per-race parquet so any
+         *     lap is runnable, exactly like the arcade replay. The returned structure
+         *     matches RaceStateManager.get_lap_state() either way, so it can be passed
+         *     directly to any agent endpoint.
          */
         get: operations["get_lap_state_api_v1_strategy_lap_state_get"];
         put?: never;
@@ -600,6 +528,35 @@ export interface paths {
          * @description Run Pace Agent across a lap range and return actual vs predicted.
          */
         post: operations["predict_pace_range_api_v1_strategy_pace_range_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/strategy/tire-range": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Predict Tire Range
+         * @description Run the TireDegTCN across a lap range for the Tyres agent-tab chart.
+         *
+         *     Returns, per lap in the window, the ACTUAL cumulative fuel-adjusted degradation
+         *     (the parquet's `FuelAdjustedDegAbsolute`, i.e. the TCN's own training target)
+         *     and the model's PREDICTED value (a deterministic forward pass over the stint up
+         *     to that lap). Laps the featured parquet dropped (Safety Car / out laps) are
+         *     simply absent from the series, so the lines break there rather than erroring.
+         *
+         *     The tire agent is set up once (its `laps_df`/`session_meta`), then only the
+         *     cheap deterministic predict path runs per lap — no per-lap MC Dropout.
+         */
+        post: operations["predict_tire_range_api_v1_strategy_tire_range_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -857,52 +814,6 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         /**
-         * AvailableVoicesResponse
-         * @description Response model for available TTS voices.
-         * @example {
-         *       "count": 1,
-         *       "voices": [
-         *         {
-         *           "id": "HKEY_LOCAL_MACHINE\\...\\David",
-         *           "languages": [
-         *             "en-US"
-         *           ],
-         *           "name": "Microsoft David Desktop"
-         *         }
-         *       ]
-         *     }
-         */
-        AvailableVoicesResponse: {
-            /**
-             * Voices
-             * @description List of available voices
-             */
-            voices: unknown[];
-            /**
-             * Count
-             * @description Number of available voices
-             */
-            count: number;
-        };
-        /** Body_transcribe_audio_api_v1_voice_transcribe_post */
-        Body_transcribe_audio_api_v1_voice_transcribe_post: {
-            /**
-             * Audio
-             * Format: binary
-             */
-            audio: string;
-        };
-        /** Body_voice_chat_api_v1_voice_voice_chat_post */
-        Body_voice_chat_api_v1_voice_voice_chat_post: {
-            /**
-             * Audio
-             * Format: binary
-             */
-            audio: string;
-            /** Voice */
-            voice?: string | null;
-        };
-        /**
          * ChatRequest
          * @description Request model for chat messages.
          */
@@ -1083,6 +994,8 @@ export interface components {
             rcm_events?: {
                 [key: string]: unknown;
             }[] | null;
+            /** Rival */
+            rival?: string | null;
         };
         /**
          * SimulateRequest
@@ -1155,34 +1068,6 @@ export interface components {
             };
         };
         /**
-         * TTSRequest
-         * @description Request model for text-to-speech synthesis.
-         * @example {
-         *       "rate": 175,
-         *       "text": "Hello, I am Caronte, your F1 assistant.",
-         *       "volume": 0.9
-         *     }
-         */
-        TTSRequest: {
-            /**
-             * Text
-             * @description Text to synthesize
-             */
-            text: string;
-            /**
-             * Rate
-             * @description Speech rate in words per minute
-             * @default 175
-             */
-            rate: number | null;
-            /**
-             * Volume
-             * @description Volume level
-             * @default 0.9
-             */
-            volume: number | null;
-        };
-        /**
          * TireRequest
          * @description Request body for the /tire endpoint (N26 TireDegTCN cliff estimation).
          */
@@ -1239,6 +1124,12 @@ export interface components {
              * @default 1000
              */
             max_tokens: number;
+            /**
+             * Stream Tokens
+             * @description Stream the tool-summary reply as live token deltas instead of one full-text event. Only changes the second LLM call (the summary of a dispatched tool's result) — the first call, which decides whether to call a tool at all, always stays non-streaming. Default False keeps today's single-token behaviour for callers that never send this flag.
+             * @default false
+             */
+            stream_tokens: boolean;
         };
         /**
          * ToolMessageResponse
@@ -1293,32 +1184,6 @@ export interface components {
              */
             summary: string;
         };
-        /**
-         * TranscriptionResponse
-         * @description Response model for audio transcription.
-         * @example {
-         *       "duration": 3.5,
-         *       "language": "en",
-         *       "text": "Why did Verstappen pit on lap 15?"
-         *     }
-         */
-        TranscriptionResponse: {
-            /**
-             * Text
-             * @description Transcribed text from audio
-             */
-            text: string;
-            /**
-             * Language
-             * @description Detected or specified language code
-             */
-            language: string;
-            /**
-             * Duration
-             * @description Audio duration in seconds
-             */
-            duration: number;
-        };
         /** ValidationError */
         ValidationError: {
             /** Location */
@@ -1327,75 +1192,10 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
-        };
-        /**
-         * VoiceChatResponse
-         * @description Response model for full voice chat flow.
-         * @example {
-         *       "audio_base64": "UklGRiQAAABXQVZFZm10IBAAAAABAAEA...",
-         *       "processing_time": 3.2,
-         *       "response_text": "Verstappen pitted on lap 15 to switch to soft tires...",
-         *       "transcript": "Why did Verstappen pit on lap 15?"
-         *     }
-         */
-        VoiceChatResponse: {
-            /**
-             * Transcript
-             * @description User's transcribed question
-             */
-            transcript: string;
-            /**
-             * Response Text
-             * @description Assistant's text response
-             */
-            response_text: string;
-            /**
-             * Audio Base64
-             * @description Base64 encoded audio response
-             */
-            audio_base64: string;
-            /**
-             * Processing Time
-             * @description Total processing time in seconds
-             */
-            processing_time: number;
-        };
-        /**
-         * VoiceHealthResponse
-         * @description Response model for voice service health check.
-         * @example {
-         *       "status": "healthy",
-         *       "stt_model": "base",
-         *       "stt_ready": true,
-         *       "tts_ready": true
-         *     }
-         */
-        VoiceHealthResponse: {
-            /**
-             * Status
-             * @description Overall health status
-             */
-            status: string;
-            /**
-             * Stt Ready
-             * @description Speech-to-text service status
-             */
-            stt_ready: boolean;
-            /**
-             * Tts Ready
-             * @description Text-to-speech service status
-             */
-            tts_ready: boolean;
-            /**
-             * Stt Model
-             * @description STT model name
-             */
-            stt_model?: string | null;
-            /**
-             * Error
-             * @description Error message if unhealthy
-             */
-            error?: string | null;
+            /** Input */
+            input?: unknown;
+            /** Context */
+            ctx?: Record<string, never>;
         };
     };
     responses: never;
@@ -1422,6 +1222,39 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    prewarm_api_v1_telemetry_prewarm_post: {
+        parameters: {
+            query: {
+                year: number;
+                gp: string;
+                session: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1943,143 +1776,6 @@ export interface operations {
             };
         };
     };
-    transcribe_audio_api_v1_voice_transcribe_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "multipart/form-data": components["schemas"]["Body_transcribe_audio_api_v1_voice_transcribe_post"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TranscriptionResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    synthesize_speech_api_v1_voice_synthesize_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["TTSRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    voice_chat_api_v1_voice_voice_chat_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "multipart/form-data": components["schemas"]["Body_voice_chat_api_v1_voice_voice_chat_post"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["VoiceChatResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    health_check_api_v1_voice_health_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["VoiceHealthResponse"];
-                };
-            };
-        };
-    };
-    get_available_voices_api_v1_voice_voices_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AvailableVoicesResponse"];
-                };
-            };
-        };
-    };
     available_gps_api_v1_strategy_available_gps_get: {
         parameters: {
             query?: {
@@ -2246,6 +1942,41 @@ export interface operations {
     predict_pace_range_api_v1_strategy_pace_range_post: {
         parameters: {
             query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PaceRangeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    predict_tire_range_api_v1_strategy_tire_range_post: {
+        parameters: {
+            query?: {
+                year?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;

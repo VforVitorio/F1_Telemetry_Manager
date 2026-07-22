@@ -22,7 +22,7 @@ The repo can also be cloned standalone if you only want the analytics dashboard,
 
 | Surface | Entry point | What it does |
 | --- | --- | --- |
-| **FastAPI backend** | `uvicorn backend.main:app --port 8000` | REST endpoints for telemetry, comparison, circuit domination, strategy, chat and voice. Mounts a FastMCP server at `/mcp` exposing the strategy agents as tools. |
+| **FastAPI backend** | `uvicorn backend.main:app --port 8000` | REST endpoints for telemetry, comparison, circuit domination, strategy and chat. Mounts a FastMCP server at `/mcp` exposing the strategy agents as tools. |
 | **React web app** | `docker compose up` (service `webapp`) *or* `cd webapp && npm run dev` | Post-race SPA: telemetry dashboard, 60fps driver comparison, ML model lab, multi-agent strategy, race analysis, and a streaming AI chat that renders tool results (cards + ECharts) inline. Reports, sessions, image attach. |
 
 The chat pipeline runs in-process against the strategy agents through a tool-calling loop (OpenAI tool contract); the same tools are exposed externally over MCP, so Claude Desktop, Cursor or any MCP client can drive the agents directly.
@@ -55,7 +55,7 @@ uvicorn backend.main:app --reload --port 8000          # terminal 1
 cd webapp && npm install && npm run dev                # terminal 2 (web app on :5173)
 ```
 
-Requires Python 3.11+. The voice pipeline pulls Whisper (`openai-whisper`) and `edge-tts`; first run downloads the Whisper medium weights.
+Requires Python 3.11+.
 
 ## What the backend exposes
 
@@ -66,14 +66,15 @@ All endpoints sit under `/api/v1`. The full reference lives at [`docs/backend-ap
 - **`/circuit-domination`** — microsector-level dominant-driver map.
 - **`/strategy`** — pace, tire degradation, situation, pit timing, radio NLP, FIA RAG and the orchestrated `recommend` endpoint that ties them together. Also drives the simulator (`/strategy/simulate`).
 - **`/chat`** — message, stream, tool-message and tool-message-stream. The tool-message endpoints implement the OpenAI tool-calling loop against the strategy MCP tools; `/stream` is the plain chat passthrough.
-- **`/voice`** — STT (Whisper), TTS (edge-tts) and the full STT → LLM → TTS pipeline.
 - **`/mcp`** — FastMCP Streamable-HTTP transport. External MCP clients connect here to call the strategy tools directly.
+
+> The voice chat surface (STT → LLM → TTS) was retired in v2. It remains available in the legacy Streamlit app under [`frontend/`](frontend/) and in the parent repo's `legacy_version` branch.
 
 ## Project layout
 
 - [`backend/`](backend/) — FastAPI app
-  - [`api/v1/endpoints/`](backend/api/v1/endpoints/) — `telemetry`, `comparison`, `circuit_domination`, `strategy`, `chat`, `voice`
-  - [`services/`](backend/services/) — chatbot (chat engine, MCP bridge, stage tracker, LLM service), telemetry, simulation, voice
+  - [`api/v1/endpoints/`](backend/api/v1/endpoints/) — `telemetry`, `comparison`, `circuit_domination`, `strategy`, `chat`
+  - [`services/`](backend/services/) — chatbot (chat engine, MCP bridge, stage tracker, LLM service), telemetry, simulation
   - [`mcp_tools.py`](backend/mcp_tools.py) — FastMCP server wrapping the N25–N31 agents
 - [`frontend/`](frontend/) — Streamlit app
   - [`app/main.py`](frontend/app/main.py) — landing + dashboard
@@ -86,7 +87,7 @@ All endpoints sit under `/api/v1`. The full reference lives at [`docs/backend-ap
 
 Backend: FastAPI 0.109, Pydantic 2.5, FastF1 3.4, FastMCP 3.x.
 Frontend (web app): React 19, Vite, TypeScript, Tailwind v4, ECharts, TanStack Router/Query, Zustand. (The retired Streamlit UI lives under `frontend/` for reference.)
-AI / voice: OpenAI-compatible LLM (LM Studio local server or OpenAI API), openai-whisper (medium), edge-tts, pydub, soundfile.
+AI: OpenAI-compatible LLM (LM Studio local server or OpenAI API).
 
 ## Frontend migration — done (v2)
 
