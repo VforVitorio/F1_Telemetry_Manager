@@ -38,11 +38,6 @@ dependencies = [
 
     # MCP (Model Context Protocol) server — kept in sync with requirements.txt (#29)
     "fastmcp==3.2.0",
-    "streamlit>=1.37.0",
-    "streamlit-shadcn-ui>=0.1.0",
-    "streamlit-lottie>=0.0.5",
-    "kaleido==0.2.1",  # pinned: kaleido 1.x changed the API; does not block resolution
-    "hydralit_components",
 ]
 
 [project.optional-dependencies]
