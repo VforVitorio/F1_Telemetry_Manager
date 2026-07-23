@@ -35,7 +35,7 @@ From the F1 StratLab repo root (recommended):
 docker compose up
 ```
 
-`docker compose up` brings the backend up on `:8000` and the React web app on `:8501`. The legacy Streamlit UI is retained for reference under [`frontend/`](frontend/) and still runs locally via `f1-streamlit`, but it no longer ships in compose.
+`docker compose up` brings the backend up on `:8000` and the React web app on `:8501`. The legacy Streamlit UI has been removed from this repo; it survives in git history and in the parent repo's `legacy_version` branch.
 
 Standalone (from this directory):
 
@@ -66,7 +66,7 @@ All endpoints sit under `/api/v1`. The full reference lives at [`docs/backend-ap
 - **`/chat`** — message, stream, tool-message and tool-message-stream. The tool-message endpoints implement the OpenAI tool-calling loop against the strategy MCP tools; `/stream` is the plain chat passthrough.
 - **`/mcp`** — FastMCP Streamable-HTTP transport. External MCP clients connect here to call the strategy tools directly.
 
-> The voice chat surface (STT → LLM → TTS) was retired in v2. It remains available in the legacy Streamlit app under [`frontend/`](frontend/) and in the parent repo's `legacy_version` branch.
+> The voice chat surface (STT → LLM → TTS) was retired in v2. It remains available in the parent repo's `legacy_version` branch.
 
 ## Project layout
 
@@ -74,22 +74,19 @@ All endpoints sit under `/api/v1`. The full reference lives at [`docs/backend-ap
   - [`api/v1/endpoints/`](backend/api/v1/endpoints/) — `telemetry`, `comparison`, `circuit_domination`, `strategy`, `chat`
   - [`services/`](backend/services/) — chatbot (chat engine, MCP bridge, stage tracker, LLM service), telemetry, simulation
   - [`mcp_tools.py`](backend/mcp_tools.py) — FastMCP server wrapping the N25–N31 agents
-- [`frontend/`](frontend/) — Streamlit app
-  - [`app/main.py`](frontend/app/main.py) — landing + dashboard
-  - [`pages/`](frontend/pages/) — Advanced, Compare, Downloads, Reports, Admin
-  - [`components/`](frontend/components/) — chatbot, telemetry and shared widgets
-- [`docs/`](docs/) — architecture, changelog, multimodal and MCP notes, import guide
+- [`webapp/`](webapp/) — React web app (Vite + TypeScript + Tailwind + ECharts)
+- [`docs/`](docs/) — architecture, changelog, multimodal and MCP notes
 - [`tests/`](tests/) — pytest coverage for chat engine, MCP bridge, comparison and telemetry services
 
 ## Tech stack
 
 Backend: FastAPI 0.109, Pydantic 2.5, FastF1 3.4, FastMCP 3.x.
-Frontend (web app): React 19, Vite, TypeScript, Tailwind v4, ECharts, TanStack Router/Query, Zustand. (The retired Streamlit UI lives under `frontend/` for reference.)
+Frontend (web app): React 19, Vite, TypeScript, Tailwind v4, ECharts, TanStack Router/Query, Zustand.
 AI: OpenAI-compatible LLM (LM Studio local server or OpenAI API).
 
 ## Frontend migration — done (v2)
 
-The **backend stays FastAPI**, no question — and the **Streamlit frontend has been replaced by a modern React web app** (Vite + TypeScript + Tailwind v4 + ECharts + TanStack Router/Query). It keeps the original structure, menus and flows, but escapes Streamlit's design constraints: instant client-side navigation, a 60fps canvas replay, a redesigned pit-wall aesthetic, and a chat that streams the LLM reply for real over SSE and renders each tool's output (cards + charts) inline. The web app is now the default surface; the legacy Streamlit app is retained under `frontend/` for reference.
+The **backend stays FastAPI**, no question — and the **Streamlit frontend has been replaced by a modern React web app** (Vite + TypeScript + Tailwind v4 + ECharts + TanStack Router/Query). It keeps the original structure, menus and flows, but escapes Streamlit's design constraints: instant client-side navigation, a 60fps canvas replay, a redesigned pit-wall aesthetic, and a chat that streams the LLM reply for real over SSE and renders each tool's output (cards + charts) inline. The web app is now the only post-race surface; the legacy Streamlit app survives in git history and in the parent repo's `legacy_version` branch.
 
 ## Related
 
