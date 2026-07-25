@@ -18,6 +18,7 @@ import pytest
 pytest.importorskip("numpy")
 pytest.importorskip("pandas")
 
+from backend.api.v1.endpoints.strategy import get_lap_state  # noqa: E402
 from backend.api.v1.endpoints.telemetry import get_race_data  # noqa: E402
 from backend.utils.laps_cache import get_laps_df  # noqa: E402
 
@@ -81,3 +82,35 @@ def test_the_cached_race_frame_is_not_mutated_between_requests():
     first = get_race_data(year=YEAR, gp=gp, driver=None)
     second = get_race_data(year=YEAR, gp=gp, driver=None)
     assert first == second
+
+
+# ---------------------------------------------------------------------------
+# An overcut needs to know who is in the pit lane
+# ---------------------------------------------------------------------------
+
+
+def test_lap_state_says_whether_each_rival_is_in_the_pit_lane():
+    """Absence of this key is an assertion, not a silence.
+
+    The projection reads ``is_pitting`` with a ``False`` default, so a producer
+    that omits it is not saying "unknown", it is saying "nobody is stopping".
+    OVERCUT keys off exactly that flag, so leaving it out made the candidate
+    permanently ineligible through this endpoint while every other surface could
+    reach it.
+
+    ``None`` is the honest answer where the frame cannot support one: the
+    featured parquet drops ``PitInTime``. It also drops the pit laps themselves,
+    which is why a rival who genuinely IS in the pit lane arrives through the raw
+    fallback, where the column survives.
+    """
+    gp = _gp_with_gaps()
+    frame = get_laps_df(YEAR)
+    row = frame[frame["GP_Name"] == gp].iloc[0]
+    driver, lap = str(row["Driver"]), int(row["LapNumber"])
+
+    state = get_lap_state(gp=gp, driver=driver, lap=lap, year=YEAR)
+    rivals = state["rivals"]
+    assert rivals, f"no rivals returned for {driver} at {gp} lap {lap}"
+    for rival in rivals:
+        assert "is_pitting" in rival, f"{rival['driver']} carries no pit-lane state"
+        assert rival["is_pitting"] in (True, False, None)

@@ -531,6 +531,23 @@ def get_lap_state(
                 "tyre_life": _safe_none(rr.get("TyreLife")),
                 "gap_ahead_s": round(rival_gap, 3),
                 "interval_to_driver_s": interval_to_driver,
+                # An overcut needs someone in the pit lane, and this producer was
+                # not saying whether anyone was. The projection reads the key with
+                # a False default, so its absence was not "unknown", it was an
+                # assertion that nobody is stopping, and OVERCUT could never be
+                # eligible through this endpoint.
+                #
+                # Derivable only when the frame carries PitInTime. The featured
+                # parquet drops that column, but it also drops the pit laps
+                # themselves, so a rival who IS in the pit lane always arrives
+                # through the raw fallback, which keeps it. None where the column
+                # is absent: not knowing is not the same as knowing they stayed
+                # out, and this dict is the only place that distinction survives.
+                "is_pitting": (
+                    bool(pd.notna(rr.get("PitInTime")))
+                    if "PitInTime" in lap_snapshot.columns
+                    else None
+                ),
             }
         )
 
