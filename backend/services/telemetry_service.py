@@ -15,6 +15,7 @@ import os
 import warnings
 
 from backend.core.driver_colors import get_driver_color
+from backend.core.paths import get_data_root
 from backend.services.telemetry.session_cache import get_loaded_session
 
 # Suppress specific FastF1/pandas warnings
@@ -24,10 +25,18 @@ warnings.filterwarnings('ignore', message='.*fill_value.*')
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Enable FastF1 cache to avoid re-downloading data
-cache_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'cache')
-os.makedirs(cache_dir, exist_ok=True)
-fastf1.Cache.enable_cache(cache_dir)
+# Enable FastF1 cache to avoid re-downloading data.
+#
+# Resolved through get_data_root() rather than relative to this file, which put
+# it at src/telemetry/cache: a second, independent cache of the same FastF1
+# sessions the arcade already had under data/cache/fastf1. Both were live and
+# both were being written, so whichever surface opened a given race first paid
+# the full parse cost and the other paid it again from scratch, for about 4 GB
+# of duplicated seasons. One directory, and it follows $F1_STRAT_DATA_ROOT the
+# way every other path in the project does.
+cache_dir = get_data_root() / "cache" / "fastf1"
+cache_dir.mkdir(parents=True, exist_ok=True)
+fastf1.Cache.enable_cache(str(cache_dir))
 logger.info(f"FastF1 cache enabled at: {cache_dir}")
 
 # Official track lengths in meters (imported from frontend for consistency)
