@@ -12,8 +12,14 @@ from __future__ import annotations
 
 import pytest
 
-from backend.api.v1.endpoints.telemetry import get_race_data
-from backend.utils.laps_cache import get_laps_df
+# The lite CI installs neither numpy nor pandas, yet the endpoint below imports
+# both at module load time. Skip gracefully there rather than erroring during
+# collection, matching how the other dep-heavy suites behave.
+pytest.importorskip("numpy")
+pytest.importorskip("pandas")
+
+from backend.api.v1.endpoints.telemetry import get_race_data  # noqa: E402
+from backend.utils.laps_cache import get_laps_df  # noqa: E402
 
 YEAR = 2025
 
