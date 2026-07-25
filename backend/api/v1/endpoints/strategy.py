@@ -381,6 +381,21 @@ def _safe_none(val):
         return val
 
 
+def _stint_flags_for(gp_df: pd.DataFrame, driver: str, lap: int) -> dict:
+    """One driver's Art. 30.5(m) flags as of ``lap``, from the shared implementation.
+
+    A wrapper and nothing more, deliberately. The stint arithmetic lives in
+    ``src/simulation/stint_history.py`` and both this endpoint and the replay
+    engine call it, so the two cannot answer the question differently.
+
+    ``gp_df`` must already be GP-scoped, which it is by the time the caller has
+    a lap row: a season-wide frame would blend a driver's stints across races.
+    """
+    from src.simulation.stint_history import stint_history_flags
+
+    return stint_history_flags(gp_df, driver, lap)
+
+
 @router.get("/lap-state")
 def get_lap_state(
     gp: str,
@@ -543,6 +558,21 @@ def get_lap_state(
             "driver": driver,
             "team": driver_dict["team"],
             "total_laps": total_laps,
+        },
+        # Art. 30.5(m) state, for us and for every rival. Imported from the
+        # simulation package rather than derived here: this endpoint has a
+        # history of reimplementing RaceStateManager and inheriting the bugs
+        # that file had already fixed, and stint counting is exactly the kind of
+        # arithmetic that drifts between two copies. Without these keys the API
+        # path silently loses the terminal liability, since an unknown
+        # obligation disables it by design.
+        "stint_flags": _stint_flags_for(gp_df, driver, int(lap)),
+        "rival_stop_pending": {
+            rival["driver"]: _stint_flags_for(gp_df, rival["driver"], int(lap))[
+                "mandatory_stop_pending"
+            ]
+            for rival in rivals
+            if rival.get("driver")
         },
     }
 

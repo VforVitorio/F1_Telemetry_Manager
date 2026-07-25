@@ -220,3 +220,34 @@ def test_build_lap_state_from_row_nan_tyre_life_stays_none():
     )
     assert lap_state["driver"]["tyre_life"] is None  # not the old 0 sentinel
     assert lap_state["driver"]["position"] == row["Position"]  # real value untouched
+
+
+# ---------------------------------------------------------------------------
+# #550 -- the Art. 30.5(m) flags must reach the API path too
+# ---------------------------------------------------------------------------
+
+
+def test_get_lap_state_carries_the_mandatory_stop_flags_for_us_and_every_rival():
+    """The terminal liability is silently disabled without these two keys.
+
+    ``race_context_from_lap_state`` reads ``stint_flags.mandatory_stop_pending``
+    and ``rival_stop_pending`` straight off the lap_state, and an unknown
+    obligation switches the liability term off by design. So a producer that
+    omits them does not fail loudly: it quietly returns a projection with the
+    deferred cost of our own stop priced at zero. The replay engine emits both;
+    this asserts the HTTP path does not diverge from it.
+    """
+    row, _gp_df = _first_row_with_prev_lap_time()
+    gp, driver, lap = str(row["GP_Name"]), str(row["Driver"]), int(row["LapNumber"])
+
+    state = get_lap_state(gp=gp, driver=driver, lap=lap, year=2025)
+
+    flags = state["stint_flags"]
+    assert set(flags) == {"stops_made", "compounds_used", "mandatory_stop_pending"}
+    assert flags["mandatory_stop_pending"] in (True, False, None)
+
+    # Every rival the payload lists must also carry a verdict, since a rival
+    # missing from the map is treated as unknown and stops exempting itself.
+    pending = state["rival_stop_pending"]
+    listed = {r["driver"] for r in state["rivals"] if r.get("driver")}
+    assert listed <= set(pending), f"rivals with no obligation verdict: {listed - set(pending)}"
