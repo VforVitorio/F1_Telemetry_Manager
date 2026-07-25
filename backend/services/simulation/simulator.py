@@ -424,10 +424,13 @@ def _run_no_llm_path(
         # The engine hands back the raw MC dict ({scenario: {"score": ..., ...}}), the
         # same shape the old body flattened here. _coerce_scenario_scores downstream
         # accepts either, but flatten anyway to keep the emitted contract unchanged.
-        "scenario_scores": {
-            k: round(float(v["score"] if isinstance(v, dict) else v), 3)
-            for k, v in (rec.scenario_scores or {}).items()
-        },
+        #
+        # A null score means the candidate was not offered at all — the projection MC
+        # marks a candidate ineligible when it has no valid target, rather than handing
+        # it a number it did not earn. Such a candidate is OMITTED here: an absent key
+        # cannot be mistaken for a score, whereas coercing it would either crash on
+        # float(None) or, worse, quietly render as 0.0 and look like a real result.
+        "scenario_scores": _coerce_scenario_scores(rec.scenario_scores),
         "regulation_context": rec.regulation_context or "",
         "guardrail_reason": outputs.get("guardrail_reason"),
         "_pit_out": outputs.get("pit_out"),
@@ -445,6 +448,12 @@ def _coerce_scenario_scores(raw: Any) -> dict[str, float]:
     a simple ``{scenario: float}`` dict. Both shapes show up in the wild:
     ``_run_mc_simulation`` returns the nested form, while the orchestrator
     re-attaches it post-synthesis and other code paths sometimes pre-flatten.
+
+    A candidate whose score is ``None`` is dropped rather than defaulted. The
+    projection MC emits that for a candidate it refused to score — an undercut
+    with no reachable target, an overcut with nobody in the pit lane — and the
+    one thing that must never happen is for it to reach a chart as 0.0, which
+    reads as a real, merely unattractive option.
     """
     if not isinstance(raw, dict):
         return {}
@@ -453,10 +462,10 @@ def _coerce_scenario_scores(raw: Any) -> dict[str, float]:
         if isinstance(val, dict):
             score = val.get("score")
             if score is not None:
-                flat[key] = float(score)
+                flat[key] = round(float(score), 3)
         else:
             try:
-                flat[key] = float(val)
+                flat[key] = round(float(val), 3)
             except (TypeError, ValueError):
                 continue
     return flat
