@@ -1318,6 +1318,52 @@ def _driver_number_to_code(year: int = 2025) -> dict:
     return dict(zip(mapping["DriverNumber"].astype(int), mapping["Driver"]))
 
 
+# The radio corpus is static for the life of the process, exactly like the raw
+# laps above, but both radio endpoints were re-reading their parquet and
+# re-parsing transcripts.json on every request — every click through a lap list
+# or a transcript. Same (year, slug) cache pattern, in the two places that were
+# missing it.
+_RADIO_CORPUS_CACHE: Dict[tuple, Optional[pd.DataFrame]] = {}
+_RADIO_TRANSCRIPT_CACHE: Dict[tuple, dict] = {}
+
+
+def _get_radio_corpus(year: int, slug: str) -> Optional[pd.DataFrame]:
+    """The radio parquet for one race, or None when the corpus is absent."""
+    key = (year, slug)
+    if key in _RADIO_CORPUS_CACHE:
+        return _RADIO_CORPUS_CACHE[key]
+
+    path = _radio_corpus_root() / str(year) / slug / "radios.parquet"
+    frame = pd.read_parquet(path) if path.exists() else None
+    _RADIO_CORPUS_CACHE[key] = frame
+    return frame
+
+
+def _get_radio_transcripts(year: int, slug: str) -> dict:
+    """Whisper transcripts for one race, keyed by audio path.
+
+    An empty dict is the honest answer for a race nobody has transcribed yet,
+    and it is also what a corrupt cache file yields — the audio and the lap
+    list are still worth serving without the text, so a bad JSON file degrades
+    the response rather than failing the request. It is logged rather than
+    swallowed, which the previous bare ``except Exception: pass`` did not do.
+    """
+    key = (year, slug)
+    if key in _RADIO_TRANSCRIPT_CACHE:
+        return _RADIO_TRANSCRIPT_CACHE[key]
+
+    path = _transcript_cache_root() / str(year) / slug / "transcripts.json"
+    transcripts: dict = {}
+    if path.exists():
+        try:
+            transcripts = json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, UnicodeDecodeError, OSError) as exc:
+            logger.warning("Unreadable transcript cache %s: %s", path, exc)
+
+    _RADIO_TRANSCRIPT_CACHE[key] = transcripts
+    return transcripts
+
+
 @router.get("/radio-available-gps")
 def radio_available_gps(year: int = 2025):
     """Return GP names that have a radio corpus for the given year."""
@@ -1343,29 +1389,17 @@ def radio_laps(gp: str, year: int = 2025, driver: Optional[str] = None):
     If *driver* is provided (3-letter code, e.g. 'VER'), only that driver's
     laps are returned.  Otherwise all drivers with radio are listed.
     """
-    import json as _json
-
     try:
         slug = resolve_gp_slug(gp)
     except ValueError as exc:
         raise HTTPException(400, detail=str(exc))
 
-    radios_path = _radio_corpus_root() / str(year) / slug / "radios.parquet"
-    if not radios_path.exists():
+    rdf = _get_radio_corpus(year, slug)
+    if rdf is None:
         return {"drivers": []}
 
-    rdf = pd.read_parquet(radios_path)
     drv_map = _driver_number_to_code(year)
-
-    # Load cached transcripts (if available)
-    transcripts: dict = {}
-    tx_path = _transcript_cache_root() / str(year) / slug / "transcripts.json"
-    if tx_path.exists():
-        try:
-            with open(tx_path, encoding="utf-8") as f:
-                transcripts = _json.load(f)
-        except Exception:
-            pass
+    transcripts = _get_radio_transcripts(year, slug)
 
     # Optionally filter by driver code
     if driver:
@@ -1401,18 +1435,15 @@ def radio_laps(gp: str, year: int = 2025, driver: Optional[str] = None):
 @router.get("/radio-transcript")
 def radio_transcript(gp: str, driver: str, lap: int, year: int = 2025):
     """Return the transcript text for a specific driver/lap radio message."""
-    import json as _json
-
     try:
         slug = resolve_gp_slug(gp)
     except ValueError as exc:
         raise HTTPException(400, detail=str(exc))
 
-    radios_path = _radio_corpus_root() / str(year) / slug / "radios.parquet"
-    if not radios_path.exists():
+    rdf = _get_radio_corpus(year, slug)
+    if rdf is None:
         raise HTTPException(404, detail=f"No radio corpus for {gp} {year}")
 
-    rdf = pd.read_parquet(radios_path)
     drv_map = _driver_number_to_code(year)
     code_to_num = {v: k for k, v in drv_map.items()}
     drv_num = code_to_num.get(driver)
@@ -1424,14 +1455,7 @@ def radio_transcript(gp: str, driver: str, lap: int, year: int = 2025):
     if rows.empty:
         raise HTTPException(404, detail=f"No radio for {driver} at lap {lap}")
 
-    tx_path = _transcript_cache_root() / str(year) / slug / "transcripts.json"
-    transcripts: dict = {}
-    if tx_path.exists():
-        try:
-            with open(tx_path, encoding="utf-8") as f:
-                transcripts = _json.load(f)
-        except Exception:
-            pass
+    transcripts = _get_radio_transcripts(year, slug)
 
     results = []
     for _, row in rows.iterrows():

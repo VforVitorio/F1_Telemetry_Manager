@@ -265,6 +265,35 @@ def _compute_gap_consistency(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+# One entry per race, never invalidated: the featured parquet behind it is
+# static for the life of the process, the same assumption get_laps_df already
+# makes one layer down.
+_RACE_GAPS_CACHE: dict[tuple, pd.DataFrame] = {}
+
+
+def _race_frame_with_gaps(year: int, gp: str, race_laps: pd.DataFrame) -> pd.DataFrame:
+    """The whole field's laps for one race, with the inter-driver gap columns.
+
+    Computed over every car on track, because that is the only frame in which
+    "the gap to the car ahead" means anything. Returned unfiltered so callers
+    can narrow it afterwards without changing what the numbers describe.
+
+    Frames returned from here are shared, so a caller that intends to mutate
+    one must copy it first.
+    """
+    key = (year, gp)
+    if key in _RACE_GAPS_CACHE:
+        return _RACE_GAPS_CACHE[key]
+
+    frame = race_laps.copy()
+    if "LapTime_s" in frame.columns and "Position" in frame.columns:
+        frame = _compute_gaps(frame)
+        frame = _compute_gap_consistency(frame)
+
+    _RACE_GAPS_CACHE[key] = frame
+    return frame
+
+
 _RACE_DATA_COLS = [
     "Driver", "DriverNumber", "LapNumber", "Stint", "SpeedI1", "SpeedI2",
     "SpeedFL", "SpeedST", "Compound", "TyreLife", "FreshTyre", "Team",
@@ -304,7 +333,14 @@ def get_race_data(
     if not mask.any():
         raise HTTPException(404, detail=f"GP '{gp}' not found in {year} data")
 
-    subset = df[mask].copy()
+    # Gaps first, driver filter second, and the order is not cosmetic. A gap is
+    # a relation between cars, so computing it after the filter left a
+    # single-driver request with nothing to measure against: every
+    # GapToCarAhead came back null. Doing it on the whole field also makes the
+    # result a pure function of (year, gp), which is what lets it be cached
+    # instead of recomputed on every request — the consistency pass is a nested
+    # Python loop over every driver and lap.
+    subset = _race_frame_with_gaps(year, gp, df[mask])
 
     if driver:
         codes = [d.strip() for d in driver.split(",")]
@@ -312,10 +348,7 @@ def get_race_data(
         if subset.empty:
             raise HTTPException(404, detail=f"Driver(s) {codes} not found in {gp} {year}")
 
-    # Compute inter-driver gap columns from cumulative lap times
-    if "LapTime_s" in subset.columns and "Position" in subset.columns:
-        subset = _compute_gaps(subset)
-        subset = _compute_gap_consistency(subset)
+    subset = subset.copy()
 
     # Add TyreAge alias expected by tire charts
     subset["TyreAge"] = subset["TyreLife"]
