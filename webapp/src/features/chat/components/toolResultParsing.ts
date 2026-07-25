@@ -147,8 +147,18 @@ function toScenarioScores(raw: unknown): Record<string, ScenarioScore> {
     const p10 = numOrUndef(row.P10)
     const p90 = numOrUndef(row.P90)
     const score = numOrUndef(row.score)
+    const target = typeof row.target === 'string' ? row.target : null
+
     if (e != null && p10 != null && p90 != null && score != null) {
-      scores[action] = { E: e, P10: p10, P90: p90, score }
+      scores[action] = { E: e, P10: p10, P90: p90, score, eligible: true, target }
+      continue
+    }
+    // A candidate the projection engine declined to score is kept, with nulls
+    // intact, so the chart can name it as "not offered". Dropping it here would
+    // make an unoffered strategy indistinguishable from one the run never
+    // considered. Anything else half-parsed is still discarded.
+    if (row.eligible === false) {
+      scores[action] = { E: null, P10: null, P90: null, score: null, eligible: false, target }
     }
   }
   return scores

@@ -111,6 +111,67 @@ describe('DecisionBanner', () => {
   })
 })
 
+/** What the projection engine returns when a candidate has no car to aim at:
+ *  eligible false, every number null. Never a 0, which would draw a real bar. */
+const withIneligibleCandidates: StrategyRecommendation = {
+  ...richResult,
+  scenario_scores: {
+    PIT_NOW: { E: 0.61, P10: 0.4, P90: 0.8, score: 0.61, eligible: true, target: null },
+    STAY_OUT: { E: 0.44, P10: 0.2, P90: 0.6, score: 0.44, eligible: true, target: null },
+    UNDERCUT: { E: null, P10: null, P90: null, score: null, eligible: false, target: null },
+    OVERCUT: { E: null, P10: null, P90: null, score: null, eligible: false, target: null },
+  },
+}
+
+describe('DecisionBanner with the projection schema', () => {
+  it('names the candidates it was not offered instead of plotting them at zero', () => {
+    render(
+      <DecisionBanner
+        result={withIneligibleCandidates}
+        lapState={lapState}
+        rival="LEC"
+        onDownloadJson={vi.fn()}
+      />,
+    )
+    expect(screen.getByText(/Not offered:/)).toBeInTheDocument()
+    expect(screen.getByText(/UNDERCUT|OVERCUT/)).toBeInTheDocument()
+    expect(screen.queryByText(/undefined|NaN|null/)).not.toBeInTheDocument()
+  })
+
+  it('still renders the old all-numeric payload untouched', () => {
+    render(
+      <DecisionBanner
+        result={richResult}
+        lapState={lapState}
+        rival="LEC"
+        onDownloadJson={vi.fn()}
+      />,
+    )
+    // No projection fields present, so nothing is flagged as unoffered.
+    expect(screen.queryByText(/Not offered:/)).not.toBeInTheDocument()
+  })
+
+  it('survives every candidate being ineligible', () => {
+    const allIneligible: StrategyRecommendation = {
+      ...richResult,
+      scenario_scores: {
+        PIT_NOW: { E: null, P10: null, P90: null, score: null, eligible: false, target: null },
+        UNDERCUT: { E: null, P10: null, P90: null, score: null, eligible: false, target: null },
+      },
+    }
+    render(
+      <DecisionBanner
+        result={allIneligible}
+        lapState={lapState}
+        rival="LEC"
+        onDownloadJson={vi.fn()}
+      />,
+    )
+    expect(screen.getByText(/No scenario scores for this run/)).toBeInTheDocument()
+    expect(screen.queryByText(/undefined|NaN|null/)).not.toBeInTheDocument()
+  })
+})
+
 describe('DecisionDetails', () => {
   it('surfaces key risks, the playbook, and both disclosures when present', () => {
     render(<DecisionDetails result={richResult} />)

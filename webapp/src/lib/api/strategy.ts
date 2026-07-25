@@ -147,12 +147,26 @@ export interface AgentResultMap {
 
 // ── Orchestrator v2 recommendation (POST /recommend) ────────────────────────
 
-/** One Monte-Carlo scored strategy candidate. */
+/**
+ * One Monte-Carlo strategy candidate.
+ *
+ * Every number is nullable because the projection engine refuses to score a
+ * candidate it cannot offer: an undercut with no reachable target, an overcut
+ * with nobody in the pit lane. Those arrive as `eligible: false` with null
+ * numbers, and consumers must render them as "not offered" rather than as a
+ * score — a null coerced to 0 would draw a real-looking bar for a strategy that
+ * does not exist. Payloads predating the projection carry numbers with no
+ * `eligible` flag, which reads as eligible.
+ */
 export interface ScenarioScore {
-  E: number
-  P10: number
-  P90: number
-  score: number
+  E: number | null
+  P10: number | null
+  P90: number | null
+  score: number | null
+  /** Absent on pre-projection payloads; treat a missing flag as eligible. */
+  eligible?: boolean
+  /** The car this candidate is aimed at, when it is aimed at one. */
+  target?: string | null
 }
 
 /** A conditional branch the LLM planned for upcoming laps (IF trigger → action). */

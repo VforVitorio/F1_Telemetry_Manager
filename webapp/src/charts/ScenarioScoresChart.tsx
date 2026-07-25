@@ -69,17 +69,45 @@ const WHISKER_DOT_RADIUS = 3.5
 // label being struck through by the whisker line when it sat on the bar).
 const WHISKER_LABEL_GAP_PX = 8
 
+/** A candidate that survived the eligibility filter: every number is present.
+ *
+ *  Narrowing once here is what keeps the rest of this file free of null checks
+ *  and non-null assertions — the guarantee is established at the boundary and
+ *  the compiler carries it through the option builders. */
+type PlottedScore = ScenarioScore & { E: number; P10: number; P90: number; score: number }
+
 interface ScenarioRow {
   action: string
-  score: ScenarioScore
+  score: PlottedScore
+}
+
+/** True when the candidate carries a full set of numbers to plot.
+ *
+ *  The projection engine emits `eligible: false` with null numbers for a
+ *  candidate it refused to score. Plotting that as zero would plant a bar for a
+ *  strategy that was never on the table, so those rows leave the chart and are
+ *  listed underneath instead. The null checks stand on their own: a payload
+ *  from before the projection has no `eligible` flag at all. */
+function isPlottable(score: ScenarioScore): score is PlottedScore {
+  if (score.eligible === false) return false
+  return score.E != null && score.P10 != null && score.P90 != null && score.score != null
 }
 
 /** Rows sorted best-first (E descending). Combined with `yAxis.inverse` in
  *  `buildScoresOption`, the winner renders at the TOP of the chart. */
 function sortedRows(scores: Record<string, ScenarioScore>): ScenarioRow[] {
+  const rows: ScenarioRow[] = []
+  for (const [action, score] of Object.entries(scores)) {
+    if (isPlottable(score)) rows.push({ action, score })
+  }
+  return rows.sort((a, b) => b.score.E - a.score.E)
+}
+
+/** Candidates the engine declined to score, with the reason it can give. */
+function unofferedRows(scores: Record<string, ScenarioScore>): string[] {
   return Object.entries(scores)
-    .map(([action, score]) => ({ action, score }))
-    .sort((a, b) => b.score.E - a.score.E)
+    .filter(([, score]) => !isPlottable(score))
+    .map(([action]) => action.replace(/_/g, ' '))
 }
 
 /** Clamp the chart's pixel height to the row count so a 2-candidate run
@@ -315,6 +343,7 @@ export function ScoresPlot({ scores, chosenAction }: ScoresPlotProps) {
   const chartTheme = useChartTheme()
   const palette = chartTheme === F1_LIGHT_THEME ? LIGHT_SCORE_PALETTE : DARK_SCORE_PALETTE
   const rows = useMemo(() => sortedRows(scores), [scores])
+  const unoffered = useMemo(() => unofferedRows(scores), [scores])
   const option = useMemo(
     () => buildScoresOption(rows, chosenAction, palette),
     [rows, chosenAction, palette],
@@ -339,6 +368,12 @@ export function ScoresPlot({ scores, chosenAction }: ScoresPlotProps) {
         style={{ height: chartHeight(rows.length) }}
         notMerge
       />
+      {unoffered.length > 0 && (
+        // Named rather than hidden: a candidate missing from the chart with no
+        // explanation reads as a bug, while "not offered" is the actual finding —
+        // there was no car to aim at.
+        <p className="px-2 pb-1 text-xs text-fg-3">Not offered: {unoffered.join(', ')}</p>
+      )}
     </div>
   )
 }
