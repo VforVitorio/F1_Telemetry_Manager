@@ -403,13 +403,26 @@ def get_lap_state(
     lap: int,
     year: int = 2025,
 ):
-    """Build the canonical lap_state dict for one (gp, driver, lap).
+    """Build a lap_state dict for one (gp, driver, lap), agent-ready either way.
 
     Reads the featured parquet first; when that lap was dropped from it
     (Safety Car / pit / out lap), falls back to the raw per-race parquet so any
-    lap is runnable, exactly like the arcade replay. The returned structure
-    matches RaceStateManager.get_lap_state() either way, so it can be passed
-    directly to any agent endpoint.
+    lap is runnable, exactly like the arcade replay. Both paths return the same
+    shape, and any agent endpoint accepts it.
+
+    It is NOT field-identical to RaceStateManager.get_lap_state(), and this
+    docstring used to claim it was. Measured on Lusail 2025 lap 30, the manager
+    additionally emits gap_to_leader_s / track_status / is_in_lap / is_out_lap
+    on the driver and gap_to_leader_s / speed_st / stint on each rival, while
+    this producer adds driver_number and gap_ahead_s to both; weather.rainfall
+    is coerced to int here and left None there when the reading is absent.
+
+    The distinction matters because a key this producer omits is not read as
+    "unknown" downstream, it is read as its falsy default. That is how
+    is_pitting went missing here and made OVERCUT permanently ineligible on
+    this path while every other surface could reach it. Before adding a
+    consumer, check the field against both producers rather than assuming
+    parity.
     """
     from fastapi import HTTPException as _HTTPExc
 
