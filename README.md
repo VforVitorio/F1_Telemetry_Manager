@@ -59,24 +59,24 @@ Requires Python 3.11+.
 
 All endpoints sit under `/api/v1`. The full reference lives at [`docs/pages/backend-api.md`](../../docs/pages/backend-api.md) in the parent repo; the short version:
 
-- **`/telemetry`** — GPs, sessions, drivers, lap times, per-lap telemetry, aggregated data (FastF1).
-- **`/comparison/compare`** — two-driver fastest-lap comparison with synchronised delta.
-- **`/circuit-domination`** — microsector-level dominant-driver map.
-- **`/strategy`** — pace, tire degradation, situation, pit timing, radio NLP, FIA RAG and the orchestrated `recommend` endpoint that ties them together. Also drives the simulator (`/strategy/simulate`).
-- **`/chat`** — message, stream, tool-message and tool-message-stream. The tool-message endpoints implement the OpenAI tool-calling loop against the strategy MCP tools; `/stream` is the plain chat passthrough.
-- **`/mcp`** — FastMCP Streamable-HTTP transport. External MCP clients connect here to call the strategy tools directly.
+- **`/telemetry`**: GPs, sessions, drivers, lap times, per-lap telemetry, aggregated data (FastF1).
+- **`/comparison/compare`**, two-driver fastest-lap comparison with synchronised delta.
+- **`/circuit-domination`**, microsector-level dominant-driver map.
+- **`/strategy`**, pace, tire degradation, situation, pit timing, radio NLP, FIA RAG and the orchestrated `recommend` endpoint that ties them together. Also drives the simulator (`/strategy/simulate`).
+- **`/chat`**, message, stream, tool-message and tool-message-stream. The tool-message endpoints implement the OpenAI tool-calling loop against the strategy MCP tools; `/stream` is the plain chat passthrough.
+- **`/mcp`**: FastMCP Streamable-HTTP transport. External MCP clients connect here to call the strategy tools directly.
 
 > The voice chat surface (STT → LLM → TTS) was retired in v2. It remains available in the parent repo's `legacy_version` branch.
 
 ## Project layout
 
-- [`backend/`](backend/) — FastAPI app
-  - [`api/v1/endpoints/`](backend/api/v1/endpoints/) — `telemetry`, `comparison`, `circuit_domination`, `strategy`, `chat`
-  - [`services/`](backend/services/) — chatbot (chat engine, MCP bridge, stage tracker, LLM service), telemetry, simulation
-  - [`mcp_tools.py`](backend/mcp_tools.py) — FastMCP server wrapping the N25–N31 agents
-- [`webapp/`](webapp/) — React web app (Vite + TypeScript + Tailwind + ECharts)
-- [`docs/`](docs/) — architecture, changelog, multimodal and MCP notes
-- [`tests/`](tests/) — pytest coverage for chat engine, MCP bridge, comparison and telemetry services
+- [`backend/`](backend/): FastAPI app
+  - [`api/v1/endpoints/`](backend/api/v1/endpoints/): `telemetry`, `comparison`, `circuit_domination`, `strategy`, `chat`
+  - [`services/`](backend/services/), chatbot (chat engine, MCP bridge, stage tracker, LLM service), telemetry, simulation
+  - [`mcp_tools.py`](backend/mcp_tools.py): FastMCP server wrapping the N25–N31 agents
+- [`webapp/`](webapp/): React web app (Vite + TypeScript + Tailwind + ECharts)
+- [`docs/`](docs/), architecture, changelog, multimodal and MCP notes
+- [`tests/`](tests/), pytest coverage for chat engine, MCP bridge, comparison and telemetry services
 
 ## Tech stack
 
@@ -84,25 +84,25 @@ Backend: FastAPI 0.109, Pydantic 2.5, FastF1 3.4, FastMCP 3.x.
 Frontend (web app): React 19, Vite, TypeScript, Tailwind v4, ECharts, TanStack Router/Query, Zustand.
 AI: OpenAI-compatible LLM (LM Studio local server or OpenAI API).
 
-## Frontend migration — done (v2)
+## Frontend migration, done (v2)
 
-The **backend stays FastAPI**, no question — and the **Streamlit frontend has been replaced by a modern React web app** (Vite + TypeScript + Tailwind v4 + ECharts + TanStack Router/Query). It keeps the original structure, menus and flows, but escapes Streamlit's design constraints: instant client-side navigation, a 60fps canvas replay, a redesigned pit-wall aesthetic, and a chat that streams the LLM reply for real over SSE and renders each tool's output (cards + charts) inline. The web app is now the only post-race surface; the legacy Streamlit app survives in git history and in the parent repo's `legacy_version` branch.
+The **backend stays FastAPI**, no question, and the **Streamlit frontend has been replaced by a modern React web app** (Vite + TypeScript + Tailwind v4 + ECharts + TanStack Router/Query). It keeps the original structure, menus and flows, but escapes Streamlit's design constraints: instant client-side navigation, a 60fps canvas replay, a redesigned pit-wall aesthetic, and a chat that streams the LLM reply for real over SSE and renders each tool's output (cards + charts) inline. The web app is now the only post-race surface; the legacy Streamlit app survives in git history and in the parent repo's `legacy_version` branch.
 
 ## Related
 
 This repo is one piece of F1 StratLab:
 
-- [F1 StratLab](https://github.com/VforVitorio/F1-StratLab) — strategy engine, agents, CLI and Arcade live UI
-- F1 Telemetry Manager *(this repo)* — backend and post-race React web app, vendored as a submodule
-- [F1 AI Team Detection](https://github.com/VforVitorio/F1_AI_team_detection) — YOLOv12 team identification from race footage
-- [F1 Strategy Dataset](https://huggingface.co/datasets/VforVitorio/f1-strategy-dataset) — trained weights and processed race data
+- [F1 StratLab](https://github.com/VforVitorio/F1-StratLab), strategy engine, agents, CLI and Arcade live UI
+- F1 Telemetry Manager *(this repo)*, backend and post-race React web app, vendored as a submodule
+- [F1 AI Team Detection](https://github.com/VforVitorio/F1_AI_team_detection): YOLOv12 team identification from race footage
+- [F1 Strategy Dataset](https://huggingface.co/datasets/VforVitorio/f1-strategy-dataset), trained weights and processed race data
 
 ## About
 
 Originally built as a coursework project (Santiago Souto Ortega and Víctor Vega Sobral, fourth year, *Grado en Ingeniería de Sistemas Inteligentes*) and later refactored into the post-race surface of F1 StratLab. Pull requests and issues are welcome at [VforVitorio/F1_Telemetry_Manager](https://github.com/VforVitorio/F1_Telemetry_Manager).
 
-Licensed under the Apache License 2.0 — see [`LICENSE`](LICENSE).
+Licensed under the Apache License 2.0, see [`LICENSE`](LICENSE).
 
 ---
 
-> **Disclaimer — no copyright infringement intended.** Formula 1, F1 and related marks are trademarks of Formula One Licensing B.V. and are used here for reference only. Race data is sourced from public APIs (FastF1) and used strictly for educational and non-commercial purposes. This project is not affiliated with, endorsed by, or in any way officially connected to Formula 1, the FIA, or any F1 team.
+> **Disclaimer, no copyright infringement intended.** Formula 1, F1 and related marks are trademarks of Formula One Licensing B.V. and are used here for reference only. Race data is sourced from public APIs (FastF1) and used strictly for educational and non-commercial purposes. This project is not affiliated with, endorsed by, or in any way officially connected to Formula 1, the FIA, or any F1 team.
