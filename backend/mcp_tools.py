@@ -18,6 +18,7 @@ import functools
 import json
 import logging
 import sys
+from src.agents.position_projection import GAP_UNKNOWN_FALLBACK_S
 from typing import Any
 
 from fastmcp import FastMCP
@@ -594,7 +595,9 @@ def recommend_strategy(
 
     race_state = build_race_state(
         lap_state,
-        gap_ahead_s=driver_state.get("gap_ahead_s", 2.0),
+        # Note the two-arg .get: a key that is PRESENT and None returns None, not
+        # the fallback, so the `or` is what actually catches an unmeasured gap.
+        gap_ahead_s=driver_state.get("gap_ahead_s") or GAP_UNKNOWN_FALLBACK_S,
         pace_delta_s=pace_delta_s,
         risk_tolerance=_normalize_risk_tolerance(risk_tolerance),
         radio_msgs=None,

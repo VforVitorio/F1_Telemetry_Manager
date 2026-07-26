@@ -1,5 +1,6 @@
 """Build a RaceState from a raw lap_state dict."""
 
+from src.agents.position_projection import GAP_UNKNOWN_FALLBACK_S
 from typing import Any, Dict, List, Optional, Tuple
 
 
@@ -52,7 +53,7 @@ def _targeting_against_rival(
 def build_race_state(
     lap_state: Dict[str, Any],
     *,
-    gap_ahead_s: float = 2.0,
+    gap_ahead_s: float = GAP_UNKNOWN_FALLBACK_S,
     pace_delta_s: float = 0.0,
     risk_tolerance: float = 0.5,
     radio_msgs: Optional[List[dict]] = None,
