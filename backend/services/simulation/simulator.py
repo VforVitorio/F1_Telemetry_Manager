@@ -27,6 +27,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
+from src.agents.position_projection import GAP_UNKNOWN_FALLBACK_S
 from typing import Any, Generator, Optional
 
 import pandas as pd
@@ -253,7 +254,17 @@ def _compute_gap_ahead(lap_state: dict[str, Any]) -> float:
     car_ahead = next((r for r in rivals if r.get("position") == our_pos - 1), None)
     if not car_ahead:
         return 0.0
-    return abs(car_ahead.get("interval_to_driver_s") or 0.0)
+
+    # Two different zeros used to hide in one expression here. No car ahead means we
+    # lead, and 0.0 is honest for that. A car ahead whose interval was never measured
+    # is NOT a zero gap: 0.0 reads as side by side, which the orchestrator's clean-air
+    # band and N27's sub-1.0s DRS window both act on, so a missing measurement looked
+    # like the most aggressive situation on the board. This is the live SSE producer,
+    # so that value reaches the agents on every /simulate lap (#633).
+    measured_interval = car_ahead.get("interval_to_driver_s")
+    if measured_interval is None:
+        return GAP_UNKNOWN_FALLBACK_S
+    return abs(measured_interval)
 
 
 def _driver2_gap(lap_state: dict[str, Any], driver2: Optional[str]) -> Optional[float]:

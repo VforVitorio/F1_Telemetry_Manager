@@ -14,6 +14,7 @@ import json
 import logging
 import sys
 from pathlib import Path
+from src.agents.position_projection import GAP_UNKNOWN_FALLBACK_S
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
@@ -106,7 +107,7 @@ class RecommendRequest(BaseModel):
     lap_state: Dict[str, Any]
     gp_name: str = ""
     year: int = 2025
-    gap_ahead_s: float = 2.0
+    gap_ahead_s: float = GAP_UNKNOWN_FALLBACK_S
     pace_delta_s: float = 0.0
     risk_tolerance: float = 0.5
     radio_msgs: Optional[List[Dict[str, Any]]] = None
@@ -152,6 +153,12 @@ class SituationResult(BaseModel):
     overtake_prob: float
     sc_prob_3lap: float
     threat_level: str
+    # 0.0 here is NOT the request-side fallback above, and the two are deliberately
+    # different. This is what the agent OBSERVED, so zero means it reported a zero,
+    # and substituting 2.0 would invent a measurement. The honest shape is
+    # `float | None`, which RivalState.gap_ahead_s in position_projection already
+    # uses and whose consumers guard with `is not None`; changing it here is a
+    # response-schema break for every client, so it is tracked, not smuggled (#633).
     gap_ahead_s: float = 0.0
     pace_delta_s: float = 0.0
     reasoning: str = ""
