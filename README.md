@@ -6,7 +6,7 @@
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE) [![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/) [![FastAPI](https://img.shields.io/badge/FastAPI-0.109-teal)](https://fastapi.tiangolo.com/) [![React](https://img.shields.io/badge/React-19-149eca)](https://react.dev/) [![Vite](https://img.shields.io/badge/Vite-7-646cff)](https://vite.dev/) [![FastMCP](https://img.shields.io/badge/FastMCP-3.x-purple)](https://github.com/jlowin/fastmcp) [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/VforVitorio/F1_Telemetry_Manager)
 
-[Parent project: F1 StratLab](https://github.com/VforVitorio/F1-StratLab) · [Architecture](docs/telemetry-architecture.md) · [Backend API reference](../../docs/backend-api.md) · [Changelog](docs/CHANGELOG.md)
+[Parent project: F1 StratLab](https://github.com/VforVitorio/F1-StratLab) · [Architecture](docs/telemetry-architecture.md) · [Backend API reference](../../docs/pages/backend-api.md) · [Changelog](docs/CHANGELOG.md)
 
 </div>
 
@@ -57,7 +57,7 @@ Requires Python 3.11+.
 
 ## What the backend exposes
 
-All endpoints sit under `/api/v1`. The full reference lives at [`docs/backend-api.md`](../../docs/backend-api.md) in the parent repo; the short version:
+All endpoints sit under `/api/v1`. The full reference lives at [`docs/pages/backend-api.md`](../../docs/pages/backend-api.md) in the parent repo; the short version:
 
 - **`/telemetry`** — GPs, sessions, drivers, lap times, per-lap telemetry, aggregated data (FastF1).
 - **`/comparison/compare`** — two-driver fastest-lap comparison with synchronised delta.
