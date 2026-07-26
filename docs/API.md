@@ -1,4 +1,4 @@
-# API reference — moved
+# API reference, moved
 
 The authoritative FastAPI reference now lives at the repo-root
 [`docs/backend-api.md`](../../../docs/backend-api.md). This file stays
