@@ -112,6 +112,18 @@ export function DecisionDetails({ result }: DecisionDetailsProps) {
           </Disclosure>
         ) : null}
       </div>
+
+      {/* The orchestrator keeps a per-race memory of its own previous calls, and it
+       *  measurably changes decisions: under a Safety Car it flipped the call on 8 of
+       *  8 runs. This tab cannot use it. `/recommend` answers one lap per request with
+       *  nothing surviving between calls, so there is no race to accumulate over, and
+       *  that is a deliberate boundary rather than a gap waiting to be closed. Saying
+       *  so in one line is cheaper than letting someone read the absence as a bug and
+       *  "fix" it by inventing a per-request accumulator on the endpoint side. */}
+      <p className="text-xs text-fg-3">
+        Single-lap query: this brief is reasoned from the lap above alone, with no memory of earlier
+        calls in the race.
+      </p>
     </Card>
   )
 }
