@@ -48,6 +48,7 @@ from backend.utils.laps_cache import get_laps_df  # noqa: E402
 from backend.utils.race_state_builder import build_race_state  # noqa: E402
 from src.agents.strategy_orchestrator import RaceState  # noqa: E402
 from src.simulation.replay_engine import RaceReplayEngine  # noqa: E402
+from src.strategy.inference.decision_memory import DecisionMemory  # noqa: E402
 from src.strategy.inference.engine import run_lap  # noqa: E402
 
 logger = logging.getLogger(__name__)
@@ -830,6 +831,12 @@ def simulate_race(config: SimConfig) -> Generator[dict[str, Any], None, None]:
     # missing corpus degrades to no RCM, exactly the pre-fix behaviour.
     rcm_runner, sc_tracker = _build_rcm_feed(config.year, config.gp, laps_df)
 
+    # One DecisionMemory per race, same lifetime and shape as sc_tracker above.
+    # run_lap stays pure per lap (test_engine_no_llm.py depends on that), so the
+    # running memory of the orchestrator's own past calls is owned here and
+    # threaded in as a value rather than kept inside the engine.
+    decision_memory = DecisionMemory()
+
     for lap_state in engine.replay():
         lap_num = lap_state.get("lap_number", 0)
         if lap_num < lap_start or lap_num > lap_end:
@@ -861,8 +868,16 @@ def simulate_race(config: SimConfig) -> Generator[dict[str, Any], None, None]:
                 # still handing agents the whole season, letting the Zandvoort grid
                 # decide a race at Lusail (#463; #440 fixed only the no-LLM half).
                 result, _agent_outputs, _timings = run_lap(
-                    race_state, laps_df, lap_state, profile="rich"
+                    race_state, laps_df, lap_state, profile="rich", memory=decision_memory
                 )
+                # Recorded from the StrategyRecommendation itself, not from the
+                # LapDecision built below: the DTO drops contingencies entirely and
+                # this is the branch where pit_lap_target comes from the LLM rather
+                # than N28, so a DTO-sourced record would mean something different
+                # than the same field on the no-llm branch (see DecisionMemory's
+                # docstring). The no-llm branch above never reaches this call, so
+                # memory only ever sees rich-profile laps.
+                decision_memory.record(lap_num, result)
 
             lap_time_s = lap_state.get("driver", {}).get("lap_time_s")
             decision = _parse_lap_decision(result, race_state, lap_state, lap_time_s)
