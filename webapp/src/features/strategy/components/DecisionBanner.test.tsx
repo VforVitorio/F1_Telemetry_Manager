@@ -193,4 +193,17 @@ describe('DecisionDetails', () => {
     // Never leak literal null/undefined/NaN into the DOM.
     expect(screen.queryByText(/undefined|NaN|null/)).not.toBeInTheDocument()
   })
+
+  it('says the brief has no memory of earlier calls, on every result shape', () => {
+    // The orchestrator keeps a per-race memory of its own previous calls and it
+    // measurably changes decisions. This tab cannot use it: `/recommend` answers
+    // one lap per request with nothing surviving between calls. That boundary is
+    // deliberate, and stating it stops the absence reading as a missing feature
+    // someone then "fixes" with a per-request accumulator on the endpoint side.
+    for (const result of [richResult, sparseResult]) {
+      const { unmount } = render(<DecisionDetails result={result} />)
+      expect(screen.getByText(/no memory of earlier calls in the race/)).toBeInTheDocument()
+      unmount()
+    }
+  })
 })
