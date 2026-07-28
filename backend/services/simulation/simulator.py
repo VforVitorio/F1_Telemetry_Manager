@@ -136,6 +136,17 @@ class LapDecision(BaseModel):
     undercut_target: Optional[str] = None
     agent_alerts: list[str] = Field(default_factory=list)
     guardrail_reason: Optional[str] = None
+    # What the orchestrator was told about its own previous calls on THIS lap, and
+    # whether the call it then made differs from the one before it.
+    #
+    # These exist because the memory block changes decisions and leaves no trace in
+    # `reasoning`: under a Safety Car it flipped the call on 8 of 8 runs and none of
+    # the 8 mentioned the prior plan. Asking the model to narrate it was measured and
+    # made things worse (8/8 -> 0/8), so the explanation has to be the deterministic
+    # INPUT, carried here. `None` on the no-llm branch and on the first lap of a race,
+    # which are the two cases where there is genuinely no block.
+    memory_block: Optional[str] = None
+    plan_changed: bool = False
 
 
 class ErrorEvent(BaseModel):
@@ -488,6 +499,8 @@ def _parse_lap_decision(
     race_state: RaceState,
     lap_state: dict[str, Any],
     lap_time_s: Optional[float],
+    memory_block: Optional[str] = None,
+    plan_changed: bool = False,
 ) -> LapDecision:
     """Normalise the heterogeneous result shape into a ``LapDecision``.
 
@@ -495,6 +508,11 @@ def _parse_lap_decision(
     LLM path returns a ``StrategyRecommendation`` Pydantic object. We branch
     on ``isinstance(result, dict)`` \u2014 the same pattern the CLI uses \u2014 to pull
     the 15 common fields without assuming either shape.
+
+    ``memory_block`` and ``plan_changed`` are passed in rather than derived here:
+    the block is what the orchestrator was shown BEFORE it decided, so it cannot
+    be recovered from the result, and the caller is the only place that holds it.
+    Both default to the no-memory case, which keeps the no-llm branch unchanged.
     """
     agent_alerts: list[str] = []
     guardrail_reason: Optional[str] = None
@@ -549,6 +567,8 @@ def _parse_lap_decision(
         undercut_target=undercut_target,
         agent_alerts=agent_alerts,
         guardrail_reason=guardrail_reason,
+        memory_block=memory_block,
+        plan_changed=plan_changed,
     )
 
 
@@ -856,6 +876,8 @@ def simulate_race(config: SimConfig) -> Generator[dict[str, Any], None, None]:
             race_state = _local_build_race_state(
                 lap_state, prev_lap_time, config.risk_tolerance, rcm_events=rcm_events
             )
+            memory_block: Optional[str] = None
+            plan_changed = False
             if config.no_llm:
                 result = _run_no_llm_path(race_state, lap_state, laps_df)
             else:
@@ -867,6 +889,10 @@ def simulate_race(config: SimConfig) -> Generator[dict[str, Any], None, None]:
                 # False, so this is the DEFAULT path: until now it was the only surface
                 # still handing agents the whole season, letting the Zandvoort grid
                 # decide a race at Lusail (#463; #440 fixed only the no-LLM half).
+                # Read BEFORE the lap runs: this is the history the orchestrator is
+                # about to be shown, and it cannot be recovered afterwards because
+                # recording this lap's own call changes it.
+                memory_block = decision_memory.block()
                 result, _agent_outputs, _timings = run_lap(
                     race_state, laps_df, lap_state, profile="rich", memory=decision_memory
                 )
@@ -878,9 +904,17 @@ def simulate_race(config: SimConfig) -> Generator[dict[str, Any], None, None]:
                 # docstring). The no-llm branch above never reaches this call, so
                 # memory only ever sees rich-profile laps.
                 decision_memory.record(lap_num, result)
+                plan_changed = decision_memory.last_call_changed()
 
             lap_time_s = lap_state.get("driver", {}).get("lap_time_s")
-            decision = _parse_lap_decision(result, race_state, lap_state, lap_time_s)
+            decision = _parse_lap_decision(
+                result,
+                race_state,
+                lap_state,
+                lap_time_s,
+                memory_block=memory_block,
+                plan_changed=plan_changed,
+            )
             _accumulate(state, decision, result)
 
             yield {"type": "lap", "data": decision.model_dump()}
