@@ -848,7 +848,8 @@ def _prev_lap_time_for_row(row, gp_df, driver: str) -> Optional[float]:
     # Whichever name this frame uses for the same quantity. The raw fallback frame
     # carries `LapTime` as a timedelta and the featured one carries `LapTime_s` as
     # seconds; reading only one of them raises KeyError on the other, and this
-    # function is reached from both.
+    # function is reached from both. The first draft did exactly that and would have
+    # raised on whichever frame it was not written for.
     if "LapTime_s" in driver_laps.columns:
         seconds = driver_laps["LapTime_s"].map(_to_seconds)
     elif "LapTime" in driver_laps.columns:
@@ -857,18 +858,27 @@ def _prev_lap_time_for_row(row, gp_df, driver: str) -> Optional[float]:
         return None
 
     # N04's filter_baseline_laps: IsAccurate & ~Deleted & LapTime_s < 180 &
-    # LapNumber > 1. A frame without the quality flags excludes nothing on them,
-    # which is the raw frame's case rather than a silent pass.
+    # LapNumber > 1. The RAW frame carries both flags, which is what makes this
+    # fallback able to exclude an out-lap at all; the FEATURED frame has neither, and
+    # excludes nothing on them, which is harmless because that frame reaches here only
+    # when its own Prev_LapTime is absent. An earlier version of this comment had the
+    # two frames the wrong way round.
     surviving = seconds.notna() & (seconds < 180) & (driver_laps["LapNumber"] > 1)
     if "IsAccurate" in driver_laps.columns:
         surviving &= driver_laps["IsAccurate"].fillna(False).astype(bool)
     if "Deleted" in driver_laps.columns:
         surviving &= ~driver_laps["Deleted"].fillna(False).astype(bool)
 
-    # The LAST surviving lap before this one, which does not require THIS lap to
-    # have survived. Anchoring an out-lap on the last good racing lap before it is
-    # still the right answer; making the lookup depend on the current lap's own
-    # quality would return None on exactly the laps the raw frame exists to serve.
+    # The LAST surviving lap before this one, which does not require THIS lap to have
+    # survived. That matters for SAFETY CAR laps: measured on Lusail 2025, 27 of them
+    # get a real anchor this way, where a lookup keyed on the current lap's own quality
+    # would have returned None for all of them.
+    #
+    # It does NOT serve out-laps, and an earlier version of this comment claimed it
+    # did. Measured on the same race: 42 out-laps, 0 anchored. Stint scoping makes an
+    # out-lap the first lap of its stint, so no earlier lap exists inside it. That is
+    # correct rather than a gap: N04 has NaN there too, and the pace agent's own
+    # placeholder is what the model was trained to see for a stint's first lap.
     earlier = surviving & (driver_laps["LapNumber"] < int(lap_number))
     if not earlier.any():
         return None
