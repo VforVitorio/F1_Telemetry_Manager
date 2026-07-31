@@ -808,10 +808,13 @@ def _prev_lap_time_for_row(row, gp_df, driver: str) -> Optional[float]:
     previous-lap-time feature) when present. The raw per-race fallback frame
     (`_get_race_laps_df`, serving Safety Car / pit / out laps the featured parquet
     drops, #447) carries no such column, so it derives the value from the SAME
-    driver's `lap_number - 1` row instead. Missing either way -> None, never the
-    CURRENT lap's own time: that self-referential default is #435 -- it fed the
-    pace agent's own most recent prediction back in as "previous" and made pace
-    self-fulfilling.
+    driver's previous SURVIVING lap WITHIN THE SAME STINT, reproducing N04's
+    transform rather than reimplementing its intent. Missing either way -> None,
+    never the CURRENT lap's own time: that self-referential default is #435.
+
+    The fallback's quality filter (IsAccurate & ~Deleted & LapTime_s < 180 &
+    LapNumber > 1) and Stint scoping are load-bearing (#728/#746): an out-lap
+    is excluded and is ~22 s wrong as an anchor, worse than the 90.0 default.
     """
 
     def _to_seconds(val):
@@ -828,13 +831,50 @@ def _prev_lap_time_for_row(row, gp_df, driver: str) -> Optional[float]:
     if "Prev_LapTime" in row.index:
         return _to_seconds(row.get("Prev_LapTime"))
 
+    # Fallback: reconstruct N04's Prev_LapTime from the raw frame, scoped to
+    # the same Stint and filtered by quality, mirroring RaceStateManager's
+    # _precompute_prev_lap_times (#728/#746).
     lap_number = row.get("LapNumber")
-    if pd.isna(lap_number):
+    stint = row.get("Stint")
+    if pd.isna(lap_number) or pd.isna(stint):
         return None
-    prior = gp_df[(gp_df["Driver"] == driver) & (gp_df["LapNumber"] == int(lap_number) - 1)]
-    if prior.empty:
+
+    if "Stint" not in gp_df.columns:
         return None
-    return _to_seconds(prior.iloc[0].get("LapTime_s"))
+    driver_laps = gp_df[(gp_df["Driver"] == driver) & (gp_df["Stint"] == stint)]
+    if driver_laps.empty:
+        return None
+
+    # Whichever name this frame uses for the same quantity. The raw fallback frame
+    # carries `LapTime` as a timedelta and the featured one carries `LapTime_s` as
+    # seconds; reading only one of them raises KeyError on the other, and this
+    # function is reached from both.
+    if "LapTime_s" in driver_laps.columns:
+        seconds = driver_laps["LapTime_s"].map(_to_seconds)
+    elif "LapTime" in driver_laps.columns:
+        seconds = driver_laps["LapTime"].map(_to_seconds)
+    else:
+        return None
+
+    # N04's filter_baseline_laps: IsAccurate & ~Deleted & LapTime_s < 180 &
+    # LapNumber > 1. A frame without the quality flags excludes nothing on them,
+    # which is the raw frame's case rather than a silent pass.
+    surviving = seconds.notna() & (seconds < 180) & (driver_laps["LapNumber"] > 1)
+    if "IsAccurate" in driver_laps.columns:
+        surviving &= driver_laps["IsAccurate"].fillna(False).astype(bool)
+    if "Deleted" in driver_laps.columns:
+        surviving &= ~driver_laps["Deleted"].fillna(False).astype(bool)
+
+    # The LAST surviving lap before this one, which does not require THIS lap to
+    # have survived. Anchoring an out-lap on the last good racing lap before it is
+    # still the right answer; making the lookup depend on the current lap's own
+    # quality would return None on exactly the laps the raw frame exists to serve.
+    earlier = surviving & (driver_laps["LapNumber"] < int(lap_number))
+    if not earlier.any():
+        return None
+
+    previous_lap = driver_laps.loc[earlier, "LapNumber"].idxmax()
+    return _to_seconds(seconds.loc[previous_lap])
 
 
 def _build_lap_state_from_row(row, gp_df, gp: str, year: int, total_laps: int) -> dict:

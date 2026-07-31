@@ -583,15 +583,14 @@ def recommend_strategy(
     lap_state = _build_lap_state(gp, driver, lap, year)
     laps_df = _get_laps_df(year)
 
-    # Mirror the /recommend endpoint exactly. pace_delta_s used to be
-    # hardcoded 0.0 (#442), which told N27's overtake scoring "identical pace
-    # to last lap" on every single call regardless of what actually happened;
-    # thread it from lap_state the same way gap_ahead_s already is, using the
-    # per-row Prev_LapTime the producers now carry (#435).
+    # pace_delta_s contract is rival-relative (our lap minus the rival's),
+    # but we only have the same driver's consecutive-lap times here, a self-delta
+    # that produces a false "pace gain" story in the prompt (#750), especially
+    # after pit stops. Default to 0.0 (unknown) to report only what is known.
+    # The shared build_race_state handles rival-relative recomputation when a
+    # rival is selected; the MCP bridge doesn't have that user context.
     driver_state = lap_state.get("driver", {})
-    lap_time_s = driver_state.get("lap_time_s") or 0.0
-    prev_lap_time = driver_state.get("prev_lap_time")
-    pace_delta_s = round(lap_time_s - prev_lap_time, 3) if prev_lap_time else 0.0
+    pace_delta_s = 0.0
 
     race_state = build_race_state(
         lap_state,

@@ -383,23 +383,24 @@ def _local_build_race_state(
 ) -> RaceState:
     """Thin wrapper over the shared ``build_race_state`` helper.
 
-    Computes ``gap_ahead_s`` from the rivals list and ``pace_delta_s`` against
-    the previous lap's time so downstream agents get realistic inputs (the
-    shared helper only handles static ``lap_state`` fields).
+    Computes ``gap_ahead_s`` from the rivals list; ``pace_delta_s`` defaults to
+    0.0 (unknown) (#750) so downstream agents and the prompt report only what
+    is known. The contract for ``pace_delta_s`` is rival-relative (our lap minus
+    the rival's lap), but we only have the SAME driver's consecutive laps here,
+    a self-delta that would be a false "pace gain" story in the prompt,
+    especially after pit stops where we compare a green lap against an out-lap.
+    The shared helper handles rival-relative recomputation when a rival is
+    selected in build_race_state; the simulator doesn't have that context.
 
     ``rcm_events`` carries the lap's Race Control messages so N27 can see a
     deployed Safety Car. Without it the stream returned STAY_OUT on every SC lap
     even with the bunching plain in the lap times, because the RaceState reached
-    the agents with an empty ``rcm_events`` (#459). ``build_race_state`` already
-    accepts the argument; the simulator simply never passed it.
+    the agents with an empty ``rcm_events`` (#459).
     """
-    driver_st = lap_state.get("driver", {})
-    cur_lap_time = driver_st.get("lap_time_s") or 0.0
-    pace_delta = cur_lap_time - prev_lap_time if prev_lap_time else 0.0
     return build_race_state(
         lap_state,
         gap_ahead_s=_compute_gap_ahead(lap_state),
-        pace_delta_s=pace_delta,
+        pace_delta_s=0.0,
         risk_tolerance=risk_tolerance,
         rcm_events=rcm_events,
     )
