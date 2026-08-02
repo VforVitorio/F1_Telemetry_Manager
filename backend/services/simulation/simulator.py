@@ -27,7 +27,6 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from src.agents.position_projection import GAP_UNKNOWN_FALLBACK_S
 from typing import Any, Generator, Optional
 
 import pandas as pd
@@ -242,43 +241,6 @@ def _resolve_race_dir(year: int, gp: str) -> Path:
     return _data_root() / "raw" / str(year) / gp
 
 
-def _compute_gap_ahead(lap_state: dict[str, Any]) -> float:
-    """Gap in seconds to the car directly ahead of our driver, or 0 if none.
-
-    Mirrors the CLI's derivation at ``scripts/run_simulation_cli.py`` L1354-1358
-    but kept inline here because the two copies are short and intentionally
-    decoupled.
-
-    ``.get("position", 99)`` used to be a dead default: when RaceStateManager
-    reports an unresolved position it still emits the ``"position"`` KEY with a
-    ``None`` VALUE, so the fallback never fired and ``our_pos - 1`` crashed with
-    a TypeError instead of degrading gracefully. An explicit None check makes
-    "unknown position" mean "no known car ahead" rather than a hidden crash
-    risk (#465). In practice this lap never reaches here anyway --
-    ``_lap_skip_reason`` below already refuses to build a RaceState when
-    position is None -- but the guard keeps this helper safe standalone too.
-    """
-    driver_st = lap_state.get("driver", {})
-    rivals = lap_state.get("rivals", [])
-    our_pos = driver_st.get("position")
-    if our_pos is None:
-        return 0.0
-    car_ahead = next((r for r in rivals if r.get("position") == our_pos - 1), None)
-    if not car_ahead:
-        return 0.0
-
-    # Two different zeros used to hide in one expression here. No car ahead means we
-    # lead, and 0.0 is honest for that. A car ahead whose interval was never measured
-    # is NOT a zero gap: 0.0 reads as side by side, which the orchestrator's clean-air
-    # band and N27's sub-1.0s DRS window both act on, so a missing measurement looked
-    # like the most aggressive situation on the board. This is the live SSE producer,
-    # so that value reaches the agents on every /simulate lap (#633).
-    measured_interval = car_ahead.get("interval_to_driver_s")
-    if measured_interval is None:
-        return GAP_UNKNOWN_FALLBACK_S
-    return abs(measured_interval)
-
-
 def _driver2_gap(lap_state: dict[str, Any], driver2: Optional[str]) -> Optional[float]:
     """Interval (s) between our driver and ``driver2`` for gap_ahead stats.
 
@@ -381,16 +343,18 @@ def _local_build_race_state(
     risk_tolerance: float,
     rcm_events: list[dict] | None = None,
 ) -> RaceState:
-    """Thin wrapper over the shared ``build_race_state`` helper.
+    """Thin wrapper over the canonical ``build_race_state`` (#784/#786).
 
-    Computes ``gap_ahead_s`` from the rivals list; ``pace_delta_s`` defaults to
-    0.0 (unknown) (#750) so downstream agents and the prompt report only what
-    is known. The contract for ``pace_delta_s`` is rival-relative (our lap minus
-    the rival's lap), but we only have the SAME driver's consecutive laps here,
-    a self-delta that would be a false "pace gain" story in the prompt,
-    especially after pit stops where we compare a green lap against an out-lap.
-    The shared helper handles rival-relative recomputation when a rival is
-    selected in build_race_state; the simulator doesn't have that context.
+    ``gap_ahead_s`` is deliberately NOT passed: ``None``-means-compute lets the
+    canonical builder derive the positional car-ahead gap itself, which is what
+    absorbed this module's ``_compute_gap_ahead`` copy — the fourth duplicate of
+    the same rivals-list lookup, including the #633 unknown-vs-zero distinction.
+
+    ``pace_delta_s`` stays pinned at 0.0, the schema's documented neutral (#750),
+    to keep this lap's behaviour unchanged by #786. The canonical builder CAN now
+    derive the rival-relative delta when passed ``None``; switching this surface
+    to that is a real behavioural change to the prompt and belongs to its own
+    decision, not to the gap-copy deletion.
 
     ``rcm_events`` carries the lap's Race Control messages so N27 can see a
     deployed Safety Car. Without it the stream returned STAY_OUT on every SC lap
@@ -399,7 +363,6 @@ def _local_build_race_state(
     """
     return build_race_state(
         lap_state,
-        gap_ahead_s=_compute_gap_ahead(lap_state),
         pace_delta_s=0.0,
         risk_tolerance=risk_tolerance,
         rcm_events=rcm_events,
