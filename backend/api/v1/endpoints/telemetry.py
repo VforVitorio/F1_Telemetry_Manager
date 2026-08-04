@@ -14,6 +14,7 @@ from backend.services.telemetry.telemetry_service import (
 )
 from backend.utils.laps_cache import get_laps_df
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
+from src.f1_strat_manager.gp_slugs import resolve_gp_key
 
 logger = logging.getLogger(__name__)
 
@@ -329,7 +330,10 @@ def get_race_data(
     if df is None:
         raise HTTPException(404, detail=f"No parquet data for {year}")
 
-    mask = df["GP_Name"] == gp
+    # The parameter's own description promises the country form is accepted; without a
+    # resolution step that was only true for the names the parquet already stores, so
+    # 'Miami Gardens' 404'd on a season whose data is there under 'Miami'.
+    mask = df["GP_Name"] == resolve_gp_key(set(df["GP_Name"].dropna().astype(str)), gp)
     if not mask.any():
         raise HTTPException(404, detail=f"GP '{gp}' not found in {year} data")
 

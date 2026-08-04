@@ -1024,11 +1024,13 @@ def predict_tire_range(
         # happens to share the units. The two sibling builders in the parent repo were
         # corrected together and this third one was missed, which left the Tyres tab's TCN
         # chart running on a delta shifted by a mean of 6.14 s and up to 14.56 s.
+        # `cluster_for`, not a raw `.get`: request.gp arrives in whichever of the four GP
+        # spellings the caller holds, and the map is keyed by the parquet slug.
         "cluster_mean_lap_s": TireAgentConfig._TRAINED_CLUSTER_MEAN_LAP_S.get(
-            agent.cfg.circuit_cluster_map.get(request.gp, 0), 0.0
+            agent.cfg.cluster_for(request.gp, 0), 0.0
         ),
         "total_laps": total_laps,
-        "cluster_id": agent.cfg.circuit_cluster_map.get(request.gp, 0),
+        "cluster_id": agent.cfg.cluster_for(request.gp, 0),
         "team_id": agent.cfg.team_id_map.get(team, 4),
         "year": request.year,
         "AirTemp": 28.0,
