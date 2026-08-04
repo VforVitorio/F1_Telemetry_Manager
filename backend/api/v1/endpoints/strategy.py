@@ -974,7 +974,11 @@ def predict_tire_range(
     """
     import torch
 
-    from src.agents.tire_agent import _compound_name_to_id, _get_default_tire_agent
+    from src.agents.tire_agent import (
+        TireAgentConfig,
+        _compound_name_to_id,
+        _get_default_tire_agent,
+    )
 
     df = get_laps_df(request.year)
     if df is None:
@@ -1014,7 +1018,15 @@ def predict_tire_range(
         clean_times = lap_times
     agent.session_meta = {
         "fastest_lap_s": float(clean_times.min()) if len(clean_times) > 0 else 90.0,
-        "cluster_mean_lap_s": float(clean_times.mean()) if len(clean_times) > 0 else 90.0,
+        # The TRAINED per-cluster constant, not this race's own mean lap time. N04 built
+        # lap_time_vs_cluster_mean by subtracting one constant per CLUSTER (standard
+        # deviation 0.0 within a cluster); a race's own mean is a different quantity that
+        # happens to share the units. The two sibling builders in the parent repo were
+        # corrected together and this third one was missed, which left the Tyres tab's TCN
+        # chart running on a delta shifted by a mean of 6.14 s and up to 14.56 s.
+        "cluster_mean_lap_s": TireAgentConfig._TRAINED_CLUSTER_MEAN_LAP_S.get(
+            agent.cfg.circuit_cluster_map.get(request.gp, 0), 0.0
+        ),
         "total_laps": total_laps,
         "cluster_id": agent.cfg.circuit_cluster_map.get(request.gp, 0),
         "team_id": agent.cfg.team_id_map.get(team, 4),
