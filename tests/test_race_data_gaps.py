@@ -12,6 +12,13 @@ from __future__ import annotations
 
 import pytest
 
+# These exercise backend modules whose own imports reach into the parent F1-StratLab
+# checkout (``src.agents``). The submodule's CI clones this repository standalone, so
+# there is no ``src`` there and collection ERRORED, turning the test job red on every
+# pull request regardless of its contents. Skipping is the honest outcome: the code
+# under test genuinely needs the parent, and it is exercised there.
+pytest.importorskip("src", reason="needs the parent F1-StratLab checkout")
+
 # The lite CI installs neither numpy nor pandas, yet the endpoint below imports
 # both at module load time. Skip gracefully there rather than erroring during
 # collection, matching how the other dep-heavy suites behave.

@@ -19,6 +19,13 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
+# These exercise backend modules whose own imports reach into the parent F1-StratLab
+# checkout (``src.agents``). The submodule's CI clones this repository standalone, so
+# there is no ``src`` there and collection ERRORED, turning the test job red on every
+# pull request regardless of its contents. Skipping is the honest outcome: the code
+# under test genuinely needs the parent, and it is exercised there.
+pytest.importorskip("src", reason="needs the parent F1-StratLab checkout")
+
 from backend.api.v1.endpoints.strategy import _prev_lap_time_for_row
 
 
