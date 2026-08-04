@@ -51,6 +51,6 @@ jobs:
       # of backend.core.config, which the security tests import; it does not pull
       # the heavy ML stack, so it stays in the deps-lite set.
       - name: Install test deps
-        run: pip install pytest pytest-asyncio requests pydantic fastapi httpx python-dotenv
+        run: pip install pytest pytest-asyncio requests pydantic fastapi httpx python-dotenv pandas
       - name: Run unit tests
         run: pytest tests/ -v
