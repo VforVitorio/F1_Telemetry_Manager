@@ -285,8 +285,8 @@ export function SituationResultView({
               <div className="flex h-42.5 flex-col items-center justify-center gap-1 text-center">
                 <span className="text-sm text-fg-3">No prediction</span>
                 <span className="max-w-[16rem] text-[11px] text-fg-4">
-                  The cars are farther apart than the overtake model&apos;s trained range
-                  (2.5s), so it has no labelled example to predict from.
+                  The cars are farther apart than the overtake model&apos;s trained range (2.5s), so
+                  it has no labelled example to predict from.
                 </span>
               </div>
             ) : (

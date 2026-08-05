@@ -393,10 +393,7 @@ function SituationTab({ lapState, enabled }: AgentTabPanelProps) {
               the model being certain there is no chance. null means the cars are farther
               apart than anything N11 was trained on, so there is no dial to draw. */}
           {situation.overtake_prob != null ? (
-            <ConfidenceDial
-              value={situation.overtake_prob}
-              note="Calibrated model probability"
-            />
+            <ConfidenceDial value={situation.overtake_prob} note="Calibrated model probability" />
           ) : (
             <div
               className="flex size-19 items-center justify-center rounded-full border border-dashed border-bd-2 text-[11px] text-fg-4"
