@@ -110,7 +110,12 @@ export interface TireResult {
 }
 
 export interface SituationResult {
-  overtake_prob: number
+  // Nullable, and the null is load-bearing: N11 was trained only on car pairs within
+  // 2.5s and N27 returns null beyond that rather than extrapolating, which is 43.1% of
+  // real position-adjacent pairs. null means "the model has no labelled example this far
+  // apart" — NOT zero, which is what the regulation asserts under a safety car
+  // (Art. 55.8). Rendering null as 0 tells the wall the opposite of the truth.
+  overtake_prob: number | null
   sc_prob_3lap: number
   threat_level: string
   gap_ahead_s: number

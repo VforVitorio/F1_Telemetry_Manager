@@ -278,13 +278,28 @@ export function SituationResultView({
       >
         <div className="grid gap-4 lg:grid-cols-[minmax(0,20rem)_1fr] lg:items-center">
           <div className="mx-auto w-full max-w-xs">
-            <Gauge
-              value={lens === 'overtake' ? agent.overtake_prob : agent.sc_prob_3lap}
-              label={lens === 'overtake' ? 'Overtake' : 'SC in 3 laps'}
-              threshold={lens === 'overtake' ? 0.8 : 0.3}
-              thresholdLabel={lens === 'overtake' ? 'Action threshold 80%' : 'Alert threshold 30%'}
-              height={170}
-            />
+            {/* The overtake lens can arrive null: N11 was trained only on pairs within
+                2.5s and N27 declines beyond that. Unguarded, JS coerces null to 0 inside
+                the gauge and it renders a confident "0%" — the opposite claim. */}
+            {lens === 'overtake' && agent.overtake_prob == null ? (
+              <div className="flex h-42.5 flex-col items-center justify-center gap-1 text-center">
+                <span className="text-sm text-fg-3">No prediction</span>
+                <span className="max-w-[16rem] text-[11px] text-fg-4">
+                  The cars are farther apart than the overtake model&apos;s trained range
+                  (2.5s), so it has no labelled example to predict from.
+                </span>
+              </div>
+            ) : (
+              <Gauge
+                value={lens === 'overtake' ? (agent.overtake_prob ?? 0) : agent.sc_prob_3lap}
+                label={lens === 'overtake' ? 'Overtake' : 'SC in 3 laps'}
+                threshold={lens === 'overtake' ? 0.8 : 0.3}
+                thresholdLabel={
+                  lens === 'overtake' ? 'Action threshold 80%' : 'Alert threshold 30%'
+                }
+                height={170}
+              />
+            )}
           </div>
           <div className="flex flex-col gap-3">
             <SituationFacts agent={agent} />

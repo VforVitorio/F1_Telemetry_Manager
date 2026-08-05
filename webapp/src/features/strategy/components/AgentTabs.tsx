@@ -389,10 +389,22 @@ function SituationTab({ lapState, enabled }: AgentTabPanelProps) {
       </Pill>
       <div className="flex flex-wrap gap-6">
         <div className="flex flex-col items-center gap-2">
-          <ConfidenceDial
-            value={situation.overtake_prob ?? 0}
-            note="Calibrated model probability"
-          />
+          {/* `?? 0` would draw an empty dial reading 0%, which is indistinguishable from
+              the model being certain there is no chance. null means the cars are farther
+              apart than anything N11 was trained on, so there is no dial to draw. */}
+          {situation.overtake_prob != null ? (
+            <ConfidenceDial
+              value={situation.overtake_prob}
+              note="Calibrated model probability"
+            />
+          ) : (
+            <div
+              className="flex size-19 items-center justify-center rounded-full border border-dashed border-bd-2 text-[11px] text-fg-4"
+              title="The cars are farther apart than the overtake model's trained range, so it does not predict here"
+            >
+              n/a
+            </div>
+          )}
           <span className="text-[11px] text-fg-4">Overtake</span>
         </div>
         <div className="flex flex-col items-center gap-2">
