@@ -414,10 +414,24 @@ def _build_lap_state(gp: str, driver: str, lap: int, year: int = 2025) -> dict[s
 
 
 def _get_laps_df(year: int = 2025):
-    """Return the cached featured DataFrame for the given season."""
+    """Return the cached featured DataFrame for the given season — ALL of its races."""
     from backend.utils.laps_cache import get_laps_df
 
     return get_laps_df(year)
+
+
+def _scope_to_race(laps_df, lap_state: dict):
+    """Narrow a season frame to the race a lap_state names, before any agent sees it.
+
+    Every tool below hands its frame to an agent whose lookups filter by Driver and
+    LapNumber and never by GP, so the whole season resolves `(VER, lap 20)` to 21 rows
+    across 21 Grands Prix and picks the first. Deferred import for the same reason as
+    `_get_laps_df` above: this module is imported by the MCP server before the parent
+    package is necessarily importable.
+    """
+    from backend.utils.laps_cache import scope_to_race
+
+    return scope_to_race(laps_df, lap_state)
 
 
 def _serialize(obj: Any) -> dict[str, Any]:
@@ -464,7 +478,7 @@ def predict_tire(gp: str, driver: str, lap: int, year: int = 2025) -> str:
     from src.agents.tire_agent import run_tire_agent_from_state
 
     lap_state = _build_lap_state(gp, driver, lap, year)
-    laps_df = _get_laps_df(year)
+    laps_df = _scope_to_race(_get_laps_df(year), lap_state)
     result = run_tire_agent_from_state(lap_state, laps_df)
     return _format_result(_serialize(result))
 
@@ -481,7 +495,7 @@ def predict_situation(gp: str, driver: str, lap: int, year: int = 2025) -> str:
     from src.agents.race_situation_agent import run_race_situation_agent_from_state
 
     lap_state = _build_lap_state(gp, driver, lap, year)
-    laps_df = _get_laps_df(year)
+    laps_df = _scope_to_race(_get_laps_df(year), lap_state)
     result = run_race_situation_agent_from_state(lap_state, laps_df)
     return _format_result(_serialize(result))
 
@@ -497,7 +511,7 @@ def predict_pit(gp: str, driver: str, lap: int, year: int = 2025) -> str:
     from src.agents.pit_strategy_agent import run_pit_strategy_agent_from_state
 
     lap_state = _build_lap_state(gp, driver, lap, year)
-    laps_df = _get_laps_df(year)
+    laps_df = _scope_to_race(_get_laps_df(year), lap_state)
     result = run_pit_strategy_agent_from_state(lap_state, laps_df)
     return _format_result(_serialize(result))
 
@@ -519,7 +533,7 @@ def analyze_radio(gp: str, driver: str, lap: int, year: int = 2025) -> str:
     norm_year = _normalize_year(year)
 
     base_state = _build_lap_state(norm_gp, norm_driver, norm_lap, norm_year)
-    laps_df = _get_laps_df(norm_year)
+    laps_df = _scope_to_race(_get_laps_df(norm_year), base_state)
 
     # Real radio corpus + Safety Car RCM state, mirroring what the /radio and
     # /recommend HTTP endpoints already wire in strategy.py, instead of the
@@ -581,7 +595,7 @@ def recommend_strategy(
 
     year = _normalize_year(year)
     lap_state = _build_lap_state(gp, driver, lap, year)
-    laps_df = _get_laps_df(year)
+    laps_df = _scope_to_race(_get_laps_df(year), lap_state)
 
     # pace_delta_s contract is rival-relative (our lap minus the rival's),
     # but we only have the same driver's consecutive-lap times here, a self-delta

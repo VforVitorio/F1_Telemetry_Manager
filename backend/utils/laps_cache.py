@@ -42,7 +42,11 @@ def get_laps_df(year: int = 2025) -> Optional[pd.DataFrame]:
 
 
 def require_laps_df(year: int = 2025) -> pd.DataFrame:
-    """Like get_laps_df but raises HTTPException(503) if unavailable."""
+    """Like get_laps_df but raises HTTPException(503) if unavailable.
+
+    Returns the WHOLE SEASON. Anything that hands this to an agent must narrow it with
+    :func:`scope_to_race` first — see that function for what happens otherwise.
+    """
     from fastapi import HTTPException
 
     df = get_laps_df(year)
@@ -52,3 +56,48 @@ def require_laps_df(year: int = 2025) -> pd.DataFrame:
             detail=f"Featured parquet (data/processed/laps_featured_{year}.parquet) not available.",
         )
     return df
+
+
+def scope_to_race(
+    laps_df: pd.DataFrame, lap_state: dict, gp_name: Optional[str] = None
+) -> pd.DataFrame:
+    """Narrow a season frame to the one race a ``lap_state`` describes.
+
+    ``gp_name`` wins when given, which is what ``/recommend`` needs: its request carries an
+    explicit ``gp_name`` field and the old code read ``request.gp_name or session_meta``.
+    Dropping it here would silently ignore a documented input, and a caller that sends the
+    race in the field but not in the lap_state would get the whole season back — the very
+    bug this function exists to kill.
+
+    THE ONE PLACE THIS IS DONE, and that is the point. Every agent lookup that takes a
+    laps frame (``_get_lap_row``, ``_get_position_map``, ``_get_undercut_candidates``,
+    ``_get_driver_stint``, the SC and overtake feature builders) filters by Driver and
+    LapNumber but never by GP. Handed the whole season, they resolve to whichever race
+    sorts first in the file: measured on the augmented 2025 frame, ``(VER, lap 20)``
+    matches **21 rows across 21 Grands Prix** and every one of those lookups picks Austin.
+
+    So a Model Lab run for Qatar computed its gap, its DRS window and every N12/N14 feature
+    from Austin's telemetry, and the page rendered the answer as Qatar's.
+
+    This is the #429/#480 lesson, which had reached ``run_lap`` and ``/recommend`` and the
+    tyre-eval route — each with its own explanatory comment in this very repository — and
+    none of the five per-agent POST routes or the five MCP tools the chat calls. Ten sites,
+    one rule, so it lives here rather than being written an eleventh time.
+
+    Delegates to the parent's ``_scope_laps_to_gp``: it already resolves the four spellings
+    of a GP name and already falls back to the unscoped frame, loudly, rather than handing
+    an agent an empty one. Applying it twice is a no-op, so a caller that was already
+    scoped upstream loses nothing.
+    """
+    # From the LEAF module, never from `engine`: importing that one instantiates the radio
+    # agent's three transformer models, so the first scoped request used to pay 16.7 s and
+    # pull RoBERTa, the NER head, the RAG agent and the orchestrator into a worker that may
+    # never serve a radio call. `src/agents/__init__` is lazy for exactly that reason.
+    from src.strategy.inference.scoping import _scope_laps_to_gp
+
+    if gp_name:
+        lap_state = {
+            **(lap_state or {}),
+            "session_meta": {**((lap_state or {}).get("session_meta") or {}), "gp_name": gp_name},
+        }
+    return _scope_laps_to_gp(laps_df, lap_state)
