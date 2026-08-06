@@ -150,7 +150,21 @@ class TireResult(BaseModel):
 class SituationResult(BaseModel):
     """N27 Race Situation Agent output."""
 
-    overtake_prob: float
+    # Nullable because N11 has a domain and N27 now says so: the model was trained only on
+    # pairs within 2.5 s and returns None beyond it, which is 43.1% of real
+    # position-adjacent pairs in 2025.
+    #
+    # This class is NOT wired as a response_model anywhere — every route in this file
+    # declares `StrategyResponse`, whose `result` is a bare `Dict[str, Any]` — so nothing
+    # here validates a payload today and the old `float` was never producing a 500. What
+    # it does is DOCUMENT the shape, and `webapp/src/lib/api/strategy.ts` mirrors it by
+    # hand. Left declaring a non-nullable float, it would have gone on describing a
+    # contract the producer no longer honours, and the first route to adopt it as a real
+    # response_model would then 500 on 43% of laps.
+    #
+    # null is NOT zero here. Zero is what the regulation asserts under a Safety Car
+    # (Art. 55.8); null is "the model has no labelled example this far apart".
+    overtake_prob: Optional[float]
     sc_prob_3lap: float
     threat_level: str
     # 0.0 here is NOT the request-side fallback above, and the two are deliberately
