@@ -28,6 +28,11 @@ from backend.utils.laps_cache import get_laps_df, scope_to_race  # noqa: E402
 _FEATURED = get_data_root() / "processed" / "laps_featured_2025.parquet"
 pytestmark = pytest.mark.skipif(not _FEATURED.exists(), reason="featured parquet absent")
 
+# Functions in the two web-facing modules that hand a laps frame to an agent: the four
+# per-agent POST routes, /recommend, the tyre-eval route, and the five MCP tools. Pinned
+# EXACTLY, so a new entry point has to be looked at rather than silently joining the set.
+_FRAME_PASSING_CALL_SITES = 11
+
 
 def _lap_state(gp: str, driver: str, lap: int) -> dict:
     return {
@@ -87,6 +92,64 @@ def test_an_unresolvable_race_keeps_the_full_frame_rather_than_an_empty_one():
     assert len(scoped) == len(season)
 
 
+def test_an_explicit_gp_name_wins_over_the_lap_state():
+    """`/recommend` accepts a `gp_name` field, and the first version of this dropped it.
+
+    A caller that fills the field but not the meta would otherwise get the whole season
+    back — the exact bug the helper exists to kill, reintroduced through the fix for it.
+    """
+    season = get_laps_df(2025)
+    scoped = scope_to_race(season, _lap_state("Sakhir", "VER", 20), gp_name="Lusail")
+
+    assert set(scoped["GP_Name"].astype(str)) == {"Lusail"}
+
+
+@pytest.mark.parametrize(
+    "lap_state",
+    [
+        {"session_meta": None},
+        {},
+        {"session_meta": {"gp_name": None}},
+        {"session_meta": {}},
+    ],
+    ids=["meta-is-null", "no-meta", "name-is-null", "empty-meta"],
+)
+def test_a_malformed_lap_state_falls_back_instead_of_raising(lap_state):
+    """`{"session_meta": null}` is a present key holding None, so the two-arg get never fires.
+
+    The chained `.get` raised AttributeError there — a 500 where the honest answer is the
+    same loud fallback an unknown GP already takes. Fourth form of this trap in this
+    project, after dict.get, Series.get and getattr.
+    """
+    season = get_laps_df(2025)
+    assert len(scope_to_race(season, lap_state)) == len(season)
+
+
+def test_the_helper_does_not_drag_in_the_agent_family():
+    """It used to import `engine`, which builds the radio agent's three NLP models.
+
+    Measured at 16.7 s and a worker holding RoBERTa, the NER head, the RAG agent and the
+    orchestrator in RAM and VRAM to serve a tyre request. `src/agents/__init__` is lazy for
+    precisely that reason, and importing the helper from `engine` undid it one layer up.
+    """
+    import subprocess
+    import sys
+
+    probe = (
+        "import sys; from src.strategy.inference.scoping import _scope_laps_to_gp; "
+        "print(','.join(m for m in sys.modules if m.startswith('src.agents.')))"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", probe],
+        capture_output=True,
+        text=True,
+        cwd=str(__import__("pathlib").Path(__file__).parent.parent.parent.parent),
+    )
+    assert result.returncode == 0, result.stderr[-500:]
+    loaded = [name for name in result.stdout.strip().split(",") if name]
+    assert loaded == [], f"the scoping helper pulled in agent modules: {loaded}"
+
+
 def test_scoping_twice_changes_nothing():
     """Callers already scoped upstream (`run_lap`, `/recommend`) must lose nothing."""
     season = get_laps_df(2025)
@@ -126,12 +189,16 @@ def test_every_web_entry_point_scopes_before_calling_an_agent():
                 calls = [line.strip() for line in function.body if "_from_state(" in line]
                 unscoped.append(f"{name}:{function.line} {function.name}(): {calls[0]}")
 
-    # Non-vacuity. A parser that silently stopped finding the call sites — a rename, a
-    # decorator change, a move to another module — would leave this test green while
-    # guarding nothing, which is the exact failure this project has a name for.
-    assert examined >= 9, (
-        f"only {examined} frame-passing agent call sites found; there were 9 when this was "
-        "written (4 HTTP routes + 5 MCP tools), so the scan has stopped seeing them"
+    # Non-vacuity, and the floor is the MEASURED count rather than the one in the prose.
+    # It was first written as 9 — the four HTTP routes plus the five MCP tools — while the
+    # scan actually reaches 11, because /recommend and the tyre-eval route pass a frame
+    # too. A floor two below the real number lets two sites disappear in silence, which is
+    # the same "guard that asserts nothing" this file exists to prevent.
+    assert examined == _FRAME_PASSING_CALL_SITES, (
+        f"{examined} frame-passing agent call sites found, expected "
+        f"{_FRAME_PASSING_CALL_SITES}. Fewer means the scan has stopped seeing them and "
+        "guards nothing; more means a new entry point arrived — check it scopes, then "
+        "raise this number deliberately"
     )
 
     assert unscoped == [], (

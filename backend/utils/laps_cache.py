@@ -58,8 +58,16 @@ def require_laps_df(year: int = 2025) -> pd.DataFrame:
     return df
 
 
-def scope_to_race(laps_df: pd.DataFrame, lap_state: dict) -> pd.DataFrame:
+def scope_to_race(
+    laps_df: pd.DataFrame, lap_state: dict, gp_name: Optional[str] = None
+) -> pd.DataFrame:
     """Narrow a season frame to the one race a ``lap_state`` describes.
+
+    ``gp_name`` wins when given, which is what ``/recommend`` needs: its request carries an
+    explicit ``gp_name`` field and the old code read ``request.gp_name or session_meta``.
+    Dropping it here would silently ignore a documented input, and a caller that sends the
+    race in the field but not in the lap_state would get the whole season back — the very
+    bug this function exists to kill.
 
     THE ONE PLACE THIS IS DONE, and that is the point. Every agent lookup that takes a
     laps frame (``_get_lap_row``, ``_get_position_map``, ``_get_undercut_candidates``,
@@ -81,6 +89,15 @@ def scope_to_race(laps_df: pd.DataFrame, lap_state: dict) -> pd.DataFrame:
     an agent an empty one. Applying it twice is a no-op, so a caller that was already
     scoped upstream loses nothing.
     """
-    from src.strategy.inference.engine import _scope_laps_to_gp
+    # From the LEAF module, never from `engine`: importing that one instantiates the radio
+    # agent's three transformer models, so the first scoped request used to pay 16.7 s and
+    # pull RoBERTa, the NER head, the RAG agent and the orchestrator into a worker that may
+    # never serve a radio call. `src/agents/__init__` is lazy for exactly that reason.
+    from src.strategy.inference.scoping import _scope_laps_to_gp
 
+    if gp_name:
+        lap_state = {
+            **(lap_state or {}),
+            "session_meta": {**((lap_state or {}).get("session_meta") or {}), "gp_name": gp_name},
+        }
     return _scope_laps_to_gp(laps_df, lap_state)

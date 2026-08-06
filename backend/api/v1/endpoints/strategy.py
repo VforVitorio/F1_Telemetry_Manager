@@ -1385,7 +1385,11 @@ def recommend_strategy(
         # frame that stores 'Miami' matches nothing — nor guards the result, so an
         # unresolved name handed the agents an EMPTY frame, which is worse than the
         # unscoped one this filter exists to replace.
-        race_laps_df = _scope_to_race(laps_df, request.lap_state)
+        # `gp` first, mirroring the old `request.gp_name or session_meta` precedence: the
+        # request carries an explicit field and reading only the lap_state would drop a
+        # documented input, handing the season back to the agents for any caller that
+        # fills the field but not the meta.
+        race_laps_df = _scope_to_race(laps_df, request.lap_state, gp_name=gp or None)
 
         race_state = build_race_state(
             request.lap_state,
