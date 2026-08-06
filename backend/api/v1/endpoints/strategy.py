@@ -251,6 +251,7 @@ def _agent_error(agent: str, exc: Exception, status: int = 500) -> HTTPException
 from backend.utils.laps_cache import get_laps_df  # noqa: E402
 from backend.utils.laps_cache import require_laps_df as _require_laps_df  # noqa: E402
 from backend.utils.laps_cache import scope_to_race as _scope_to_race  # noqa: E402
+from src.f1_strat_manager.gp_slugs import resolve_gp_key as _resolve_gp_key  # noqa: E402
 from backend.utils.serialization import agent_output_to_dict as _to_dict  # noqa: E402
 
 # ---------------------------------------------------------------------------
@@ -671,7 +672,11 @@ def predict_pace_range(request: PaceRangeRequest):
     if df is None:
         raise HTTPException(503, detail=f"No parquet for {request.year}")
 
-    gp_df = df[df["GP_Name"] == request.gp]
+    # Through the resolver: a GP arrives in whichever of its four spellings the caller
+    # holds, and a bare mask 404s on data that is present — 'Miami Gardens' against a
+    # frame that stores 'Miami' matches nothing. Loud rather than corrupting, but still
+    # a route refusing a race it has.
+    gp_df = df[df["GP_Name"] == _resolve_gp_key(set(df["GP_Name"].dropna().astype(str)), request.gp)]
     if gp_df.empty:
         raise HTTPException(404, detail=f"GP '{request.gp}' not found")
 
@@ -998,7 +1003,11 @@ def predict_tire_range(
     df = get_laps_df(request.year)
     if df is None:
         raise HTTPException(503, detail=f"No parquet for {request.year}")
-    gp_df = df[df["GP_Name"] == request.gp]
+    # Through the resolver: a GP arrives in whichever of its four spellings the caller
+    # holds, and a bare mask 404s on data that is present — 'Miami Gardens' against a
+    # frame that stores 'Miami' matches nothing. Loud rather than corrupting, but still
+    # a route refusing a race it has.
+    gp_df = df[df["GP_Name"] == _resolve_gp_key(set(df["GP_Name"].dropna().astype(str)), request.gp)]
     if gp_df.empty:
         raise HTTPException(404, detail=f"GP '{request.gp}' not found")
     drv_df = gp_df[gp_df["Driver"] == request.driver].sort_values("LapNumber")
