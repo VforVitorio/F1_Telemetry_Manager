@@ -250,6 +250,7 @@ def _agent_error(agent: str, exc: Exception, status: int = 500) -> HTTPException
 
 from backend.utils.laps_cache import get_laps_df  # noqa: E402
 from backend.utils.laps_cache import require_laps_df as _require_laps_df  # noqa: E402
+from backend.utils.laps_cache import scope_to_race as _scope_to_race  # noqa: E402
 from backend.utils.serialization import agent_output_to_dict as _to_dict  # noqa: E402
 
 # ---------------------------------------------------------------------------
@@ -1121,7 +1122,9 @@ def predict_tire(
     try:
         from src.agents.tire_agent import run_tire_agent_from_state
 
-        result = run_tire_agent_from_state(request.lap_state, laps_df)
+        result = run_tire_agent_from_state(
+            request.lap_state, _scope_to_race(laps_df, request.lap_state)
+        )
         return StrategyResponse(agent="tire", result=_to_dict(result))
     except (KeyError, TypeError, ValueError) as exc:
         logger.warning("Tire agent validation error: %s", exc)
@@ -1151,7 +1154,9 @@ def predict_situation(
     try:
         from src.agents.race_situation_agent import run_race_situation_agent_from_state
 
-        result = run_race_situation_agent_from_state(request.lap_state, laps_df)
+        result = run_race_situation_agent_from_state(
+            request.lap_state, _scope_to_race(laps_df, request.lap_state)
+        )
         return StrategyResponse(agent="situation", result=_to_dict(result))
     except (KeyError, TypeError, ValueError) as exc:
         logger.warning("Situation agent validation error: %s", exc)
@@ -1181,7 +1186,9 @@ def predict_pit(
     try:
         from src.agents.pit_strategy_agent import run_pit_strategy_agent_from_state
 
-        result = run_pit_strategy_agent_from_state(request.lap_state, laps_df)
+        result = run_pit_strategy_agent_from_state(
+            request.lap_state, _scope_to_race(laps_df, request.lap_state)
+        )
         return StrategyResponse(agent="pit", result=_to_dict(result))
     except (KeyError, TypeError, ValueError) as exc:
         logger.warning("Pit agent validation error: %s", exc)
@@ -1225,7 +1232,7 @@ def analyze_radio(
             "rcm_events": rcm_events,
         }
 
-        result = run_radio_agent_from_state(lap_state, laps_df)
+        result = run_radio_agent_from_state(lap_state, _scope_to_race(laps_df, lap_state))
         return StrategyResponse(agent="radio", result=_to_dict(result))
     except (KeyError, TypeError, ValueError) as exc:
         logger.warning("Radio agent validation error: %s", exc)
@@ -1372,7 +1379,13 @@ def recommend_strategy(
         # from Zandvoort and PIA's lap-7 row from Barcelona, while analysing Lusail.
         # Every one of those lookups wants the single race, so one filter here fixes
         # them all without touching the agents.
-        race_laps_df = laps_df[laps_df["GP_Name"] == gp] if gp else laps_df
+        #
+        # Through the shared helper rather than the raw `==` this used to be. A bare mask
+        # neither resolves the four spellings of a GP name — 'Miami Gardens' against a
+        # frame that stores 'Miami' matches nothing — nor guards the result, so an
+        # unresolved name handed the agents an EMPTY frame, which is worse than the
+        # unscoped one this filter exists to replace.
+        race_laps_df = _scope_to_race(laps_df, request.lap_state)
 
         race_state = build_race_state(
             request.lap_state,
