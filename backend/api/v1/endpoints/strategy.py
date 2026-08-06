@@ -385,6 +385,23 @@ def _safe(val):
         return val
 
 
+def _int_or_none(val):
+    """An integer car number, or None when the reading is genuinely absent.
+
+    The `_safe`/`_safe_none` split answers "may this become 0?"; this answers
+    "and what type is it when it does not?". Both frames this module reads carry
+    DriverNumber differently -- the featured parquet as int32, the raw per-race
+    fallback as dtype=object holding strings ('1', '10') -- so the coercion has
+    to survive the None branch rather than being dropped with it.
+    """
+    if pd.isna(val):
+        return None
+    try:
+        return int(val)
+    except (TypeError, ValueError):
+        return None
+
+
 def _safe_none(val):
     """Convert numpy types to Python native; NaN -> None.
 
@@ -517,7 +534,18 @@ def get_lap_state(
         "speed_fl": float(_safe(r.get("SpeedFL", 0))),
         "speed_st": _safe_none(r.get("SpeedST")),
         "fuel_load": float(_safe(r.get("FuelLoad", 0))),
-        "driver_number": int(_safe(r.get("DriverNumber", 0))),
+        # 0 is not a stand-in for a car number, it is a value the model can FIND:
+        # N06 trains on DriverNumber 1-81, so a 0 sorts below every real number
+        # and sends each split down its left branch. The sibling on the replay
+        # path served exactly this 0 on 100% of laps until #831. Absent stays
+        # absent and reaches the model as NaN.
+        #
+        # `int(...)` is kept and is not decoration: this producer falls back to
+        # the RAW per-race parquet, where DriverNumber is dtype=object holding
+        # STRINGS ('1', '10'), while the featured frame holds int32. Returning
+        # the value untouched would hand the model a string on exactly the
+        # Safety-Car and pit laps the fallback exists for.
+        "driver_number": _int_or_none(r.get("DriverNumber")),
         "sector1_s": float(_safe(r.get("Sector1_s", 0))),
         "sector2_s": float(_safe(r.get("Sector2_s", 0))),
         "sector3_s": float(_safe(r.get("Sector3_s", 0))),
@@ -944,7 +972,9 @@ def _build_lap_state_from_row(row, gp_df, gp: str, year: int, total_laps: int) -
             "speed_fl": float(_s(row.get("SpeedFL", 0))),
             "speed_st": float(_s(row.get("SpeedST", 0))),
             "fuel_load": float(_s(row.get("FuelLoad", 0))),
-            "driver_number": int(_s(row.get("DriverNumber", 0))),
+            # The twin of the producer above, and it had the same 0 default.
+            # See there for why 0 is a findable value, and why the int stays.
+            "driver_number": _int_or_none(row.get("DriverNumber")),
             "sector1_s": float(_s(row.get("Sector1_s", 0))),
             "sector2_s": float(_s(row.get("Sector2_s", 0))),
             "sector3_s": float(_s(row.get("Sector3_s", 0))),
