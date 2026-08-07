@@ -13,7 +13,6 @@ import { SelectorsToolbar } from '@/features/dashboard/components/SelectorsToolb
 import { toRaw, type DashboardSearch } from '@/features/dashboard/search'
 import { Card } from '@/components/Card'
 import { Button } from '@/components/Button'
-import { Pill } from '@/components/Pill'
 import { useSessionsStore, type SessionSurface } from '../sessionsStore'
 
 export interface SessionLauncherProps {
@@ -21,24 +20,21 @@ export interface SessionLauncherProps {
   onChange: (patch: Partial<DashboardSearch>) => void
 }
 
-/** Icon + label (+ an optional "Soon" pill for the two preview actions)
- *  shared by both the enabled-Link and the disabled-Button rendering of one
- *  action, so the ready/not-ready branch below only ever differs in wrapper
- *  (Link vs. plain disabled Button), never in content. */
-function ActionContent({
-  icon: Icon,
-  label,
-  soon,
-}: {
-  icon: LucideIcon
-  label: string
-  soon?: boolean
-}) {
+/** Icon + label, shared by both the enabled-Link and the disabled-Button
+ *  rendering of one action, so the ready/not-ready branch below only ever
+ *  differs in wrapper (Link vs. plain disabled Button), never in content.
+ *
+ *  There used to be an optional `soon` flag that hung a "Soon" pill on the
+ *  Comparison action. Comparison shipped and the pill did not come off, so the
+ *  launcher advertised a finished surface as unbuilt. The flag is gone rather
+ *  than set to false everywhere: a prop every call site passes the same value
+ *  to is one more thing to forget, and re-adding a pill for a genuinely
+ *  unfinished action is three lines. */
+function ActionContent({ icon: Icon, label }: { icon: LucideIcon; label: string }) {
   return (
     <>
       <Icon className="size-4" aria-hidden="true" />
       {label}
-      {soon ? <Pill tone="neutral">Soon</Pill> : null}
     </>
   )
 }
@@ -47,10 +43,12 @@ function ActionContent({
  * The launcher card: the 4 cascading selectors, then an actions row. "Open in
  * Dashboard" is primary and becomes a real link once year, GP AND session are
  * all chosen (drivers stay optional — the Dashboard prompts for them itself).
- * Comparison and Strategy are secondary "Soon" previews of the same
+ * Comparison and Strategy are secondary actions using the same
  * selection-forwarding cross-link the Dashboard already wires up for
  * Comparison (see DashboardPage's "Go to comparison"), so picking a session
- * here previews where it will eventually go once #35/#36 land.
+ * here carries straight through to either surface. Both shipped (#35/#36);
+ * they were previews once and the prose said so long after they stopped
+ * being previews.
  *
  * `to` is kept a literal string at each `<Link>` call site (never threaded
  * through a prop), matching Rail.tsx's own convention: that is what lets
@@ -94,12 +92,12 @@ export function SessionLauncher({ value, onChange }: SessionLauncherProps) {
         {ready ? (
           <Link to="/comparison" search={toRaw(value)} onClick={() => recordLaunch('comparison')}>
             <Button variant="ghost">
-              <ActionContent icon={ArrowRightLeft} label="Comparison" soon />
+              <ActionContent icon={ArrowRightLeft} label="Comparison" />
             </Button>
           </Link>
         ) : (
           <Button variant="ghost" disabled>
-            <ActionContent icon={ArrowRightLeft} label="Comparison" soon />
+            <ActionContent icon={ArrowRightLeft} label="Comparison" />
           </Button>
         )}
 
