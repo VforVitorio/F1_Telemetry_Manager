@@ -18,7 +18,6 @@ import functools
 import json
 import logging
 import sys
-from src.agents.position_projection import GAP_UNKNOWN_FALLBACK_S
 from typing import Any
 
 from fastmcp import FastMCP
@@ -603,14 +602,17 @@ def recommend_strategy(
     # after pit stops. Default to 0.0 (unknown) to report only what is known.
     # The shared build_race_state handles rival-relative recomputation when a
     # rival is selected; the MCP bridge doesn't have that user context.
-    driver_state = lap_state.get("driver", {})
     pace_delta_s = 0.0
 
     race_state = build_race_state(
         lap_state,
-        # Note the two-arg .get: a key that is PRESENT and None returns None, not
-        # the fallback, so the `or` is what actually catches an unmeasured gap.
-        gap_ahead_s=driver_state.get("gap_ahead_s") or GAP_UNKNOWN_FALLBACK_S,
+        # gap_ahead_s is deliberately NOT passed: None-means-compute lets the
+        # canonical builder derive the car-ahead gap from this lap_state's own
+        # rivals list. Those are the same numbers this bridge used to echo,
+        # minus the falsy `or` that rewrote the leader's 0.0 - and any
+        # measured 0.0 - into a fabricated 2.0 rival on every lap they led
+        # (#878). The builder answers None when no car is directly ahead, and
+        # the prompt renders that absence instead of a number.
         pace_delta_s=pace_delta_s,
         risk_tolerance=_normalize_risk_tolerance(risk_tolerance),
         radio_msgs=None,
