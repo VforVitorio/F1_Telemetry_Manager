@@ -45,7 +45,10 @@ export interface LapStateDriver {
   sector1_s: number
   sector2_s: number
   sector3_s: number
-  gap_ahead_s: number
+  /** Null = no car directly ahead to measure: leading, or the pos-1 car is
+   *  not classified this lap. 0 is a REAL measured side-by-side gap, and
+   *  keying anything off it branded 1,053 non-leading 2025 laps (#878). */
+  gap_ahead_s: number | null
 }
 
 /** A rival — timing-screen data only (mirrors a real pit wall). */
@@ -56,7 +59,10 @@ export interface LapStateRival {
   lap_time_s: number
   compound: string
   tyre_life: number
-  gap_ahead_s: number
+  /** Null = no car directly ahead to measure: leading, or the pos-1 car is
+   *  not classified this lap. 0 is a REAL measured side-by-side gap, and
+   *  keying anything off it branded 1,053 non-leading 2025 laps (#878). */
+  gap_ahead_s: number | null
   /** On-track interval to OUR driver (rival elapsed time minus ours): sign
    *  encodes ahead/behind, magnitude is the gap. Null when either car's elapsed
    *  time is missing. Used to score a user-chosen rival against our car. */
@@ -118,7 +124,10 @@ export interface SituationResult {
   overtake_prob: number | null
   sc_prob_3lap: number
   threat_level: string
-  gap_ahead_s: number
+  /** Null = no car directly ahead to measure: leading, or the pos-1 car is
+   *  not classified this lap. 0 is a REAL measured side-by-side gap, and
+   *  keying anything off it branded 1,053 non-leading 2025 laps (#878). */
+  gap_ahead_s: number | null
   pace_delta_s: number
   reasoning: string
   // Real safety-car / virtual-safety-car state the agent already returns; the
