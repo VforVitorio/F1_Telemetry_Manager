@@ -349,7 +349,10 @@ export async function runAgent<A extends AgentName>(
 /**
  * Run the full N31 orchestrator (all sub-agents + 500-sample MC + LLM synthesis).
  * Rate-limited to 5/min on the backend → surfaces as a 429 StrategyApiError.
- * `gap_ahead_s` defaults to the driver's own gap (2.0 fallback, as Streamlit).
+ * `gap_ahead_s` is deliberately omitted: the backend derives it from the
+ * lap_state in this same body, which is strictly better information than a
+ * client echo. The old `|| 2.0` rewrote the leader's absent gap - and any
+ * genuinely measured 0.0 - into a fabricated 2.0 rival (#878).
  *
  * When `rival` is set (the car the user picked in the Strategy tab), the backend
  * recomputes gap_ahead_s / pace_delta_s against that specific car, so the
@@ -366,7 +369,6 @@ export async function runRecommend(
     lap_state: lapState,
     gp_name: lapState.session_meta.gp_name,
     year: lapState.session_meta.year,
-    gap_ahead_s: lapState.driver.gap_ahead_s || 2.0,
     pace_delta_s: 0,
     risk_tolerance: riskTolerance,
     rival,

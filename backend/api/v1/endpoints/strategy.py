@@ -14,7 +14,6 @@ import json
 import logging
 import sys
 from pathlib import Path
-from src.agents.position_projection import GAP_UNKNOWN_FALLBACK_S
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
@@ -107,7 +106,11 @@ class RecommendRequest(BaseModel):
     lap_state: Dict[str, Any]
     gp_name: str = ""
     year: int = 2025
-    gap_ahead_s: float = GAP_UNKNOWN_FALLBACK_S
+    # None = "derive it from the lap_state in this same body", which the
+    # canonical builder does - strictly better information than a client
+    # echo. Widening a REQUEST field is non-breaking: a client that sends a
+    # number keeps byte-identical behaviour (#878).
+    gap_ahead_s: Optional[float] = None
     pace_delta_s: float = 0.0
     risk_tolerance: float = 0.5
     radio_msgs: Optional[List[Dict[str, Any]]] = None
@@ -167,13 +170,13 @@ class SituationResult(BaseModel):
     overtake_prob: Optional[float]
     sc_prob_3lap: float
     threat_level: str
-    # 0.0 here is NOT the request-side fallback above, and the two are deliberately
-    # different. This is what the agent OBSERVED, so zero means it reported a zero,
-    # and substituting 2.0 would invent a measurement. The honest shape is
-    # `float | None`, which RivalState.gap_ahead_s in position_projection already
-    # uses and whose consumers guard with `is not None`; changing it here is a
-    # response-schema break for every client, so it is tracked, not smuggled (#633).
-    gap_ahead_s: float = 0.0
+    # None = no pair was scored (leading / no classified car ahead / the tool
+    # was never called), the absence semantics `overtake_prob` above already
+    # carries. 0.0 stays exactly what the agent OBSERVED, a genuinely
+    # side-by-side pair: substituting a number for either case invents a
+    # measurement. This IS the `float | None` migration #633 deferred and
+    # nothing then tracked - both trackers were closed - landing via #878.
+    gap_ahead_s: Optional[float] = None
     pace_delta_s: float = 0.0
     reasoning: str = ""
 
@@ -251,8 +254,9 @@ def _agent_error(agent: str, exc: Exception, status: int = 500) -> HTTPException
 from backend.utils.laps_cache import get_laps_df  # noqa: E402
 from backend.utils.laps_cache import require_laps_df as _require_laps_df  # noqa: E402
 from backend.utils.laps_cache import scope_to_race as _scope_to_race  # noqa: E402
-from src.f1_strat_manager.gp_slugs import resolve_gp_key as _resolve_gp_key  # noqa: E402
 from backend.utils.serialization import agent_output_to_dict as _to_dict  # noqa: E402
+
+from src.f1_strat_manager.gp_slugs import resolve_gp_key as _resolve_gp_key  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Helper GET endpoints — parquet metadata for frontend selectors
@@ -502,7 +506,14 @@ def get_lap_state(
     # lookup key downstream (#465, same collision class as the #428/#430 rival
     # fix a few lines below).
     drv_pos = _safe_none(r.get("Position"))
-    gap_ahead_s = 0.0
+    # None, not 0.0, when there is no car directly ahead to measure (#878).
+    # The leader, an unresolved Position and a pos-1 car missing from the
+    # classified snapshot all used to collapse into 0.0 - a value this same
+    # producer ALSO measures for a genuinely side-by-side pair (four laps in
+    # 2025) - and a falsy `or` downstream then rewrote it into a fabricated
+    # 2.0 rival on the 1,262 laps our driver led. 2,315 laps of the served
+    # season carried that zero; 1,049 of them were not even the leader.
+    gap_ahead_s: Optional[float] = None
     if drv_pos is not None and drv_pos > 1:
         car_ahead = lap_snapshot[lap_snapshot["Position"] == drv_pos - 1]
         if not car_ahead.empty:
@@ -549,7 +560,7 @@ def get_lap_state(
         "sector1_s": float(_safe(r.get("Sector1_s", 0))),
         "sector2_s": float(_safe(r.get("Sector2_s", 0))),
         "sector3_s": float(_safe(r.get("Sector3_s", 0))),
-        "gap_ahead_s": round(gap_ahead_s, 3),
+        "gap_ahead_s": round(gap_ahead_s, 3) if gap_ahead_s is not None else None,
     }
 
     # Rivals: every other driver still CLASSIFIED on this lap, with real gaps.
@@ -570,7 +581,7 @@ def get_lap_state(
     rivals = []
     for _, rr in rivals_df.iterrows():
         rival_pos = int(rr["Position"])
-        rival_gap = 0.0
+        rival_gap: Optional[float] = None  # the same absence rule as the driver slot
         if rival_pos > 1:
             ahead = lap_snapshot[lap_snapshot["Position"] == rival_pos - 1]
             if not ahead.empty:
@@ -593,7 +604,7 @@ def get_lap_state(
                 "lap_time_s": float(_safe(rr.get("LapTime_s", 0))),
                 "compound": str(rr.get("Compound", "")),
                 "tyre_life": _safe_none(rr.get("TyreLife")),
-                "gap_ahead_s": round(rival_gap, 3),
+                "gap_ahead_s": round(rival_gap, 3) if rival_gap is not None else None,
                 "interval_to_driver_s": interval_to_driver,
                 # An overcut needs someone in the pit lane, and this producer was
                 # not saying whether anyone was. The projection reads the key with
@@ -704,7 +715,9 @@ def predict_pace_range(request: PaceRangeRequest):
     # holds, and a bare mask 404s on data that is present — 'Miami Gardens' against a
     # frame that stores 'Miami' matches nothing. Loud rather than corrupting, but still
     # a route refusing a race it has.
-    gp_df = df[df["GP_Name"] == _resolve_gp_key(set(df["GP_Name"].dropna().astype(str)), request.gp)]
+    gp_df = df[
+        df["GP_Name"] == _resolve_gp_key(set(df["GP_Name"].dropna().astype(str)), request.gp)
+    ]
     if gp_df.empty:
         raise HTTPException(404, detail=f"GP '{request.gp}' not found")
 
@@ -1037,7 +1050,9 @@ def predict_tire_range(
     # holds, and a bare mask 404s on data that is present — 'Miami Gardens' against a
     # frame that stores 'Miami' matches nothing. Loud rather than corrupting, but still
     # a route refusing a race it has.
-    gp_df = df[df["GP_Name"] == _resolve_gp_key(set(df["GP_Name"].dropna().astype(str)), request.gp)]
+    gp_df = df[
+        df["GP_Name"] == _resolve_gp_key(set(df["GP_Name"].dropna().astype(str)), request.gp)
+    ]
     if gp_df.empty:
         raise HTTPException(404, detail=f"GP '{request.gp}' not found")
     drv_df = gp_df[gp_df["Driver"] == request.driver].sort_values("LapNumber")

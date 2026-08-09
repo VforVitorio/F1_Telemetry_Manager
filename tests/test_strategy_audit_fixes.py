@@ -207,9 +207,7 @@ def test_build_lap_state_from_row_nan_tyre_life_stays_none():
 
     # The /pace-range gate (Prev_LapTime >= 60) is what lets a NaN-TyreLife row
     # actually reach the builder; without it the row is skipped upstream.
-    nan_rows = df[
-        df["TyreLife"].isna() & df["Prev_LapTime"].notna() & (df["Prev_LapTime"] >= 60)
-    ]
+    nan_rows = df[df["TyreLife"].isna() & df["Prev_LapTime"].notna() & (df["Prev_LapTime"] >= 60)]
     if nan_rows.empty:
         pytest.skip("no gate-surviving NaN-TyreLife row in this parquet")
 
@@ -251,3 +249,73 @@ def test_get_lap_state_carries_the_mandatory_stop_flags_for_us_and_every_rival()
     pending = state["rival_stop_pending"]
     listed = {r["driver"] for r in state["rivals"] if r.get("driver")}
     assert listed <= set(pending), f"rivals with no obligation verdict: {listed - set(pending)}"
+
+
+# ---------------------------------------------------------------------------
+# #878 -- no car ahead is an ABSENCE, and nothing may rewrite it into a number
+# ---------------------------------------------------------------------------
+
+
+def _first_lap_at_position(df, position: float):
+    """One (gp, driver, lap) at the given classified position, from the real frame."""
+    row = df[df["Position"] == position].iloc[0]
+    return str(row["GP_Name"]), str(row["Driver"]), int(row["LapNumber"])
+
+
+def test_the_leaders_gap_ahead_is_absent_rather_than_zero():
+    """The producer emits an absence for a car with nobody in front.
+
+    It used to emit 0.0, which is ALSO what it measures for two cars side by
+    side, and a falsy `or` downstream then rewrote that zero into a
+    fabricated 2.0 rival. 1,262 laps of the served 2025 season are this case.
+    """
+    df = get_laps_df(2025)
+    if df is None:
+        pytest.skip("featured parquet not present")
+
+    gp, driver, lap = _first_lap_at_position(df, 1.0)
+    state = get_lap_state(gp, driver, lap, 2025)
+
+    assert state["driver"]["gap_ahead_s"] is None, "the leader has no car ahead to measure"
+
+
+def test_a_car_with_someone_in_front_still_reports_a_measurement():
+    """The twin guard: making absence explicit must not stop measuring.
+
+    Without this, emitting None unconditionally would pass the test above and
+    destroy every real gap in the product.
+    """
+    df = get_laps_df(2025)
+    if df is None:
+        pytest.skip("featured parquet not present")
+
+    for _, row in df[df["Position"] == 2.0].head(20).iterrows():
+        state = get_lap_state(str(row["GP_Name"]), str(row["Driver"]), int(row["LapNumber"]), 2025)
+        gap = state["driver"]["gap_ahead_s"]
+        if gap is not None:
+            assert isinstance(gap, float) and gap >= 0.0
+            return
+    pytest.fail("no P2 lap in twenty had a classified car ahead; the producer stopped measuring")
+
+
+def test_the_bridge_derives_the_gap_instead_of_echoing_a_fallback():
+    """The seam the bug actually lived on, asserted on what the builder returns.
+
+    `mcp_tools.recommend_strategy` used to pass
+    `driver_state.get("gap_ahead_s") or GAP_UNKNOWN_FALLBACK_S`, and Python's
+    falsy 0.0 made that a 2.0 rival for the race leader on every lap they led.
+    It now passes nothing and lets the canonical builder derive it, so the
+    absence survives all the way to the RaceState the prompt is built from.
+    """
+    from src.agents.race_state_builder import build_race_state
+
+    df = get_laps_df(2025)
+    if df is None:
+        pytest.skip("featured parquet not present")
+
+    gp, driver, lap = _first_lap_at_position(df, 1.0)
+    lap_state = get_lap_state(gp, driver, lap, 2025)
+
+    race_state = build_race_state(lap_state, pace_delta_s=0.0)  # mcp_tools' exact call shape
+
+    assert race_state.gap_ahead_s is None, "the leader reaches the prompt without a fake rival"
