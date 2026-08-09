@@ -15,10 +15,13 @@ import { STRATEGY_YEAR } from '../search'
 
 /** "+X.Xs" — a gap is always framed as a positive interval to the car ahead,
  *  so the sign is decorative, not a direction indicator (unlike `formatSigned`).
- *  A zero gap means there's no car ahead at all, so it reads as "Leader"
- *  rather than the meaningless "+0.0s". */
-function formatGap(seconds: number): string {
-  if (seconds === 0) return 'Leader'
+ *  Null means there is no car directly ahead to measure: "Leader" at P1, an
+ *  em dash otherwise, because the pos-1 car is simply unclassified this lap.
+ *  A ZERO gap is a real measurement — two cars side by side — and renders as
+ *  one. Keying "Leader" off zero branded 1,053 non-leading 2025 laps as the
+ *  race leader (#878). */
+function formatGap(seconds: number | null, position: number): string {
+  if (seconds === null) return position === 1 ? 'Leader' : '—'
   return `+${seconds.toFixed(1)}s`
 }
 
@@ -102,7 +105,12 @@ interface DuelLineProps {
  */
 function DuelLine({ driver, rival }: DuelLineProps) {
   const tyreDelta = driver.tyre_life - rival.tyre_life
-  const gapDelta = driver.gap_ahead_s - rival.gap_ahead_s
+  // Either car may have no car ahead to measure; a delta against an
+  // absence is not a number, so the metric declines instead of inventing one.
+  const gapDelta =
+    driver.gap_ahead_s !== null && rival.gap_ahead_s !== null
+      ? driver.gap_ahead_s - rival.gap_ahead_s
+      : null
   const driverColor = getDriverTextColor(driver.driver, STRATEGY_YEAR)
   const rivalColor = getDriverTextColor(rival.driver, STRATEGY_YEAR)
 
@@ -116,7 +124,7 @@ function DuelLine({ driver, rival }: DuelLineProps) {
       <Separator />
       <Metric label="Δtyre">{formatSigned(tyreDelta)} laps</Metric>
       <Separator />
-      <Metric label="Δgap">{formatGapDelta(gapDelta)}</Metric>
+      <Metric label="Δgap">{gapDelta === null ? '—' : formatGapDelta(gapDelta)}</Metric>
       <Separator />
       <Metric label={`${rival.driver} tyre`}>
         <CompoundPill compound={rival.compound} />
@@ -162,7 +170,7 @@ export function LapReadout({ lapState, rival, isPreview }: LapReadoutProps) {
         <Separator />
         <Metric label="tyre">{driver.tyre_life} laps</Metric>
         <Separator />
-        <Metric label="gap">{formatGap(driver.gap_ahead_s)}</Metric>
+        <Metric label="gap">{formatGap(driver.gap_ahead_s, driver.position)}</Metric>
         <Separator />
         <Metric label="last">{formatLapTime(driver.lap_time_s)}</Metric>
         <Separator />

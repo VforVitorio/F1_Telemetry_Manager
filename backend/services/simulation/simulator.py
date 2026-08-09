@@ -519,7 +519,13 @@ def _parse_lap_decision(
         tyre_life=race_state.tyre_life,
         position=race_state.position,
         lap_time_s=lap_time_s,
-        gap_ahead_s=race_state.gap_ahead_s,
+        # The SSE wire keeps float: Arcade consumes this stream and its
+        # renderers are mid-audit, so 0.0 stays the wire's absent-marker -
+        # applied AT THE BOUNDARY only. The RaceState underneath, and the
+        # prompt built from it, carry the honest None (#878). A no-op until
+        # the builder starts emitting None; without it, that day every
+        # leader lap raises ValidationError here.
+        gap_ahead_s=race_state.gap_ahead_s if race_state.gap_ahead_s is not None else 0.0,
         action=action,
         confidence=confidence,
         reasoning=reasoning,

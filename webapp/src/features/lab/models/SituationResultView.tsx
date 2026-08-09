@@ -76,7 +76,10 @@ function threatTone(level: string): 'danger' | 'warning' | 'success' {
  *  reads the same race context whether the bench is showing Overtake or
  *  Safety car odds. */
 function SituationFacts({ agent }: { agent: SituationResult }) {
-  const inDrsWindow = agent.gap_ahead_s < 1.0
+  // The guard is load-bearing, not decorative: JS coerces null to 0, so
+  // `null < 1.0` is TRUE. An unguarded null would render the leader as
+  // being in the DRS window, which is the exact lie the old 0.0 told (#878).
+  const inDrsWindow = agent.gap_ahead_s !== null && agent.gap_ahead_s < 1.0
   const paceRising = agent.pace_delta_s > 0
   const PaceArrow = paceRising ? ArrowUp : ArrowDown
   const paceText = `${paceRising ? '+' : ''}${agent.pace_delta_s.toFixed(2)}s/lap`
@@ -85,7 +88,10 @@ function SituationFacts({ agent }: { agent: SituationResult }) {
     <div className="flex flex-wrap items-center gap-3">
       <MetricRow
         items={[
-          { label: 'Gap ahead', value: `${agent.gap_ahead_s.toFixed(1)}s` },
+          {
+            label: 'Gap ahead',
+            value: agent.gap_ahead_s === null ? '—' : `${agent.gap_ahead_s.toFixed(1)}s`,
+          },
           {
             label: 'Pace delta',
             value: (
