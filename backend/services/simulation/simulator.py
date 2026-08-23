@@ -64,9 +64,12 @@ ACTION_LITERALS = ("STAY_OUT", "PIT_NOW", "UNDERCUT", "OVERCUT", "ALERT", "DNF",
 class SimConfig:
     """Inputs required to drive one simulation run end-to-end.
 
-    ``driver2`` is an optional rival code the caller wants tracked explicitly
-    in the gap stats of the final summary — independent of the generic
-    ``rivals`` list that the state manager already emits per lap.
+    ``driver2`` is an optional rival code carried in from ``SimulateRequest``.
+    **Nothing in this module reads it any more.** It used to reach the SSE
+    stream as ``StartEvent.driver2``, which no consumer rendered, and the only
+    other reader is ``_driver2_gap`` below, which nothing calls. It stays
+    because it is public request surface and removing it is an API decision,
+    not a cleanup; the dead helper is tracked separately.
 
     ``interval_s`` is the artificial pause between ``lap`` events. The CLI
     uses this to give Rich panels enough wall-clock time to render; for SSE
@@ -97,7 +100,6 @@ class StartEvent(BaseModel):
     gp: str
     year: int
     driver: str
-    driver2: Optional[str] = None
     team: str
     lap_start: int
     lap_end: int
@@ -133,7 +135,6 @@ class LapDecision(BaseModel):
     pit_lap_target: Optional[int] = None
     compound_next: Optional[str] = None
     undercut_target: Optional[str] = None
-    agent_alerts: list[str] = Field(default_factory=list)
     guardrail_reason: Optional[str] = None
     # What the orchestrator was told about its own previous calls on THIS lap, and
     # whether the call it then made differs from the one before it.
@@ -478,7 +479,6 @@ def _parse_lap_decision(
     be recovered from the result, and the caller is the only place that holds it.
     Both default to the no-memory case, which keeps the no-llm branch unchanged.
     """
-    agent_alerts: list[str] = []
     guardrail_reason: Optional[str] = None
 
     if isinstance(result, dict):
@@ -492,15 +492,6 @@ def _parse_lap_decision(
         pit_lap_target = getattr(pit_out, "recommended_lap", None)
         compound_next = getattr(pit_out, "compound_recommendation", None)
         undercut_target = getattr(pit_out, "undercut_target", None)
-        radio_out = result.get("_radio_out")
-        if radio_out is not None:
-            raw_alerts = getattr(radio_out, "alerts", []) or []
-            agent_alerts = [
-                str(a.get("intent") or a.get("event_type") or "alert")
-                if isinstance(a, dict)
-                else str(a)
-                for a in raw_alerts
-            ]
         guardrail_reason = result.get("guardrail_reason")
     else:
         action = str(getattr(result, "action", "ERROR"))
@@ -535,7 +526,6 @@ def _parse_lap_decision(
         pit_lap_target=pit_lap_target,
         compound_next=compound_next,
         undercut_target=undercut_target,
-        agent_alerts=agent_alerts,
         guardrail_reason=guardrail_reason,
         memory_block=memory_block,
         plan_changed=plan_changed,
@@ -797,7 +787,6 @@ def simulate_race(config: SimConfig) -> Generator[dict[str, Any], None, None]:
             gp=config.gp,
             year=config.year,
             driver=config.driver,
-            driver2=config.driver2,
             team=config.team,
             lap_start=lap_start,
             lap_end=lap_end,
