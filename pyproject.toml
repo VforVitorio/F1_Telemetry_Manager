@@ -23,7 +23,7 @@ dependencies = [
     "pydantic[email]>=2.5.0",
     "python-jose[cryptography]>=3.3.0",
     "passlib[bcrypt]>=1.7.4",
-    "bcrypt==4.0.1",  # pinned: passlib 1.7.4 breaks with bcrypt>=4.1; does not block resolution
+    "bcrypt==5.0.0",  # pinned: passlib 1.7.4 breaks with bcrypt>=4.1; does not block resolution
     "realtime>=2.0.5",
     "python-dotenv>=1.0.0",
     "fastf1>=3.4.0",
