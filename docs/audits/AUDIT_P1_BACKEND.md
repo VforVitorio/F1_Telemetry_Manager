@@ -1,4 +1,8 @@
-# AUDIT P1 — FastAPI Web Backend (`src/telemetry/backend/`)
+# AUDIT P1 - FastAPI Web Backend (`src/telemetry/backend/`)
+
+> Historical snapshot from 2026-07-04. The packaging findings in this report
+> predate the uv manifest and Docker migration. Use the current README and
+> setup documentation for live instructions; keep this file for provenance.
 
 > **Auditor:** Fable 5 · **Date:** 2026-07-04 · **Scope:** the HTTP layer the React SPA (migration P0) will consume.
 > **Out of scope:** CLI + Arcade runtime (they run the core in-process → P2b), Streamlit frontend internals (P0 run), `src/agents/` internals (UNTOUCHABLE — additive only).

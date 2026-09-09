@@ -1,6 +1,10 @@
 
 # F1 Telemetry Manager - System Architecture
 
+> Historical document. This describes the pre-React Streamlit architecture
+> and old repository tree. Use `README.md` and the parent setup guide for the
+> current runtime.
+
 ## 📋 Document Overview
 
 This document describes the architectural design and technical decisions for the F1_Telemetry_Manager project. It outlines the system structure, design patterns, module organization, and integration strategies.

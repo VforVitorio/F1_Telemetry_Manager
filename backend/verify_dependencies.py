@@ -2,7 +2,7 @@
 Quick dependency verification script
 
 Checks if all dependencies are installed and compatible.
-Run this after: pip install -r requirements.txt
+Run this after: uv sync --no-dev
 """
 
 import sys
@@ -16,22 +16,25 @@ def check_import(package_name, display_name=None):
         __import__(package_name)
         try:
             ver = version(package_name)
-            print(f"  ✅ {display:20} v{ver}")
+            print(f"  OK   {display:20} v{ver}")
             return True
-        except:
-            print(f"  ✅ {display:20} (installed)")
+        except Exception:
+            print(f"  OK   {display:20} (installed)")
             return True
     except ImportError as e:
-        print(f"  ❌ {display:20} NOT FOUND - {e}")
+        print(f"  FAIL {display:20} NOT FOUND - {e}")
         return False
     except Exception as e:
-        print(f"  ⚠️  {display:20} ERROR - {e}")
+        print(f"  WARN {display:20} ERROR - {e}")
         return False
 
 
 def main():
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
+
     print("=" * 60)
-    print(" 🔍 F1 Telemetry Manager - Dependency Check")
+    print(" F1 Telemetry Manager - Dependency Check")
     print("=" * 60)
 
     results = {
@@ -39,7 +42,7 @@ def main():
     }
 
     # Core Dependencies
-    print("\n📦 Core Dependencies:")
+    print("\nCore Dependencies:")
     results["Core Dependencies"].append(check_import("fastapi"))
     results["Core Dependencies"].append(check_import("uvicorn"))
     results["Core Dependencies"].append(check_import("pydantic"))
@@ -48,7 +51,7 @@ def main():
     results["Core Dependencies"].append(check_import("fastf1"))
 
     # Version info for critical packages
-    print("\n📊 Version Details:")
+    print("\nVersion Details:")
     try:
         import numpy as np
         import pandas as pd
@@ -56,30 +59,30 @@ def main():
         print(f"  numpy:  {np.__version__} (required: 1.26.4)")
         print(f"  pandas: {pd.__version__} (required: 2.2.0)")
     except Exception as e:
-        print(f"  ⚠️  Could not check versions: {e}")
+        print(f"  WARN Could not check versions: {e}")
 
     # Summary
     print("\n" + "=" * 60)
-    print(" 📊 SUMMARY")
+    print(" SUMMARY")
     print("=" * 60)
 
     for category, checks in results.items():
         passed = sum(checks)
         total = len(checks)
-        status = "✅ PASS" if passed == total else "❌ FAIL"
+        status = "PASS" if passed == total else "FAIL"
         print(f"{status} {category}: {passed}/{total}")
 
     all_passed = all(all(checks) for checks in results.values())
 
     if all_passed:
-        print("\n🎉 All dependencies installed successfully!")
-        print("\n📋 Next steps:")
-        print("  1. Start backend: uvicorn main:app --reload --port 8000")
+        print("\nAll dependencies installed successfully.")
+        print("\nNext steps:")
+        print("  1. Start backend: uv run uvicorn backend.main:app --reload --port 8000")
         return 0
     else:
-        print("\n⚠️  Some dependencies are missing!")
-        print("\n📋 To fix:")
-        print("  pip install -r requirements.txt")
+        print("\nSome dependencies are missing.")
+        print("\nTo fix:")
+        print("  uv sync --no-dev")
         return 1
 
 

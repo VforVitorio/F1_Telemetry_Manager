@@ -1,202 +1,76 @@
-# 🚀 Voice Chat Backend - Installation Guide
+# F1 Telemetry Manager installation
 
-Quick start guide for installing and verifying voice chat backend.
+This is the current installation guide for the FastAPI backend and React web
+app. The former voice and Streamlit setup is historical and is not part of the
+active runtime.
 
-## ⚡ Quick Install (3 steps)
+## Prerequisites
 
-### Step 1: Install Dependencies
+- Python 3.11 or 3.12
+- uv 0.9.13 or newer
+- Docker Desktop for the containerized stack
+- Node.js and npm, or Bun, for local webapp development
+- The parent F1 StratLab repository, including its data and model caches, for
+  strategy endpoints and full simulation
 
-```bash
-cd backend
-pip install -r requirements.txt
-```
+## Local backend
 
-**What gets installed:**
-
-- ✅ Existing: FastAPI, numpy, pandas, fastf1 (no changes)
-- ✅ New: Whisper, pyttsx3, pydub, soundfile, aiofiles
-
-**Time**: ~2-5 minutes (first time downloads Whisper model)
-
-### Step 2: Verify Installation
+From the telemetry submodule directory:
 
 ```bash
-python verify_dependencies.py
+uv sync --frozen --extra dev
+uv run python backend/verify_dependencies.py
+uv run uvicorn backend.main:app --reload --port 8000
 ```
 
-**Expected**: All ✅ green checkmarks
+The project runtime is resolved from `pyproject.toml` and `uv.lock`. The
+optional `dev` extra adds pytest and coverage tools. There is no second active
+dependency manifest for the backend.
 
-**If errors**: See [Troubleshooting](#troubleshooting) below
+## Local webapp
 
-### Step 3: Test Services
+In a second terminal:
 
 ```bash
-# Test TTS (generates audio file)
-python services/voice/tts_service.py
-
-# Test STT (loads Whisper model)
-python services/voice/stt_service.py
+cd webapp
+npm install
+npm run dev
 ```
 
-## ✅ What to Expect
+The Vite development server runs on port 5173 and proxies API calls to the
+backend on port 8000.
 
-### After pip install:
+## Docker stack
 
-```
-✅ All existing dependencies remain unchanged
-✅ numpy==1.26.4 (stays the same)
-✅ pandas==2.2.0 (stays the same)
-✅ fastf1==3.4.0 (stays the same)
-✅ New voice dependencies added (compatible)
-```
-
-### After verify_dependencies.py:
-
-```
-🔍 F1 Telemetry Manager - Dependency Check
-==================================================
-
-📦 Core Dependencies:
-  ✅ fastapi              v0.109.0
-  ✅ numpy                v1.26.4
-  ✅ pandas               v2.2.0
-  ✅ fastf1               v3.4.0
-
-🎤 Voice Dependencies:
-  ✅ openai-whisper       v20231117
-  ✅ pyttsx3              v2.90
-  ✅ pydub                v0.25.1
-  ✅ soundfile            v0.12.1
-  ✅ aiofiles             v23.2.1
-
-🎉 All dependencies installed successfully!
-```
-
-## 🔧 Troubleshooting
-
-### Issue: "torch not found" or large download
-
-**Cause**: Whisper needs PyTorch (~2GB)
-
-**Solution** (faster CPU-only install):
+From the parent F1 StratLab repository:
 
 ```bash
-pip install torch --index-url https://download.pytorch.org/whl/cpu
-pip install openai-whisper==20231117
+docker compose up --build
 ```
 
-### Issue: "ffmpeg not found"
+The stack exposes the backend on port 8000 and the React webapp on port 8501.
+The backend image uses Python 3.11, copies a pinned uv binary, and installs the
+full runtime with `uv sync --frozen --no-dev --no-install-project`. The host
+data directory is read-only except for the nested FastF1 cache and the RAG
+directory, which are writable mounts.
 
-**Cause**: pydub needs ffmpeg binary
+## Verification
 
-**Windows**:
+The submodule CI reproduces the lightweight test path:
 
 ```bash
-choco install ffmpeg
-# OR
-scoop install ffmpeg
+uv sync --frozen --only-group ci --no-install-project
+uv run --frozen --no-sync ruff check --select E9,F63,F7,F82 .
+uv run --frozen --no-sync pytest tests/ -q
 ```
 
-**Mac**:
+The full backend runtime can be checked with:
 
 ```bash
-brew install ffmpeg
+uv sync --frozen --no-dev
+uv run python backend/verify_dependencies.py
 ```
 
-**Linux**:
-
-```bash
-sudo apt-get install ffmpeg
-```
-
-**Verify**:
-
-```bash
-ffmpeg -version
-```
-
-### Issue: pyttsx3 not working
-
-**Windows**: Should work out of the box (uses SAPI)
-
-**Mac**: Install pyobjc:
-
-```bash
-pip install pyobjc
-```
-
-**Linux**: Install espeak:
-
-```bash
-sudo apt-get install espeak
-```
-
-### Issue: Version conflicts
-
-**Check**:
-
-```bash
-pip check
-```
-
-**Solution**: Use virtual environment:
-
-```bash
-python -m venv venv_f1
-source venv_f1/bin/activate  # Linux/Mac
-venv_f1\Scripts\activate     # Windows
-
-pip install -r requirements.txt
-```
-
-## 📚 Documentation
-
-- **Compatibility**: [DEPENDENCIES_COMPATIBILITY.md](DEPENDENCIES_COMPATIBILITY.md)
-- **Setup Guide**: [VOICE_SETUP.md](VOICE_SETUP.md)
-- **API Testing**: [test_voice_api.py](test_voice_api.py)
-
-## 🎯 Next Steps (After Install)
-
-### 1. Start Backend Server
-
-```bash
-uvicorn main:app --reload --port 8000
-```
-
-### 2. Test API Endpoints
-
-```bash
-python test_voice_api.py
-```
-
-### 3. View API Docs
-
-http://localhost:8000/docs
-
-## ✅ Compatibility Guarantee
-
-All voice dependencies are **tested and compatible** with existing setup:
-
-| Dependency     | Version  | Status          |
-| -------------- | -------- | --------------- |
-| numpy          | 1.26.4   | ✅ Unchanged    |
-| pandas         | 2.2.0    | ✅ Unchanged    |
-| fastf1         | 3.4.0    | ✅ Unchanged    |
-| openai-whisper | 20231117 | ✅ Compatible   |
-| pyttsx3        | 2.90     | ✅ No conflicts |
-| pydub          | 0.25.1   | ✅ No conflicts |
-| soundfile      | 0.12.1   | ✅ Compatible   |
-| aiofiles       | 23.2.1   | ✅ No conflicts |
-
-**Tested on**: Windows, Mac, Linux
-**Python**: 3.10+
-
-## 🆘 Need Help?
-
-1. ✅ Check [DEPENDENCIES_COMPATIBILITY.md](DEPENDENCIES_COMPATIBILITY.md)
-2. ✅ Run `python verify_dependencies.py`
-3. ✅ Check [VOICE_SETUP.md](VOICE_SETUP.md) for detailed instructions
-
----
-
-**Ready?** Run `pip install -r requirements.txt` and you're good to go! 🚀
+Strategy and simulation endpoints require the parent repository's data and
+model files. No LLM call is needed for the health check or for the `no_llm`
+simulation path.

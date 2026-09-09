@@ -4,7 +4,7 @@
 
 ### *FastAPI backend and React web app (post-race UI) for F1 StratLab.*
 
-[![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE) [![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/) [![FastAPI](https://img.shields.io/badge/FastAPI-0.109-teal)](https://fastapi.tiangolo.com/) [![React](https://img.shields.io/badge/React-19-149eca)](https://react.dev/) [![Vite](https://img.shields.io/badge/Vite-7-646cff)](https://vite.dev/) [![FastMCP](https://img.shields.io/badge/FastMCP-3.x-purple)](https://github.com/jlowin/fastmcp) [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/VforVitorio/F1_Telemetry_Manager)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE) [![Python](https://img.shields.io/badge/python-3.11--3.12-blue)](https://www.python.org/) [![FastAPI](https://img.shields.io/badge/FastAPI-0.136-teal)](https://fastapi.tiangolo.com/) [![React](https://img.shields.io/badge/React-19-149eca)](https://react.dev/) [![Vite](https://img.shields.io/badge/Vite-7-646cff)](https://vite.dev/) [![FastMCP](https://img.shields.io/badge/FastMCP-3.x-purple)](https://github.com/jlowin/fastmcp) [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/VforVitorio/F1_Telemetry_Manager)
 
 [Parent project: F1 StratLab](https://github.com/VforVitorio/F1-StratLab) · [Architecture](docs/telemetry-architecture.md) · [Backend API reference](../../docs/pages/backend-api.md) · [Changelog](docs/CHANGELOG.md)
 
@@ -16,13 +16,15 @@
 
 F1 Telemetry Manager is the post-race surface of [F1 StratLab](https://github.com/VforVitorio/F1-StratLab): a FastAPI backend that wraps the strategy agents (N25–N31) and the telemetry / comparison / circuit-domination services, and a React web app (Vite + TypeScript + Tailwind + ECharts) that consumes them. It is vendored into F1 StratLab as a git submodule at [`src/telemetry/`](.) and shares the parent's data root, ML weights, and `.env`.
 
-The repo can also be cloned standalone if you only want the analytics dashboard, but the chat and strategy endpoints assume the F1 StratLab models live alongside.
+The backend can be tested standalone, but the chat and strategy endpoints
+assume the F1 StratLab source, data, and model files live alongside this
+submodule.
 
 ## Two surfaces
 
 | Surface | Entry point | What it does |
 | --- | --- | --- |
-| **FastAPI backend** | `uvicorn backend.main:app --port 8000` | REST endpoints for telemetry, comparison, circuit domination, strategy and chat. Mounts a FastMCP server at `/mcp` exposing the strategy agents as tools. |
+| **FastAPI backend** | `uv run uvicorn backend.main:app --port 8000` | REST endpoints for telemetry, comparison, circuit domination, strategy and chat. Mounts a FastMCP server at `/mcp` exposing the strategy agents as tools. |
 | **React web app** | `docker compose up` (service `webapp`) *or* `cd webapp && npm run dev` | Post-race SPA: telemetry dashboard, 60fps driver comparison, ML model lab, multi-agent strategy, race analysis, and a streaming AI chat that renders tool results (cards + ECharts) inline. Reports, sessions, image attach. |
 
 The chat pipeline runs in-process against the strategy agents through a tool-calling loop (OpenAI tool contract); the same tools are exposed externally over MCP, so Claude Desktop, Cursor or any MCP client can drive the agents directly.
@@ -37,23 +39,21 @@ docker compose up
 
 `docker compose up` brings the backend up on `:8000` and the React web app on `:8501`. The legacy Streamlit UI has been removed from this repo; it survives in git history and in the parent repo's `legacy_version` branch.
 
-Standalone (from this directory):
-
-```bash
-docker compose up
-```
-
-The compose file mounts `../../src` and `../../data` from the parent repo (read-only), and reads `../../.env` for the LLM provider. To run without F1 StratLab, point those volumes at your own data and set `OPENAI_API_KEY` (or `F1_LLM_PROVIDER=lmstudio` with LM Studio on `host.docker.internal:1234`).
+The submodule Compose file is intended to run from a parent F1 StratLab
+checkout. It mounts `../../src` and `../../data` from that checkout and reads
+`../../.env` for the LLM provider. Use the parent `docker-compose.yml` as the
+canonical command; the submodule file is useful when selecting only these two
+services.
 
 Manual install for development:
 
 ```bash
-uv sync
-uvicorn backend.main:app --reload --port 8000          # terminal 1
+uv sync --frozen --extra dev
+uv run uvicorn backend.main:app --reload --port 8000   # terminal 1
 cd webapp && npm install && npm run dev                # terminal 2 (web app on :5173)
 ```
 
-Requires Python 3.11+.
+Requires Python 3.11 or 3.12.
 
 ## What the backend exposes
 
@@ -80,7 +80,7 @@ All endpoints sit under `/api/v1`. The full reference lives at [`docs/pages/back
 
 ## Tech stack
 
-Backend: FastAPI 0.109, Pydantic 2.5, FastF1 3.4, FastMCP 3.x.
+Backend: FastAPI 0.136, Pydantic 2.13, FastF1 3.4, FastMCP 3.2.
 Frontend (web app): React 19, Vite, TypeScript, Tailwind v4, ECharts, TanStack Router/Query, Zustand.
 AI: OpenAI-compatible LLM (LM Studio local server or OpenAI API).
 

@@ -1,8 +1,7 @@
 # F1 StratLab webapp (React SPA)
 
-Local telemetry SPA that replaces the Streamlit UI (migration epic #25). It runs
-beside the untouched Streamlit tree (`../frontend/`) during the strangler
-migration; the FastAPI backend is unchanged and shared.
+Local telemetry SPA for the post-race web surface. It replaced the former
+Streamlit UI; the FastAPI backend is shared with the parent F1 StratLab repo.
 
 ## Stack
 
@@ -37,7 +36,8 @@ bun run format:check
 ## Docker
 
 ```bash
-docker compose up webapp   # http://localhost:3000, nginx serves dist/ + proxies /api -> backend:8000
+docker compose up webapp   # http://localhost:8501, nginx serves dist/ + proxies /api -> backend:8000
 ```
 
-At cutover (issue #43) this service takes `:8501` and `webapp/` is renamed to `frontend/`.
+The current service directory is `webapp/`, and the legacy Streamlit tree is
+not part of the active runtime.
