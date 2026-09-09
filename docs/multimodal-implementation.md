@@ -1,4 +1,7 @@
-# 🖼️ Multimodal Implementation - Vision Support
+# Multimodal Implementation - Vision Support
+
+> Historical document. The Streamlit and voice execution paths described here
+> are retained for migration history and are not current setup instructions.
 
 ## ✅ Status: COMPLETED & OPTIMIZED
 
