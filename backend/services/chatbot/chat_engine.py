@@ -262,6 +262,7 @@ async def get_response(
         "tool_result": tool_result_payload,
         "llm_model": metadata.get("llm_model"),
         "tokens_used": metadata.get("tokens_used"),
+        "error": metadata.get("error"),
     }
 
 
@@ -516,13 +517,14 @@ async def _safe_send(
     max_tokens: int,
     tools: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """Wrap ``send_message`` so any provider hiccup yields an empty response.
+    """Wrap ``send_message`` so provider failures remain visible to callers.
 
     The blocking ``requests`` call runs in a worker thread (``asyncio.to_thread``)
     so a slow LLM turn does not stall the event loop - and with it the concurrent
     SSE sim streams (LLM-cost L-3). Caller treats an empty response as
     "no tool call, no text" and degrades to a fallback message rather than
-    crashing the SSE stream; a failure also invalidates the provider preflight.
+    crashing the SSE stream; the private error marker lets the JSON endpoint
+    return a truthful 503 while the SSE endpoint can still close gracefully.
     """
     try:
         return await asyncio.to_thread(
@@ -534,9 +536,9 @@ async def _safe_send(
             stream=False,
             tools=tools or None,
         )
-    except Exception:
+    except Exception as exc:
         logger.exception("LLM provider call failed")
-        return {}
+        return {"_llm_error": str(exc)}
 
 
 async def _bridge_sync_stream(make_generator: Callable[[], Generator[str, None, None]]) -> AsyncGenerator[str, None]:
@@ -761,7 +763,10 @@ def _done_metadata(response: dict[str, Any]) -> dict[str, Any]:
     """Extract llm_model + tokens_used for the SSE ``done`` event."""
     if not isinstance(response, dict):
         return {}
-    return {
+    metadata = {
         "llm_model": response.get("model"),
         "tokens_used": (response.get("usage") or {}).get("total_tokens"),
     }
+    if response.get("_llm_error"):
+        metadata["error"] = str(response["_llm_error"])
+    return metadata

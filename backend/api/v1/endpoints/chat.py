@@ -266,12 +266,16 @@ async def tool_message(
             temperature=request.temperature,
             max_tokens=request.max_tokens,
         )
+        if result.get("error"):
+            raise HTTPException(status_code=503, detail=str(result["error"]))
         return ToolMessageResponse(
             response=result.get("response") or "No response from LLM.",
             llm_model=result.get("llm_model"),
             tokens_used=result.get("tokens_used"),
             tool_result=result.get("tool_result"),
         )
+    except HTTPException:
+        raise
     except Exception as exc:
         logger.exception("tool_message failed")
         return ToolMessageResponse(response=f"Error contacting the LLM: {exc}")

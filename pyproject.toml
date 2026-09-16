@@ -59,6 +59,7 @@ dev = [
     "pytest-asyncio>=1.0.0",
     "pytest-cov>=4.0.0",
     "httpx>=0.27.0",
+    "httpx2>=2.13.0,<3.0.0",
 ]
 
 [dependency-groups]
@@ -72,6 +73,7 @@ ci = [
     "pydantic>=2.7.4,<3.0.0",
     "fastapi>=0.115.0,<0.137.0",
     "httpx>=0.27.0,<1.0.0",
+    "httpx2>=2.13.0,<3.0.0",
     "python-dotenv>=1.1.0",
     "pandas>=2.2.0,<3.0.0",
     "ruff>=0.16.6,<0.17.0",
