@@ -9,6 +9,12 @@
 > Anthropic** · **100% feature parity + distribution preserved** · **local browser SPA via Docker** (no desktop shell,
 > no public hosting) · strangler migration, not big-bang.
 
+> **Retirement note (2026-09-16):** the interactive voice surface was retired
+> before the current `main` cutover. The voice rows below are historical design
+> evidence only. The complete pre-retirement implementation is preserved on
+> this repository's `legacy_version` branch; current `main` retains text chat
+> and the separate team-radio transcription path.
+
 ---
 
 ## 1. Executive summary + stack decision

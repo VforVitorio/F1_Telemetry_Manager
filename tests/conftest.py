@@ -54,13 +54,13 @@ def chat_app_client():
     """A ``TestClient`` over a bare FastAPI app mounting only the chat router.
 
     Mirrors the per-router isolation pattern (one router per app) so a chat
-    contract test never drags in the voice/strategy/FastMCP import surface.
+    contract test never drags in the strategy/FastMCP import surface.
     Paths match production (``/api/v1/chat/...``) because the router carries its
     own ``/chat`` prefix and is mounted here under ``/api/v1``.
     """
     from backend.api.v1.endpoints import chat
     from fastapi import FastAPI
-    from fastapi.testclient import TestClient
+    from starlette.testclient import TestClient
 
     app = FastAPI()
     app.include_router(chat.router, prefix="/api/v1")

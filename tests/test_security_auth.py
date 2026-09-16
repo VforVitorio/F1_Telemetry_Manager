@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 from fastapi import FastAPI
-from fastapi.testclient import TestClient
+from starlette.testclient import TestClient
 
 from backend.core.auth import (
     ApiKeyMiddleware,

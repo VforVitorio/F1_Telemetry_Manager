@@ -23,7 +23,7 @@ if str(ROOT) not in sys.path:
 from backend.api.v1.endpoints import chat  # noqa: E402
 from backend.services.chatbot import chat_engine  # noqa: E402
 from fastapi import FastAPI  # noqa: E402
-from fastapi.testclient import TestClient  # noqa: E402
+from starlette.testclient import TestClient  # noqa: E402
 from tests.fake_openai import FakeOpenAIServer  # noqa: E402
 
 OUT = Path(__file__).parent

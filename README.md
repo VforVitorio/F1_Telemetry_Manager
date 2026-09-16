@@ -37,7 +37,7 @@ From the F1 StratLab repo root (recommended):
 docker compose up
 ```
 
-`docker compose up` brings the backend up on `:8000` and the React web app on `:8501`. The legacy Streamlit UI has been removed from this repo; it survives in git history and in the parent repo's `legacy_version` branch.
+`docker compose up` brings the backend up on `:8000` and the React web app on `:8501`. The legacy Streamlit and voice surfaces are not part of `main`; their last complete submodule tree is preserved in this repository's `legacy_version` branch.
 
 The submodule Compose file is intended to run from a parent F1 StratLab
 checkout. It mounts `../../src` and `../../data` from that checkout and reads
@@ -66,7 +66,7 @@ All endpoints sit under `/api/v1`. The full reference lives at [`docs/pages/back
 - **`/chat`**, message, stream, tool-message and tool-message-stream. The tool-message endpoints implement the OpenAI tool-calling loop against the strategy MCP tools; `/stream` is the plain chat passthrough.
 - **`/mcp`**: FastMCP Streamable-HTTP transport. External MCP clients connect here to call the strategy tools directly.
 
-> The voice chat surface (STT → LLM → TTS) was retired in v2. It remains available in the parent repo's `legacy_version` branch.
+> The voice chat surface (STT → LLM → TTS) was retired in v2. It remains available in this repository's `legacy_version` branch. The current `main` surface is text chat plus the team-radio transcript pipeline; radio audio is not interactive voice chat.
 
 ## Project layout
 
@@ -86,7 +86,7 @@ AI: OpenAI-compatible LLM (LM Studio local server or OpenAI API).
 
 ## Frontend migration, done (v2)
 
-The **backend stays FastAPI**, no question, and the **Streamlit frontend has been replaced by a modern React web app** (Vite + TypeScript + Tailwind v4 + ECharts + TanStack Router/Query). It keeps the original structure, menus and flows, but escapes Streamlit's design constraints: instant client-side navigation, a 60fps canvas replay, a redesigned pit-wall aesthetic, and a chat that streams the LLM reply for real over SSE and renders each tool's output (cards + charts) inline. The web app is now the only post-race surface; the legacy Streamlit app survives in git history and in the parent repo's `legacy_version` branch.
+The **backend stays FastAPI**, no question, and the **Streamlit frontend has been replaced by a modern React web app** (Vite + TypeScript + Tailwind v4 + ECharts + TanStack Router/Query). It keeps the original structure, menus and flows, but escapes Streamlit's design constraints: instant client-side navigation, a 60fps canvas replay, a redesigned pit-wall aesthetic, and a chat that streams the LLM reply for real over SSE and renders each tool's output (cards + charts) inline. The web app is now the only post-race surface; the legacy Streamlit and voice implementations are preserved on the `legacy_version` branch of this repository.
 
 ## Related
 
