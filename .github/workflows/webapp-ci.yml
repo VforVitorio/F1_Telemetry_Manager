@@ -2,11 +2,13 @@ name: webapp-ci
 
 # Foundations CI for the React SPA (migration epic #25). Path-filter gated so it
 # only runs work when webapp/ changes, but still posts a success result on every
-# PR (required-context safe, see PROJECT_BOOTSTRAP §4.1). Bun is the installer +
-# task runner only; vite bundles and vitest tests (never `bun build` / `bun test`).
+# PR (required-context safe, see PROJECT_BOOTSTRAP §4.1). Feature branches use
+# the pull-request trigger, so their push does not start a duplicate run. Bun is
+# the installer + task runner only; vite bundles and vitest tests (never
+# `bun build` / `bun test`).
 on:
   push:
-    branches: ["main", "feat/**", "fix/**", "docs/**", "chore/**", "ci/**"]
+    branches: ["main"]
   pull_request:
     branches: ["main", "dev", "testVictor", "testSanti"]
 
