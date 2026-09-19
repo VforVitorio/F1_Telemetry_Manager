@@ -72,6 +72,7 @@ ci = [
     "requests>=2.31.0",
     "pydantic>=2.7.4,<3.0.0",
     "fastapi>=0.115.0,<0.137.0",
+    "fastmcp==3.2.0",
     "httpx>=0.27.0,<1.0.0",
     "httpx2>=2.13.0,<3.0.0",
     "python-dotenv>=1.1.0",

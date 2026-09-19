@@ -63,6 +63,7 @@ All endpoints sit under `/api/v1`. The full reference lives at [`docs/pages/back
 - **`/comparison/compare`**, two-driver fastest-lap comparison with synchronised delta.
 - **`/circuit-domination`**, microsector-level dominant-driver map.
 - **`/strategy`**, pace, tire degradation, situation, pit timing, radio NLP, FIA RAG and the orchestrated `recommend` endpoint that ties them together. Also drives the simulator (`/strategy/simulate`).
+- **Season-scoped regulation chat**, where `query_regulations` and `POST /api/v1/strategy/rag` accept an optional `year`. Omitting it keeps the historical unscoped lookup; supplying it selects the matching FIA rulebook.
 - **`/chat`**, message, stream, tool-message and tool-message-stream. The tool-message endpoints implement the OpenAI tool-calling loop against the strategy MCP tools; `/stream` is the plain chat passthrough.
 - **`/mcp`**: FastMCP Streamable-HTTP transport. External MCP clients connect here to call the strategy tools directly.
 

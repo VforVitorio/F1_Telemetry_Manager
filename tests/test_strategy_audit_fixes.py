@@ -19,6 +19,14 @@ import pytest
 # erroring at collection, matching how the other dep-heavy suites behave.
 pd = pytest.importorskip("pandas")
 pytest.importorskip("fastmcp")
+pytest.importorskip(
+    "src.f1_strat_manager.laps_augment",
+    reason="strategy audit tests require the parent F1 StratLab source tree",
+)
+pytest.importorskip(
+    "src.agents.race_state_builder",
+    reason="strategy audit tests require the parent F1 StratLab source tree",
+)
 
 from backend.api.v1.endpoints.strategy import (  # noqa: E402  (after importorskip)
     _build_lap_state_from_row,
