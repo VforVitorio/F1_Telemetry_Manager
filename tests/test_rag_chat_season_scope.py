@@ -2,16 +2,49 @@
 
 from __future__ import annotations
 
-from types import SimpleNamespace
+import sys
+from pathlib import Path
+from types import ModuleType, SimpleNamespace
 
 import pytest
 
 pytest.importorskip("fastmcp")
 
-from backend import mcp_tools
-from backend.api.v1.endpoints import strategy
 from fastapi import FastAPI
 from starlette.testclient import TestClient
+
+
+def _install_parent_import_stubs() -> None:
+    """Keep route-contract tests runnable in the standalone submodule CI."""
+    parent_root = Path(__file__).resolve().parents[3]
+    parent_src = parent_root / "src" / "f1_strat_manager"
+    if parent_src.exists():
+        if str(parent_root) not in sys.path:
+            sys.path.insert(0, str(parent_root))
+        return
+
+    src = ModuleType("src")
+    src.__path__ = []
+    f1 = ModuleType("src.f1_strat_manager")
+    f1.__path__ = []
+    augment = ModuleType("src.f1_strat_manager.laps_augment")
+    augment.augment_featured_laps = lambda frame, *args, **kwargs: frame
+    slugs = ModuleType("src.f1_strat_manager.gp_slugs")
+    slugs.resolve_gp_key = lambda value: value
+    sys.modules.update(
+        {
+            "src": src,
+            "src.f1_strat_manager": f1,
+            "src.f1_strat_manager.laps_augment": augment,
+            "src.f1_strat_manager.gp_slugs": slugs,
+        }
+    )
+
+
+_install_parent_import_stubs()
+
+from backend import mcp_tools  # noqa: E402
+from backend.api.v1.endpoints import strategy  # noqa: E402
 
 
 def _fake_rag(monkeypatch):
@@ -21,9 +54,15 @@ def _fake_rag(monkeypatch):
         calls.append((question, year))
         return SimpleNamespace(question=question, year=year)
 
-    import src.agents.rag_agent as rag_agent
+    try:
+        import src.agents.rag_agent as rag_agent
+    except ModuleNotFoundError:
+        agents = ModuleType("src.agents")
+        agents.__path__ = []
+        rag_agent = ModuleType("src.agents.rag_agent")
+        sys.modules.update({"src.agents": agents, "src.agents.rag_agent": rag_agent})
 
-    monkeypatch.setattr(rag_agent, "run_rag_agent", run_rag_agent)
+    monkeypatch.setattr(rag_agent, "run_rag_agent", run_rag_agent, raising=False)
     return calls
 
 
