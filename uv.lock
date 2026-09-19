@@ -657,6 +657,7 @@ dev = [
 [package.dev-dependencies]
 ci = [
     { name = "fastapi" },
+    { name = "fastmcp" },
     { name = "httpx" },
     { name = "httpx2" },
     { name = "pandas" },
@@ -711,6 +712,7 @@ provides-extras = ["dev"]
 [package.metadata.requires-dev]
 ci = [
     { name = "fastapi", specifier = ">=0.115.0,<0.137.0" },
+    { name = "fastmcp", specifier = "==3.2.0" },
     { name = "httpx", specifier = ">=0.27.0,<1.0.0" },
     { name = "httpx2", specifier = ">=2.13.0,<3.0.0" },
     { name = "pandas", specifier = ">=2.2.0,<3.0.0" },

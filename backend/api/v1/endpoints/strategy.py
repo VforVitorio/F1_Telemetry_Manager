@@ -89,9 +89,15 @@ class PaceRangeRequest(BaseModel):
 
 
 class RagRequest(BaseModel):
-    """Request body for the /rag regulation-lookup endpoint."""
+    """Request body for the /rag regulation-lookup endpoint.
+
+    ``year=None`` preserves the historical unscoped chat behaviour. A supplied
+    season is forwarded to the RAG agent so both retrieval sites use the same
+    regulation edition.
+    """
 
     question: str
+    year: Optional[int] = None
 
 
 class RecommendRequest(BaseModel):
@@ -1312,8 +1318,10 @@ def query_rag(request: RagRequest):
     """Run the RAG Agent (N30) to answer a regulation question."""
     try:
         from src.agents.rag_agent import run_rag_agent
+        from backend.mcp_tools import _normalize_year
 
-        result = run_rag_agent(request.question)
+        year = _normalize_year(request.year) if request.year is not None else None
+        result = run_rag_agent(request.question, year=year)
         return StrategyResponse(agent="rag", result=_to_dict(result))
     except (KeyError, TypeError, ValueError) as exc:
         logger.warning("RAG agent validation error: %s", exc)

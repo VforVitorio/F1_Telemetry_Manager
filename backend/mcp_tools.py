@@ -330,7 +330,7 @@ def _normalize_year(year: Any) -> int:
     except (TypeError, ValueError):
         raise ToolInputError(
             f"Year REFUSED — {year!r} is not a valid season year. "
-            "Provide an integer year, e.g. 2023, 2024, or 2025."
+            "Provide an integer year, e.g. 2023, 2025, or 2026."
         ) from None
 
 
@@ -562,15 +562,19 @@ def analyze_radio(gp: str, driver: str, lap: int, year: int = 2025) -> str:
 
 
 @mcp.tool
-def query_regulations(question: str) -> str:
+@_catch_tool_input_error
+def query_regulations(question: str, year: int | None = None) -> str:
     """Look up FIA regulations using the RAG knowledge base.
 
     Searches the Qdrant vector database of FIA sporting/technical regulations
-    and synthesises an answer grounded in the retrieved articles.
+    and synthesises an answer grounded in the retrieved articles. When ``year``
+    is omitted, every indexed season remains eligible; when provided, the
+    retriever scopes both its tool call and citation lookup to that season.
     """
     from src.agents.rag_agent import run_rag_agent
 
-    result = run_rag_agent(question)
+    normalized_year = _normalize_year(year) if year is not None else None
+    result = run_rag_agent(question, year=normalized_year)
     return _format_result(_serialize(result))
 
 
