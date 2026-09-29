@@ -1047,11 +1047,8 @@ export interface components {
        * @default false
        */
       no_llm: boolean
-      /**
-       * Provider
-       * @default lmstudio
-       */
-      provider: string
+      /** Provider */
+      provider?: string | null
       /**
        * Interval S
        * @default 0

@@ -85,7 +85,7 @@ class SimConfig:
     lap_range: Optional[tuple[int, int]] = None
     risk_tolerance: float = 0.5
     no_llm: bool = False
-    provider: str = "lmstudio"
+    provider: Optional[str] = None
     interval_s: float = 0.0
 
 
@@ -191,16 +191,17 @@ class RunSummary(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-def _set_provider_env(provider: str) -> None:
+def _set_provider_env(provider: Optional[str]) -> None:
     """Propagate the LLM provider choice to the orchestrator singleton.
 
     The orchestrator reads ``F1_LLM_PROVIDER`` the first time it builds its
     structured-output client (see ``strategy_orchestrator._get_orchestrator_llm``),
     so setting it here before any agent call is enough. This is a process-wide
-    side effect \u2014 callers running multiple providers concurrently need their
-    own process isolation.
+    side effect. ``None`` leaves the shell or ``.env`` value untouched; callers
+    running multiple providers concurrently still need their own process isolation.
     """
-    os.environ["F1_LLM_PROVIDER"] = provider
+    if provider is not None:
+        os.environ["F1_LLM_PROVIDER"] = provider
 
 
 def _data_root() -> Path:
@@ -792,7 +793,7 @@ def simulate_race(config: SimConfig) -> Generator[dict[str, Any], None, None]:
             lap_end=lap_end,
             total_laps=total_laps,
             no_llm=config.no_llm,
-            provider=config.provider,
+            provider=config.provider or os.environ.get("F1_LLM_PROVIDER", "lmstudio"),
             timestamp=datetime.now(timezone.utc).isoformat(),
         ).model_dump(),
     }

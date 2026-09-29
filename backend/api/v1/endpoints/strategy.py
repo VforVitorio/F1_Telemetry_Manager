@@ -1689,7 +1689,7 @@ class SimulateRequest(BaseModel):
     lap_range: Optional[tuple[int, int]] = None
     risk_tolerance: float = Field(0.5, ge=0.0, le=1.0)
     no_llm: bool = False
-    provider: str = Field("lmstudio", pattern="^(lmstudio|openai)$")
+    provider: Optional[str] = Field(None, pattern="^(lmstudio|openai)$")
     interval_s: float = Field(0.0, ge=0.0, le=10.0)
 
 
