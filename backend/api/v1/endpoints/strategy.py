@@ -1139,6 +1139,11 @@ def predict_tire_range(
             # the stint forward.
             if not pd.isna(row.get("Stint")):
                 agent.session_meta[f"{request.driver}_stint"] = int(row["Stint"])
+            # _get_driver_stint matches this against the raw Compound column;
+            # `compound_id` above is the separate, normalized model lookup key.
+            agent.session_meta[f"{request.driver}_compound"] = (
+                None if pd.isna(row.get("Compound")) else compound
+            )
             agent.session_meta["current_lap"] = lap
             stint = agent._get_driver_stint(request.driver, tyre_life)
             if stint is not None and compound_id in agent.bundles:
@@ -1317,8 +1322,9 @@ def analyze_radio(
 def query_rag(request: RagRequest):
     """Run the RAG Agent (N30) to answer a regulation question."""
     try:
-        from src.agents.rag_agent import run_rag_agent
         from backend.mcp_tools import _normalize_year
+
+        from src.agents.rag_agent import run_rag_agent
 
         year = _normalize_year(request.year) if request.year is not None else None
         result = run_rag_agent(request.question, year=year)
