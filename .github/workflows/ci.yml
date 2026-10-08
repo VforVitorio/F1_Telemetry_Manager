@@ -46,3 +46,37 @@ jobs:
         run: uv sync --frozen --only-group ci --no-install-project
       - name: Run unit tests
         run: uv run --frozen --no-sync pytest tests/ -v
+
+  api-boundaries:
+    name: API boundaries (parent source)
+    runs-on: ubuntu-latest
+    env:
+      F1_PARENT_SOURCE: ${{ github.workspace }}/parent-source
+      F1_BOUNDARY_FULL: "1"
+      PYTHON_DOTENV_DISABLED: "1"
+      F1_LLM_PROVIDER: lmstudio
+      LLM_PROVIDER: lmstudio
+      OPENAI_API_KEY: ""
+      HF_HUB_OFFLINE: "1"
+      TRANSFORMERS_OFFLINE: "1"
+    steps:
+      - uses: actions/checkout@v7
+      - name: Check out the parent runtime source
+        uses: actions/checkout@v7
+        with:
+          repository: VforVitorio/F1-StratLab
+          ref: f27a031390e63e2c4aa9523bbd0e2055647c5de6
+          path: parent-source
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.9.13"
+          python-version: "3.11"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Install the locked backend runtime
+        run: uv sync --frozen --extra dev --no-install-project
+      - name: Exercise the mounted boundaries without skips
+        run: |
+          uv run --frozen --no-sync pytest tests/test_security_gp_boundaries.py tests/test_security_public_errors.py -v --junitxml=boundary-results.xml
+          uv run --frozen --no-sync python -c "import xml.etree.ElementTree as ET; suites = ET.parse('boundary-results.xml').getroot(); assert sum(int(s.get('skipped', 0)) for s in suites.iter('testsuite')) == 0"

@@ -21,13 +21,61 @@ import pytest
 # LM_STUDIO_HOST at import time and defaults to "localhost", which can resolve
 # to ::1 first while the stub only listens on IPv4 — pinning removes that
 # address-family ambiguity so the integration tests are deterministic on CI.
-os.environ.setdefault("LM_STUDIO_HOST", "127.0.0.1")
+os.environ["PYTHON_DOTENV_DISABLED"] = "1"
+os.environ["F1_LLM_PROVIDER"] = "lmstudio"
+os.environ["LLM_PROVIDER"] = "lmstudio"
+os.environ["OPENAI_API_KEY"] = ""
+os.environ["LM_STUDIO_HOST"] = "127.0.0.1"
+os.environ["HF_HUB_OFFLINE"] = "1"
+os.environ["TRANSFORMERS_OFFLINE"] = "1"
 
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+parent_source = Path(os.environ.get("F1_PARENT_SOURCE", ROOT.parents[1]))
+if (parent_source / "src" / "f1_strat_manager").is_dir():
+    sys.path.append(str(parent_source))
 
 from tests.fake_openai import FakeOpenAIServer  # noqa: E402  (needs sys.path patched first)
+
+
+@pytest.fixture(autouse=True)
+def loopback_only(monkeypatch):
+    """Refuse external sockets while permitting asyncio and the provider stub."""
+    import ipaddress
+    import socket
+
+    connect = socket.socket.connect
+    connect_ex = socket.socket.connect_ex
+    getaddrinfo = socket.getaddrinfo
+
+    def check(address):
+        if isinstance(address, tuple):
+            host = address[0]
+            if isinstance(host, bytes):
+                host = host.decode("ascii")
+            try:
+                local = host in (None, "localhost") or ipaddress.ip_address(host).is_loopback
+            except ValueError:
+                local = False
+            if not local:
+                raise AssertionError(f"External connection refused: {host}")
+
+    def guarded_connect(sock, address):
+        check(address)
+        return connect(sock, address)
+
+    def guarded_connect_ex(sock, address):
+        check(address)
+        return connect_ex(sock, address)
+
+    def guarded_getaddrinfo(host, port, *args, **kwargs):
+        check((host, port))
+        return getaddrinfo(host, port, *args, **kwargs)
+
+    monkeypatch.setattr(socket.socket, "connect", guarded_connect)
+    monkeypatch.setattr(socket.socket, "connect_ex", guarded_connect_ex)
+    monkeypatch.setattr(socket, "getaddrinfo", guarded_getaddrinfo)
 
 
 @pytest.fixture

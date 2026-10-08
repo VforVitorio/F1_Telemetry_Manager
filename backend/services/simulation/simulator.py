@@ -38,6 +38,8 @@ from pydantic import BaseModel, ConfigDict, Field
 # startup path having injected ``_REPO_ROOT`` first.
 # ---------------------------------------------------------------------------
 from backend.core.paths import get_data_root, get_repo_root
+from backend.core.gp_paths import resolve_race_dir, validate_radio_paths, validate_gp_name
+from backend.core.public_errors import INTERNAL_ERROR
 
 _REPO_ROOT = get_repo_root()
 if str(_REPO_ROOT) not in sys.path:
@@ -240,7 +242,7 @@ def _load_laps_df(year: int) -> pd.DataFrame:
 
 def _resolve_race_dir(year: int, gp: str) -> Path:
     """Locate the per-race folder that ``RaceReplayEngine`` consumes."""
-    return _data_root() / "raw" / str(year) / gp
+    return resolve_race_dir(year, gp)
 
 
 def _driver2_gap(lap_state: dict[str, Any], driver2: Optional[str]) -> Optional[float]:
@@ -764,11 +766,11 @@ def simulate_race(config: SimConfig) -> Generator[dict[str, Any], None, None]:
     in setup (missing parquet, unreadable race dir) propagates instead \u2014 the
     endpoint wraps those as a final ``error`` frame before closing.
     """
-    _set_provider_env(config.provider)
-
-    laps_df = _load_laps_df(config.year)
-
     race_dir = _resolve_race_dir(config.year, config.gp)
+    config.gp = validate_gp_name(config.gp)
+    validate_radio_paths(config.year, config.gp)
+    _set_provider_env(config.provider)
+    laps_df = _load_laps_df(config.year)
     if not race_dir.exists():
         raise FileNotFoundError(f"Race directory not found: {race_dir}")
 
@@ -882,12 +884,12 @@ def simulate_race(config: SimConfig) -> Generator[dict[str, Any], None, None]:
             if lap_time_s:
                 prev_lap_time = float(lap_time_s)
             laps_processed += 1
-        except Exception as exc:
+        except Exception:
             logger.exception("Simulation error on lap %s", lap_num)
             state.error_laps += 1
             yield {
                 "type": "error",
-                "data": ErrorEvent(lap=lap_num, message=str(exc)).model_dump(),
+                "data": ErrorEvent(lap=lap_num, message=INTERNAL_ERROR).model_dump(),
             }
 
         if config.interval_s > 0:

@@ -38,6 +38,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from backend.core.public_errors import PROVIDER_ERROR, TOOL_ERROR
 from typing import Any, AsyncGenerator, Callable, Generator
 
 from backend.core.config import clamp_max_tokens
@@ -503,10 +504,13 @@ async def _safe_call_tool(name: str, args: dict[str, Any]) -> tuple[Any, str | N
     """Dispatch a tool through MCP, returning (data, error_message)."""
     try:
         data = await call_mcp_tool(name, args)
+        if isinstance(data, dict) and (data.get("error") or data.get("detail")):
+            logger.error("MCP tool %s returned an error: %r", name, data)
+            return None, TOOL_ERROR
         return data, None
-    except Exception as exc:
+    except Exception:
         logger.exception("MCP tool %s failed", name)
-        return None, str(exc)
+        return None, TOOL_ERROR
 
 
 async def _safe_send(
@@ -536,9 +540,9 @@ async def _safe_send(
             stream=False,
             tools=tools or None,
         )
-    except Exception as exc:
+    except Exception:
         logger.exception("LLM provider call failed")
-        return {"_llm_error": str(exc)}
+        return {"_llm_error": PROVIDER_ERROR}
 
 
 async def _bridge_sync_stream(make_generator: Callable[[], Generator[str, None, None]]) -> AsyncGenerator[str, None]:
@@ -768,5 +772,5 @@ def _done_metadata(response: dict[str, Any]) -> dict[str, Any]:
         "tokens_used": (response.get("usage") or {}).get("total_tokens"),
     }
     if response.get("_llm_error"):
-        metadata["error"] = str(response["_llm_error"])
+        metadata["error"] = PROVIDER_ERROR
     return metadata
