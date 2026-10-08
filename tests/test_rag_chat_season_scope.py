@@ -31,6 +31,7 @@ def _install_parent_import_stubs() -> None:
     augment.augment_featured_laps = lambda frame, *args, **kwargs: frame
     slugs = ModuleType("src.f1_strat_manager.gp_slugs")
     slugs.resolve_gp_key = lambda value: value
+    slugs.COUNTRY_SLUG_BY_GP = {}
     sys.modules.update(
         {
             "src": src,
