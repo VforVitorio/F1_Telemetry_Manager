@@ -27,7 +27,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Generator, Optional
+from typing import TYPE_CHECKING, Any, Generator, Optional
 
 import pandas as pd
 from pydantic import BaseModel, ConfigDict, Field
@@ -46,11 +46,11 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from backend.utils.laps_cache import get_laps_df  # noqa: E402
-from backend.utils.race_state_builder import build_race_state  # noqa: E402
-from src.agents.strategy_orchestrator import RaceState  # noqa: E402
 from src.simulation.replay_engine import RaceReplayEngine  # noqa: E402
 from src.strategy.inference.decision_memory import DecisionMemory  # noqa: E402
-from src.strategy.inference.engine import run_lap  # noqa: E402
+
+if TYPE_CHECKING:
+    from src.agents.strategy_orchestrator import RaceState
 
 logger = logging.getLogger(__name__)
 
@@ -365,6 +365,8 @@ def _local_build_race_state(
     even with the bunching plain in the lap times, because the RaceState reached
     the agents with an empty ``rcm_events`` (#459).
     """
+    from backend.utils.race_state_builder import build_race_state
+
     return build_race_state(
         lap_state,
         pace_delta_s=0.0,
@@ -855,6 +857,8 @@ def simulate_race(config: SimConfig) -> Generator[dict[str, Any], None, None]:
                 # about to be shown, and it cannot be recovered afterwards because
                 # recording this lap's own call changes it.
                 memory_block = decision_memory.block()
+                from src.strategy.inference.engine import run_lap
+
                 result, _agent_outputs, _timings = run_lap(
                     race_state, laps_df, lap_state, profile="rich", memory=decision_memory
                 )

@@ -3,16 +3,22 @@
 import json
 import os
 import subprocess
+import sys
+from types import ModuleType
 from pathlib import Path
 
 import pandas as pd
 import pytest
 
 if not os.getenv("F1_BOUNDARY_FULL"):
-    pytest.importorskip(
-        "src.f1_strat_manager.gp_slugs",
-        reason="Run F1_BOUNDARY_FULL=1 with parent source for mounted boundary coverage",
+    parent_source = Path(
+        os.environ.get("F1_PARENT_SOURCE", Path(__file__).resolve().parents[1].parents[1])
     )
+    if not (parent_source / "src" / "f1_strat_manager" / "gp_slugs.py").is_file():
+        pytest.skip(
+            "Run F1_BOUNDARY_FULL=1 with parent source for mounted boundary coverage",
+            allow_module_level=True,
+        )
 
 from backend.api.v1.endpoints import circuit_domination, comparison, strategy
 from backend.core.gp_paths import InvalidGPError, resolve_race_dir, resolve_radio_slug
@@ -258,12 +264,12 @@ def test_simulation_setup_failure_safe(mounted_client, monkeypatch, caplog):
 
 
 def test_agent_validation_failure_safe(mounted_client, monkeypatch, caplog):
-    from src.agents import pace_agent
-
     def fail(*args, **kwargs):
         raise ValueError(MARKER)
 
-    monkeypatch.setattr(pace_agent, "run_pace_agent_from_state", fail)
+    pace_agent = ModuleType("src.agents.pace_agent")
+    pace_agent.run_pace_agent_from_state = fail
+    monkeypatch.setitem(sys.modules, "src.agents.pace_agent", pace_agent)
     response = mounted_client.post("/api/v1/strategy/pace", json={"lap_state": {}})
     assert response.status_code == 422
     assert response.json()["detail"]["error"] == "invalid_request"
@@ -307,6 +313,7 @@ def test_per_lap_failure_on_real_replay(mounted_client, tmp_path, monkeypatch, c
     from backend.utils import laps_cache
 
     monkeypatch.setattr(laps_cache, "_cache", {})
+    monkeypatch.setattr(simulator, "_local_build_race_state", lambda *args, **kwargs: None)
 
     def fail(*args, **kwargs):
         raise RuntimeError(MARKER)
