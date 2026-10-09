@@ -26,6 +26,9 @@ from fastmcp import FastMCP
 # Repo-root injection (same pattern as strategy.py)
 # ---------------------------------------------------------------------------
 from backend.core.paths import get_repo_root
+from backend.core.gp_paths import InvalidGPError, resolve_race_dir, validate_gp_name, validate_radio_paths
+from backend.core.public_errors import TOOL_ERROR
+from fastmcp.exceptions import ToolError
 
 _REPO = get_repo_root()
 if str(_REPO) not in sys.path:
@@ -38,6 +41,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 mcp = FastMCP(
     "F1 Strategy Tools",
+    mask_error_details=True,
     instructions=(
         "Tools for real-time F1 race strategy analysis.  Each tool wraps a "
         "production ML agent (XGBoost, LightGBM, TCN, RoBERTa, LLM-RAG).  "
@@ -198,20 +202,19 @@ _GP_ALIASES: dict[str, str] = {
 def _normalize_gp_name(gp: str) -> str:
     """Map a free-form GP name (country / alias) to its canonical city form.
 
-    Returns the input unchanged when no alias matches — the parquet still
-    uses the canonical names directly, so a perfect match passes through.
-    Longer aliases (``red bull ring``, ``marina bay``) are checked first
-    so they win over single-word fragments.
+    Exact supported aliases remain valid. Unknown names and path syntax are
+    refused rather than matched by substrings that could erase traversal.
     """
-    if not gp:
-        return gp
+    # Reject path syntax before friendly alias normalization can erase it.
+    if not gp or any(char in gp for char in ("/", "\\", ":", "\x00")):
+        raise ToolInputError("Unknown or invalid Grand Prix")
     lower = gp.strip().lower()
     if lower in _GP_ALIASES:
         return _GP_ALIASES[lower]
-    for alias in sorted(_GP_ALIASES, key=len, reverse=True):
-        if alias in lower:
-            return _GP_ALIASES[alias]
-    return gp
+    try:
+        return validate_gp_name(gp)
+    except InvalidGPError as exc:
+        raise ToolInputError("Unknown or invalid Grand Prix") from exc
 
 
 # 3-letter driver codes for the 2023-2025 grids — matches the Driver
@@ -386,9 +389,22 @@ def _catch_tool_input_error(fn):
     @functools.wraps(fn)
     def wrapper(*args, **kwargs):
         try:
+            import inspect
+
+            arguments = inspect.signature(fn).bind(*args, **kwargs).arguments
+            if "gp" in arguments:
+                gp = _normalize_gp_name(arguments["gp"])
+                year = _normalize_year(arguments.get("year", 2025))
+                resolve_race_dir(year, gp)
+                validate_radio_paths(year, gp)
             return fn(*args, **kwargs)
         except ToolInputError as exc:
             return str(exc)
+        except InvalidGPError:
+            return "Unknown GP or unavailable race path."
+        except Exception as exc:
+            logger.exception("MCP tool %s failed", fn.__name__)
+            raise ToolError(TOOL_ERROR) from exc
 
     return wrapper
 

@@ -22,8 +22,13 @@ import pandas as pd
 # Repo-root injection — `src/agents/` must be importable from here
 # ---------------------------------------------------------------------------
 from backend.core.paths import get_data_root, get_repo_root
+from backend.core.gp_paths import (
+    InvalidGPError, contained_data_path, resolve_race_dir, resolve_radio_slug, validate_gp_name,
+    validate_radio_paths,
+)
+from backend.core.public_errors import INTERNAL_ERROR
 from backend.core.rate_limit import rate_limit
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -33,7 +38,33 @@ if str(_REPO_ROOT) not in sys.path:
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/strategy", tags=["strategy"])
+async def _validate_gp_boundary(request: Request) -> None:
+    """Reject GP paths before route dependencies load data or invoke agents."""
+    payload = {}
+    if request.method == "POST":
+        try:
+            payload = await request.json()
+        except json.JSONDecodeError:
+            return  # FastAPI retains its normal malformed-body validation.
+    if not isinstance(payload, dict):
+        return
+    lap_state = payload.get("lap_state") or {}
+    session_meta = lap_state.get("session_meta") if isinstance(lap_state, dict) else {}
+    session_meta = session_meta if isinstance(session_meta, dict) else {}
+    gps = (request.query_params.get("gp"), payload.get("gp"), payload.get("gp_name"), session_meta.get("gp_name"))
+    supplied_gps = [gp for gp in gps if gp is not None and gp != ""]
+    if not supplied_gps:
+        return
+    try:
+        year = int(request.query_params.get("year", payload.get("year", 2025)))
+        for gp in supplied_gps:
+            resolve_race_dir(year, gp)
+            validate_radio_paths(year, gp)
+    except (InvalidGPError, TypeError, ValueError) as exc:
+        raise HTTPException(400, detail="Unknown GP or unavailable race path.") from exc
+
+
+router = APIRouter(prefix="/strategy", tags=["strategy"], dependencies=[Depends(_validate_gp_boundary)])
 
 
 # ---------------------------------------------------------------------------
@@ -243,12 +274,13 @@ class StrategyError(BaseModel):
 
 def _agent_error(agent: str, exc: Exception, status: int = 500) -> HTTPException:
     """Build a structured error response."""
+    logger.error("%s failed", agent, exc_info=(type(exc), exc, exc.__traceback__))
     return HTTPException(
         status_code=status,
         detail=StrategyError(
-            error=type(exc).__name__,
+            error="invalid_request" if status in (400, 422) else "internal_error",
             agent=agent,
-            detail=str(exc),
+            detail="Invalid strategy input." if status in (400, 422) else INTERNAL_ERROR,
         ).model_dump(),
     )
 
@@ -321,21 +353,8 @@ _RACE_LAPS_CACHE: Dict[tuple, Optional[pd.DataFrame]] = {}
 
 
 def _resolve_race_dir(year: int, gp: str) -> Path:
-    """Map a featured GP_Name to its data/raw/<year>/<location> folder.
-
-    Mirrors the arcade's resolver: GP_TO_LOCATION covers the country->circuit
-    aliases (Qatar->Lusail, Miami->Miami_Gardens); the underscore variant covers
-    the FastF1 space-vs-underscore mismatch (Las Vegas->Las_Vegas). Falls back to
-    the primary candidate so the caller's "not found" message stays clean.
-    """
-    from src.arcade.config import GP_TO_LOCATION
-
-    base = _REPO_ROOT / "data" / "raw" / str(year)
-    folder = GP_TO_LOCATION.get(gp, gp)
-    candidate = base / folder
-    if candidate.exists():
-        return candidate
-    return base / folder.replace(" ", "_")
+    """Resolve the allowlisted raw race folder under the configured data root."""
+    return resolve_race_dir(year, gp)
 
 
 def _get_race_laps_df(year: int, gp: str) -> Optional[pd.DataFrame]:
@@ -347,11 +366,12 @@ def _get_race_laps_df(year: int, gp: str) -> Optional[pd.DataFrame]:
     pre-computes, so a raw row is interchangeable with a featured row in the
     lap_state builder.
     """
-    key = (year, gp)
+    race_dir = _resolve_race_dir(year, gp)
+    key = (year, gp, race_dir)
     if key in _RACE_LAPS_CACHE:
         return _RACE_LAPS_CACHE[key]
 
-    path = _resolve_race_dir(year, gp) / "laps.parquet"
+    path = race_dir / "laps.parquet"
     if not path.exists():
         logger.warning("Raw race parquet not found: %s", path)
         _RACE_LAPS_CACHE[key] = None
@@ -482,8 +502,14 @@ def get_lap_state(
             return None
         return frame[(frame["Driver"] == driver) & (frame["LapNumber"] == lap)]
 
+    try:
+        gp = validate_gp_name(gp)
+        _resolve_race_dir(year, gp)
+        validate_radio_paths(year, gp)
+    except InvalidGPError as exc:
+        raise HTTPException(400, detail="Unknown GP or unavailable race path.") from exc
     df = get_laps_df(year)
-    gp_df = df[df["GP_Name"] == gp] if df is not None else None
+    gp_df = df[df["GP_Name"] == _resolve_gp_key(set(df["GP_Name"]), gp)] if df is not None else None
     row = _lap_row(gp_df)
 
     if row is None or row.empty:
@@ -1361,6 +1387,8 @@ def _get_radio_runner(year: int, gp: str, laps_df: pd.DataFrame):
     request path — only the pre-parsed rcm.parquet is needed for the SC override.
     A missing corpus degrades to None (no RCM), never an error.
     """
+    gp = validate_gp_name(gp)
+    validate_radio_paths(year, gp)
     key = (year, gp)
     if key in _RADIO_RUNNER_CACHE:
         return _RADIO_RUNNER_CACHE[key]
@@ -1490,18 +1518,7 @@ def recommend_strategy(
 # ---------------------------------------------------------------------------
 
 # GP name → slug resolver (shared with CLI and radio runner)
-try:
-    from src.f1_strat_manager.gp_slugs import COUNTRY_SLUG_BY_GP, resolve_gp_slug
-except ImportError:
-    COUNTRY_SLUG_BY_GP = {}
-
-    def resolve_gp_slug(gp_name: str) -> str:  # type: ignore[misc]
-        return gp_name.lower().replace(" ", "_")
-
-
-def _radio_corpus_root() -> Path:
-    """Base path for the processed radio corpus."""
-    return get_data_root() / "processed" / "race_radios"
+from src.f1_strat_manager.gp_slugs import COUNTRY_SLUG_BY_GP
 
 
 def _transcript_cache_root() -> Path:
@@ -1529,11 +1546,12 @@ _RADIO_TRANSCRIPT_CACHE: Dict[tuple, dict] = {}
 
 def _get_radio_corpus(year: int, slug: str) -> Optional[pd.DataFrame]:
     """The radio parquet for one race, or None when the corpus is absent."""
-    key = (year, slug)
+    slug = resolve_radio_slug(slug)
+    path = contained_data_path("processed", "race_radios", str(year), slug, "radios.parquet")
+    key = (year, slug, path)
     if key in _RADIO_CORPUS_CACHE:
         return _RADIO_CORPUS_CACHE[key]
 
-    path = _radio_corpus_root() / str(year) / slug / "radios.parquet"
     frame = pd.read_parquet(path) if path.exists() else None
     _RADIO_CORPUS_CACHE[key] = frame
     return frame
@@ -1548,11 +1566,12 @@ def _get_radio_transcripts(year: int, slug: str) -> dict:
     the response rather than failing the request. It is logged rather than
     swallowed, which the previous bare ``except Exception: pass`` did not do.
     """
-    key = (year, slug)
+    slug = resolve_radio_slug(slug)
+    path = contained_data_path("processed", "radio_nlp", str(year), slug, "transcripts.json")
+    key = (year, slug, path)
     if key in _RADIO_TRANSCRIPT_CACHE:
         return _RADIO_TRANSCRIPT_CACHE[key]
 
-    path = _transcript_cache_root() / str(year) / slug / "transcripts.json"
     transcripts: dict = {}
     if path.exists():
         try:
@@ -1567,7 +1586,10 @@ def _get_radio_transcripts(year: int, slug: str) -> dict:
 @router.get("/radio-available-gps")
 def radio_available_gps(year: int = 2025):
     """Return GP names that have a radio corpus for the given year."""
-    corpus = _radio_corpus_root() / str(year)
+    try:
+        corpus = contained_data_path("processed", "race_radios", str(year))
+    except InvalidGPError as exc:
+        raise HTTPException(400, detail="Radio data path is unavailable.") from exc
     if not corpus.is_dir():
         return {"gps": []}
 
@@ -1590,9 +1612,9 @@ def radio_laps(gp: str, year: int = 2025, driver: Optional[str] = None):
     laps are returned.  Otherwise all drivers with radio are listed.
     """
     try:
-        slug = resolve_gp_slug(gp)
+        slug = validate_radio_paths(year, gp)
     except ValueError as exc:
-        raise HTTPException(400, detail=str(exc))
+        raise HTTPException(400, detail="Unknown GP or unavailable radio path.") from exc
 
     rdf = _get_radio_corpus(year, slug)
     if rdf is None:
@@ -1636,9 +1658,9 @@ def radio_laps(gp: str, year: int = 2025, driver: Optional[str] = None):
 def radio_transcript(gp: str, driver: str, lap: int, year: int = 2025):
     """Return the transcript text for a specific driver/lap radio message."""
     try:
-        slug = resolve_gp_slug(gp)
+        slug = validate_radio_paths(year, gp)
     except ValueError as exc:
-        raise HTTPException(400, detail=str(exc))
+        raise HTTPException(400, detail="Unknown GP or unavailable radio path.") from exc
 
     rdf = _get_radio_corpus(year, slug)
     if rdf is None:
@@ -1709,6 +1731,11 @@ def simulate(req: SimulateRequest):
     heartbeat comment is sent every 15 lap events so long runs survive proxy
     idle timeouts.
     """
+    try:
+        _resolve_race_dir(req.year, req.gp)
+        validate_radio_paths(req.year, req.gp)
+    except InvalidGPError as exc:
+        raise HTTPException(400, detail="Unknown GP or unavailable race path.") from exc
     from backend.services.simulation import SimConfig, simulate_race
 
     def event_stream():
@@ -1723,7 +1750,7 @@ def simulate(req: SimulateRequest):
                         yield ":\n\n"
         except Exception as exc:
             logger.error("Simulation stream failed: %s", exc, exc_info=True)
-            err = {"type": "error", "data": {"lap": 0, "message": str(exc)}}
+            err = {"type": "error", "data": {"lap": 0, "message": INTERNAL_ERROR}}
             yield f"data: {json.dumps(err)}\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")

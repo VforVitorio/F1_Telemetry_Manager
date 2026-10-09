@@ -14,6 +14,7 @@ import os
 import requests
 from typing import Dict, List, Any, Optional, Generator
 import logging
+from backend.core.public_errors import PROVIDER_ERROR
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +95,7 @@ def check_health() -> Dict[str, Any]:
                 "message": f"{provider} is running (provider={LLM_PROVIDER})"
             }
         else:
+            logger.error("Provider health returned HTTP %s: %s", response.status_code, response.text)
             return {
                 "status": "unhealthy",
                 "lm_studio_reachable": False,
@@ -102,7 +104,7 @@ def check_health() -> Dict[str, Any]:
 
     except requests.exceptions.ConnectionError:
         provider = "OpenAI" if _is_openai else "LM Studio"
-        logger.error("Cannot connect to %s", provider)
+        logger.exception("Cannot connect to %s", provider)
         return {
             "status": "unhealthy",
             "lm_studio_reachable": False,
@@ -114,7 +116,7 @@ def check_health() -> Dict[str, Any]:
         return {
             "status": "unhealthy",
             "lm_studio_reachable": False,
-            "message": str(e)
+            "message": PROVIDER_ERROR
         }
 
 
@@ -137,13 +139,16 @@ def get_available_models() -> List[str]:
                       for model in models_data.get("data", [])]
             return models
         else:
+            logger.error("Provider models returned HTTP %s: %s", response.status_code, response.text)
             raise LLMServiceError(
                 f"Failed to fetch models: HTTP {response.status_code}")
 
     except requests.exceptions.ConnectionError:
+        logger.exception("Provider model connection failed")
         raise LLMServiceError("Cannot connect to LM Studio")
     except Exception as e:
-        raise LLMServiceError(f"Error fetching models: {str(e)}")
+        logger.exception("Error fetching provider models")
+        raise LLMServiceError(PROVIDER_ERROR) from e
 
 
 def send_message(
@@ -234,24 +239,27 @@ def send_message(
         if response.status_code == 200:
             return response.json()
         elif response.status_code == 404:
+            logger.error("Provider returned HTTP 404: %s", response.text)
             raise LLMServiceError(
                 "LM Studio endpoint not found. "
                 "Ensure the server is started in LM Studio (Developer → Start Server)"
             )
         else:
-            raise LLMServiceError(
-                f"LM Studio returned HTTP {response.status_code}: {response.text}"
-            )
+            logger.error("Provider returned HTTP %s: %s", response.status_code, response.text)
+            raise LLMServiceError(PROVIDER_ERROR)
 
     except requests.exceptions.ConnectionError:
+        logger.exception("Provider message connection failed")
         raise LLMServiceError(
             "Cannot connect to LM Studio. "
             "Ensure LM Studio is running and the server is started on port 1234"
         )
     except requests.exceptions.Timeout:
+        logger.exception("Provider message timed out")
         raise LLMServiceError("Request to LM Studio timed out")
     except Exception as e:
-        raise LLMServiceError(f"Error sending message to LM Studio: {str(e)}")
+        logger.exception("Error sending provider message")
+        raise LLMServiceError(PROVIDER_ERROR) from e
 
 
 def stream_message(
@@ -321,16 +329,18 @@ def stream_message(
                         except json.JSONDecodeError:
                             continue
         else:
-            raise LLMServiceError(
-                f"LM Studio returned HTTP {response.status_code}: {response.text}"
-            )
+            logger.error("Provider returned HTTP %s: %s", response.status_code, response.text)
+            raise LLMServiceError(PROVIDER_ERROR)
 
     except requests.exceptions.ConnectionError:
+        logger.exception("Provider stream connection failed")
         raise LLMServiceError("Cannot connect to LM Studio")
     except requests.exceptions.Timeout:
+        logger.exception("Provider stream timed out")
         raise LLMServiceError("Request to LM Studio timed out")
     except Exception as e:
-        raise LLMServiceError(f"Error streaming from LM Studio: {str(e)}")
+        logger.exception("Error streaming provider message")
+        raise LLMServiceError(PROVIDER_ERROR) from e
 
 
 def _compress_chat_history(chat_history: List[Dict[str, Any]]) -> str:

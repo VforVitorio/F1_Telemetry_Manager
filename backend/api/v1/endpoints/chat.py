@@ -12,6 +12,7 @@ import uuid
 from fastapi import APIRouter, Depends, Header, HTTPException
 
 from backend.core.config import clamp_max_tokens
+from backend.core.public_errors import INTERNAL_ERROR, PROVIDER_ERROR
 from backend.core.rate_limit import rate_limit
 from fastapi.responses import StreamingResponse
 
@@ -53,7 +54,7 @@ async def health_check():
         return health_info
     except Exception as e:
         logger.error(f"Error checking health: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=INTERNAL_ERROR) from e
 
 
 @router.get("/models")
@@ -69,10 +70,10 @@ async def get_models():
         return {"models": models}
     except LLMServiceError as e:
         logger.error(f"LM Studio error: {e}")
-        raise HTTPException(status_code=503, detail=str(e))
+        raise HTTPException(status_code=503, detail=PROVIDER_ERROR) from e
     except Exception as e:
         logger.error(f"Error fetching models: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=INTERNAL_ERROR) from e
 
 
 @router.post("/message", response_model=ChatResponse, dependencies=[Depends(rate_limit("chat-message", capacity=10, per_minute=20))])
@@ -159,14 +160,14 @@ async def send_chat_message(request: ChatRequest):
                 logger.error(f"Retry without image also failed: {retry_error}")
                 raise HTTPException(
                     status_code=503,
-                    detail=f"LM Studio failed with image: {e}. Retry without image also failed: {retry_error}"
+                    detail=PROVIDER_ERROR
                 )
 
         # No image attached, or retry failed
-        raise HTTPException(status_code=503, detail=str(e))
+        raise HTTPException(status_code=503, detail=PROVIDER_ERROR) from e
     except Exception as e:
         logger.error(f"Error sending message: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=INTERNAL_ERROR) from e
 
 
 @router.post("/stream", dependencies=[Depends(rate_limit("chat-stream", capacity=10, per_minute=20))])
@@ -201,10 +202,10 @@ async def stream_chat_message(request: ChatRequest):
                     yield chunk
             except LLMServiceError as e:
                 logger.error(f"LM Studio streaming error: {e}")
-                yield f"\n\nError: {str(e)}"
+                yield f"\n\nError: {PROVIDER_ERROR}"
             except Exception as e:
                 logger.error(f"Streaming error: {e}")
-                yield f"\n\nError: {str(e)}"
+                yield f"\n\nError: {INTERNAL_ERROR}"
 
         return StreamingResponse(
             generate(),
@@ -213,7 +214,7 @@ async def stream_chat_message(request: ChatRequest):
 
     except Exception as e:
         logger.error(f"Error initializing stream: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=INTERNAL_ERROR) from e
 
 
 # ---------------------------------------------------------------------------
@@ -267,7 +268,8 @@ async def tool_message(
             max_tokens=request.max_tokens,
         )
         if result.get("error"):
-            raise HTTPException(status_code=503, detail=str(result["error"]))
+            logger.error("Tool chat provider failed: %s", result["error"])
+            raise HTTPException(status_code=503, detail=PROVIDER_ERROR)
         return ToolMessageResponse(
             response=result.get("response") or "No response from LLM.",
             llm_model=result.get("llm_model"),
@@ -276,9 +278,9 @@ async def tool_message(
         )
     except HTTPException:
         raise
-    except Exception as exc:
+    except Exception:
         logger.exception("tool_message failed")
-        return ToolMessageResponse(response=f"Error contacting the LLM: {exc}")
+        return ToolMessageResponse(response=PROVIDER_ERROR)
     finally:
         clear_stage(request_id)
 
@@ -313,10 +315,10 @@ async def tool_message_stream(
                 stream_tokens=request.stream_tokens,
             ):
                 yield _sse(event_name, payload)
-        except Exception as exc:
+        except Exception:
             logger.exception("tool_message_stream failed")
-            yield _sse("token", {"token": f"\n\nError: {exc}"})
-            yield _sse("done", {"error": str(exc)})
+            yield _sse("token", {"token": f"\n\nError: {INTERNAL_ERROR}"})
+            yield _sse("done", {"error": INTERNAL_ERROR})
         finally:
             clear_stage(request_id)
 

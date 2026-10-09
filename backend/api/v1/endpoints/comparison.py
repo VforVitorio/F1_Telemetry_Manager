@@ -7,6 +7,7 @@ Handles HTTP requests for telemetry comparison between two drivers.
 from fastapi import APIRouter, HTTPException, Query
 from typing import Dict
 import logging
+from backend.core.public_errors import DATA_ERROR, INTERNAL_ERROR
 
 from backend.services.comparison_service import prepare_comparison_data
 from backend.services.telemetry_service import (
@@ -184,12 +185,12 @@ async def compare_drivers(
     except ValueError as e:
         # Handle expected errors from telemetry service (session/driver/lap not found)
         logger.warning(f"ValueError: {e}")
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=404, detail=DATA_ERROR) from e
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error comparing drivers: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=500,
-            detail=f"Internal error processing comparison: {str(e)}"
+            detail=INTERNAL_ERROR
         )

@@ -53,7 +53,7 @@ def require_laps_df(year: int = 2025) -> pd.DataFrame:
     if df is None:
         raise HTTPException(
             status_code=503,
-            detail=f"Featured parquet (data/processed/laps_featured_{year}.parquet) not available.",
+            detail=f"Featured race data for {year} is not available.",
         )
     return df
 

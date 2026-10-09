@@ -31,10 +31,13 @@ def test_find_git_root_ignores_gitlink_file(tmp_path):
     assert paths._find_git_root(deep) == tmp_path
 
 
-def test_find_git_root_returns_none_without_git(tmp_path):
+def test_find_git_root_returns_none_without_git(tmp_path, monkeypatch):
     # No .git anywhere → None (get_repo_root then falls back to /app).
     d = tmp_path / "a" / "b"
     d.mkdir(parents=True)
+    # The test temp tree may itself live inside the active checkout.
+    is_dir = Path.is_dir
+    monkeypatch.setattr(Path, "is_dir", lambda path: False if path.name == ".git" else is_dir(path))
     assert paths._find_git_root(d) is None
 
 

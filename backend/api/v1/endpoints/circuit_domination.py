@@ -9,6 +9,7 @@ from fastapi import APIRouter, HTTPException, Query
 from typing import List
 from backend.services.telemetry_service import get_circuit_domination_data
 import logging
+from backend.core.public_errors import DATA_ERROR, INTERNAL_ERROR
 
 logger = logging.getLogger(__name__)
 
@@ -91,12 +92,12 @@ def get_circuit_domination(
     except ValueError as e:
         # Handle expected errors (session not found, no laps, etc.)
         logger.warning(f"ValueError: {e}")
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=404, detail=DATA_ERROR) from e
 
     except Exception as e:
         # Handle unexpected errors
         logger.error(f"Unexpected error: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
-            detail=f"Internal server error while processing telemetry data: {str(e)}"
+            detail=INTERNAL_ERROR
         )

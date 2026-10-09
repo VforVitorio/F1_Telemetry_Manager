@@ -69,6 +69,7 @@ dev = [
 ci = [
     "pytest>=8.4.2,<9.0.0",
     "pytest-asyncio>=1.0.0,<2.0.0",
+    "fastf1>=3.4.0",
     "requests>=2.31.0",
     "pydantic>=2.7.4,<3.0.0",
     "fastapi>=0.115.0,<0.137.0",
