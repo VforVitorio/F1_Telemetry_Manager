@@ -407,3 +407,26 @@ def test_radio_link_escape_before_any_loader(
     with pytest.raises(InvalidGPError):
         strategy._get_radio_runner(2025, "Australia", pd.DataFrame())
     assert not entered
+
+
+def test_radio_available_gps_rejects_escaped_year_directory(mounted_client, tmp_path, monkeypatch):
+    data = tmp_path / "data"
+    outside = tmp_path / "outside"
+    (outside / "canada").mkdir(parents=True)
+    monkeypatch.setenv("F1_STRAT_DATA_ROOT", str(data))
+    year_dir = data / "processed" / "race_radios" / "2025"
+    year_dir.parent.mkdir(parents=True)
+    if os.name == "nt":
+        completed = subprocess.run(
+            ["cmd", "/c", "mklink", "/J", str(year_dir), str(outside)],
+            capture_output=True,
+            text=True,
+        )
+        assert completed.returncode == 0, completed.stderr
+    else:
+        year_dir.symlink_to(outside, target_is_directory=True)
+
+    response = mounted_client.get("/api/v1/strategy/radio-available-gps", params={"year": 2025})
+
+    assert response.status_code == 400
+    assert "canada" not in response.text.casefold()

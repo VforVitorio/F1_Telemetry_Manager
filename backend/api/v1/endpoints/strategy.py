@@ -1521,11 +1521,6 @@ def recommend_strategy(
 from src.f1_strat_manager.gp_slugs import COUNTRY_SLUG_BY_GP
 
 
-def _radio_corpus_root() -> Path:
-    """Base path for the processed radio corpus."""
-    return get_data_root() / "processed" / "race_radios"
-
-
 def _transcript_cache_root() -> Path:
     """Base path for cached Whisper transcripts."""
     return get_data_root() / "processed" / "radio_nlp"
@@ -1591,7 +1586,10 @@ def _get_radio_transcripts(year: int, slug: str) -> dict:
 @router.get("/radio-available-gps")
 def radio_available_gps(year: int = 2025):
     """Return GP names that have a radio corpus for the given year."""
-    corpus = _radio_corpus_root() / str(year)
+    try:
+        corpus = contained_data_path("processed", "race_radios", str(year))
+    except InvalidGPError as exc:
+        raise HTTPException(400, detail="Radio data path is unavailable.") from exc
     if not corpus.is_dir():
         return {"gps": []}
 
