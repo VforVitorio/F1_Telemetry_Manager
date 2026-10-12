@@ -13,6 +13,24 @@ load_dotenv(Path(__file__).resolve().parent.parent.parent / ".env", override=Tru
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:8501")
 
 
+def resolve_simulation_provider(requested: str | None = None) -> str:
+    """Return the process provider and reject per-request provider switching.
+
+    The strategy agents read ``F1_LLM_PROVIDER`` and cache their clients. Match
+    the orchestrator's existing fallback: only the exact value ``openai``
+    selects OpenAI; every other value uses LM Studio.
+    """
+    configured = os.getenv("F1_LLM_PROVIDER", "lmstudio")
+    process_provider = "openai" if configured == "openai" else "lmstudio"
+    if requested is not None and requested != process_provider:
+        raise ValueError(
+            f"Requested provider '{requested}' conflicts with backend process provider "
+            f"'{process_provider}'. Set F1_LLM_PROVIDER={requested} and restart the backend; "
+            "provider switching per request is unsupported."
+        )
+    return process_provider
+
+
 def _env_flag(name: str, *, default: bool) -> bool:
     """Read a boolean env var, accepting ``1/true/yes/on`` (case-insensitive)."""
     raw = os.getenv(name)
