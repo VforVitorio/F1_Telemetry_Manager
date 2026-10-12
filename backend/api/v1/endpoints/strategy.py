@@ -1760,11 +1760,16 @@ def simulate(req: SimulateRequest):
         raise HTTPException(400, detail="Unknown GP or unavailable race path.") from exc
     from backend.services.simulation import SimConfig, simulate_race
 
+    config = SimConfig(**req.model_dump(exclude={"provider"}), provider=provider)
+    try:
+        simulation = simulate_race(config)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
     def event_stream():
-        config = SimConfig(**req.model_dump(exclude={"provider"}), provider=provider)
         lap_count = 0
         try:
-            for event in simulate_race(config):
+            for event in simulation:
                 yield f"data: {json.dumps(event, default=str)}\n\n"
                 if event.get("type") == "lap":
                     lap_count += 1

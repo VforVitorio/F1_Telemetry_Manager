@@ -747,6 +747,14 @@ def _finalize_summary(
 
 
 def simulate_race(config: SimConfig) -> Generator[dict[str, Any], None, None]:
+    """Validate the configured provider before returning the deferred event stream."""
+    provider = resolve_simulation_provider(config.provider)
+    return _simulate_race(config, provider)
+
+
+def _simulate_race(
+    config: SimConfig, provider: str
+) -> Generator[dict[str, Any], None, None]:
     """Yield a ``start`` event, one ``lap`` per lap, and a closing ``summary``.
 
     The generator is exception-safe at the lap level: a per-lap failure emits
@@ -755,7 +763,6 @@ def simulate_race(config: SimConfig) -> Generator[dict[str, Any], None, None]:
     in setup (missing parquet, unreadable race dir) propagates instead \u2014 the
     endpoint wraps those as a final ``error`` frame before closing.
     """
-    provider = resolve_simulation_provider(config.provider)
     race_dir = _resolve_race_dir(config.year, config.gp)
     config.gp = validate_gp_name(config.gp)
     validate_radio_paths(config.year, config.gp)
