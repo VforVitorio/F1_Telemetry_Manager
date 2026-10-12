@@ -21,7 +21,6 @@ instead of missing every one of them.
 from __future__ import annotations
 
 import logging
-import os
 import sys
 import time
 from dataclasses import dataclass, field
@@ -37,8 +36,9 @@ from pydantic import BaseModel, ConfigDict, Field
 # module is loaded standalone (smoke tests, MCP tools) without the FastAPI
 # startup path having injected ``_REPO_ROOT`` first.
 # ---------------------------------------------------------------------------
+from backend.core.config import resolve_simulation_provider
+from backend.core.gp_paths import resolve_race_dir, validate_gp_name, validate_radio_paths
 from backend.core.paths import get_data_root, get_repo_root
-from backend.core.gp_paths import resolve_race_dir, validate_radio_paths, validate_gp_name
 from backend.core.public_errors import INTERNAL_ERROR
 
 _REPO_ROOT = get_repo_root()
@@ -191,19 +191,6 @@ class RunSummary(BaseModel):
 # ---------------------------------------------------------------------------
 # Path / environment helpers
 # ---------------------------------------------------------------------------
-
-
-def _set_provider_env(provider: Optional[str]) -> None:
-    """Propagate the LLM provider choice to the orchestrator singleton.
-
-    The orchestrator reads ``F1_LLM_PROVIDER`` the first time it builds its
-    structured-output client (see ``strategy_orchestrator._get_orchestrator_llm``),
-    so setting it here before any agent call is enough. This is a process-wide
-    side effect. ``None`` leaves the shell or ``.env`` value untouched; callers
-    running multiple providers concurrently still need their own process isolation.
-    """
-    if provider is not None:
-        os.environ["F1_LLM_PROVIDER"] = provider
 
 
 def _data_root() -> Path:
@@ -768,10 +755,10 @@ def simulate_race(config: SimConfig) -> Generator[dict[str, Any], None, None]:
     in setup (missing parquet, unreadable race dir) propagates instead \u2014 the
     endpoint wraps those as a final ``error`` frame before closing.
     """
+    provider = resolve_simulation_provider(config.provider)
     race_dir = _resolve_race_dir(config.year, config.gp)
     config.gp = validate_gp_name(config.gp)
     validate_radio_paths(config.year, config.gp)
-    _set_provider_env(config.provider)
     laps_df = _load_laps_df(config.year)
     if not race_dir.exists():
         raise FileNotFoundError(f"Race directory not found: {race_dir}")
@@ -797,7 +784,7 @@ def simulate_race(config: SimConfig) -> Generator[dict[str, Any], None, None]:
             lap_end=lap_end,
             total_laps=total_laps,
             no_llm=config.no_llm,
-            provider=config.provider or os.environ.get("F1_LLM_PROVIDER", "lmstudio"),
+            provider=provider,
             timestamp=datetime.now(timezone.utc).isoformat(),
         ).model_dump(),
     }

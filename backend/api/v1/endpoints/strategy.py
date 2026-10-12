@@ -21,11 +21,16 @@ import pandas as pd
 # ---------------------------------------------------------------------------
 # Repo-root injection — `src/agents/` must be importable from here
 # ---------------------------------------------------------------------------
-from backend.core.paths import get_data_root, get_repo_root
+from backend.core.config import resolve_simulation_provider
 from backend.core.gp_paths import (
-    InvalidGPError, contained_data_path, resolve_race_dir, resolve_radio_slug, validate_gp_name,
+    InvalidGPError,
+    contained_data_path,
+    resolve_race_dir,
+    resolve_radio_slug,
+    validate_gp_name,
     validate_radio_paths,
 )
+from backend.core.paths import get_data_root, get_repo_root
 from backend.core.public_errors import INTERNAL_ERROR
 from backend.core.rate_limit import rate_limit
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -1717,11 +1722,23 @@ class SimulateRequest(BaseModel):
     lap_range: Optional[tuple[int, int]] = None
     risk_tolerance: float = Field(0.5, ge=0.0, le=1.0)
     no_llm: bool = False
-    provider: Optional[str] = Field(None, pattern="^(lmstudio|openai)$")
+    provider: Optional[str] = Field(
+        None,
+        pattern="^(lmstudio|openai)$",
+        description="Optional provider assertion. It must match the backend process configuration.",
+    )
     interval_s: float = Field(0.0, ge=0.0, le=10.0)
 
 
-@router.post("/simulate", dependencies=[Depends(rate_limit("simulate", capacity=3, per_minute=3))])
+@router.post(
+    "/simulate",
+    dependencies=[Depends(rate_limit("simulate", capacity=3, per_minute=3))],
+    responses={
+        409: {
+            "description": "The requested provider differs from the backend process provider."
+        }
+    },
+)
 def simulate(req: SimulateRequest):
     """Stream per-lap strategy decisions as Server-Sent Events.
 
@@ -1732,6 +1749,11 @@ def simulate(req: SimulateRequest):
     idle timeouts.
     """
     try:
+        provider = resolve_simulation_provider(req.provider)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    try:
         _resolve_race_dir(req.year, req.gp)
         validate_radio_paths(req.year, req.gp)
     except InvalidGPError as exc:
@@ -1739,7 +1761,7 @@ def simulate(req: SimulateRequest):
     from backend.services.simulation import SimConfig, simulate_race
 
     def event_stream():
-        config = SimConfig(**req.model_dump())
+        config = SimConfig(**req.model_dump(exclude={"provider"}), provider=provider)
         lap_count = 0
         try:
             for event in simulate_race(config):
