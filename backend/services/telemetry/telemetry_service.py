@@ -1,8 +1,13 @@
-from .fastf1_client import SessionData
-import pandas as pd
-import numpy as np
+import logging
+from typing import Dict, List
+
 import fastf1
-from typing import List, Dict
+import numpy as np
+import pandas as pd
+
+from .fastf1_client import SessionData
+
+logger = logging.getLogger(__name__)
 
 
 def get_telemetry_data_from_db(year: int, gp: str, session: str, drivers: list):
@@ -72,14 +77,14 @@ def get_available_sessions(year: int, gp: str) -> List[str]:
         # R: Main Race
         session_names = ['FP1', 'FP2', 'FP3', 'SQ', 'Q', 'S', 'R']
 
-        # Try to verify which sessions exist
+        event = fastf1.get_event(year, gp)
         sessions = []
         for session_name in session_names:
             try:
-                session = fastf1.get_session(year, gp, session_name)
+                session = event.get_session(session_name)
                 if session is not None:
                     sessions.append(session_name)
-            except:
+            except ValueError:
                 continue
 
         print(f"Available sessions for {year} {gp}: {sessions}")
@@ -198,8 +203,13 @@ def get_lap_times(year: int, gp: str, session: str, drivers: List[str]) -> List[
                 try:
                     lap_time_td = lap['LapTime']
                     lap_time_seconds = lap_time_td.total_seconds()
-                except:
-                    pass
+                except AttributeError:
+                    logger.warning(
+                        "Skipping lap %s for %s: unsupported LapTime type %s",
+                        lap.get('LapNumber', 'unknown'),
+                        lap.get('Driver', 'unknown'),
+                        type(lap['LapTime']).__name__,
+                    )
 
             if lap_time_seconds:
                 # Get compound (tyre type) - convert to lowercase for consistency
