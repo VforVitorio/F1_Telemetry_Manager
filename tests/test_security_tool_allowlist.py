@@ -19,16 +19,27 @@ from backend.services.chatbot import chat_engine, mcp_bridge
 
 # The real dispatched MCP names (must match the system-prompt cheat sheet).
 _REAL_TOOL_NAMES = {
-    "predict_pace", "predict_tire", "predict_situation", "predict_pit",
-    "analyze_radio", "list_available_gps", "list_available_drivers",
-    "get_lap_range", "query_regulations", "recommend_strategy",
-    "compare_drivers", "get_lap_times", "get_telemetry", "get_race_data",
+    "predict_pace",
+    "predict_tire",
+    "predict_situation",
+    "predict_pit",
+    "analyze_radio",
+    "list_available_gps",
+    "list_available_drivers",
+    "get_lap_range",
+    "query_regulations",
+    "recommend_strategy",
+    "compare_drivers",
+    "get_lap_times",
+    "get_telemetry",
+    "get_race_data",
 }
 
 
 # ---------------------------------------------------------------------------
 # The allowlist itself
 # ---------------------------------------------------------------------------
+
 
 def test_all_real_tools_are_allowed():
     for name in _REAL_TOOL_NAMES:
@@ -58,6 +69,7 @@ def test_a_mutating_tool_would_not_be_allowed(monkeypatch):
 # Chokepoint 1 — mcp_bridge filter (model never sees a non-allowed tool)
 # ---------------------------------------------------------------------------
 
+
 async def test_list_openai_tools_filters_disallowed(monkeypatch):
     fake_tools = [
         SimpleNamespace(name="predict_pace", description="d", inputSchema={"type": "object"}),
@@ -77,6 +89,7 @@ async def test_list_openai_tools_filters_disallowed(monkeypatch):
 # ---------------------------------------------------------------------------
 # Chokepoint 2 — chat_engine dispatch guard (hallucination never dispatched)
 # ---------------------------------------------------------------------------
+
 
 async def test_dispatch_guard_refuses_disallowed_tool(monkeypatch):
     called: list[str] = []
@@ -106,9 +119,11 @@ async def test_dispatch_guard_refuses_disallowed_tool(monkeypatch):
 
 async def test_dispatch_allows_allowlisted_tool(monkeypatch):
     called: list[str] = []
+    request_ids: list[str] = []
 
-    async def spy_call(name, args):
+    async def spy_call(name, args, *, request_id):
         called.append(name)
+        request_ids.append(request_id)
         return {"ok": True}, None
 
     async def spy_send(messages, **kwargs):
@@ -130,4 +145,5 @@ async def test_dispatch_allows_allowlisted_tool(monkeypatch):
         )
     ]
     assert called == ["predict_pace"]
+    assert request_ids == ["r1"]
     assert "tool_result" in [name for name, _ in events]

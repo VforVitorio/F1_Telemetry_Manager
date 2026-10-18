@@ -1,6 +1,7 @@
-"""Public chat failures retain diagnostics without leaking provider or tool text."""
+"""Public chat failures keep safe diagnostics without logging private text."""
 
 import json
+import logging
 
 import pytest
 from backend.api.v1.endpoints import chat
@@ -21,11 +22,16 @@ def test_provider_body_never_reaches_public_frames(
 
     monkeypatch.setattr(chat_engine, "list_openai_tools", no_tools)
     fake_openai.push_error(500, MARKER)
+    caplog.set_level(logging.INFO, logger=llm_service.logger.name)
     response = chat_app_client.post(f"/api/v1/chat/{path}", json={"text": "hello"})
     assert response.status_code == status
     assert MARKER.split()[0] not in response.text
     assert "provider_unavailable" in response.text
-    assert MARKER.split()[0] in caplog.text
+    assert MARKER not in caplog.text
+    expected = (
+        "Provider stream returned HTTP 500" if path == "stream" else "Provider returned HTTP 500"
+    )
+    assert expected in caplog.text
 
 
 @pytest.mark.parametrize("path", ["tool-message", "tool-message-stream"])
@@ -44,7 +50,7 @@ def test_tool_failures_safe_before_summary(
             }
         ]
 
-    async def failing_tool(name, args):
+    async def failing_tool(name, args, *, request_id=None):
         if returned_error:
             return {"error": MARKER, "detail": MARKER}
         raise FileNotFoundError(MARKER)
@@ -53,12 +59,13 @@ def test_tool_failures_safe_before_summary(
     monkeypatch.setattr(chat_engine, "call_mcp_tool", failing_tool)
     fake_openai.push_tool_call("predict_pace", {})
     fake_openai.push_text("Please try another lap.")
+    caplog.set_level(logging.INFO)
     response = chat_app_client.post(f"/api/v1/chat/{path}", json={"text": "predict pace"})
     assert response.status_code == 200
     assert "tool_failed" in response.text
     assert MARKER.split()[0] not in response.text
     assert MARKER.split()[0] not in json.dumps(fake_openai.requests[-1])
-    assert MARKER.split()[0] in caplog.text
+    assert MARKER not in caplog.text
 
 
 @pytest.mark.parametrize(
@@ -84,7 +91,8 @@ def test_chat_unexpected_exceptions(
     )
     assert response.status_code == status
     assert MARKER.split()[0] not in response.text
-    assert MARKER in caplog.text
+    assert MARKER not in caplog.text
+    assert "RuntimeError" in caplog.text
 
 
 def test_health_service_error_as_data(monkeypatch, chat_app_client, caplog):
@@ -95,10 +103,11 @@ def test_health_service_error_as_data(monkeypatch, chat_app_client, caplog):
     response = chat_app_client.get("/api/v1/chat/health")
     assert response.json()["status"] == "unhealthy"
     assert MARKER.split()[0] not in response.text
-    assert MARKER in caplog.text
+    assert MARKER not in caplog.text
+    assert "RuntimeError" in caplog.text
 
 
-def test_image_retry_retains_logs(chat_app_client, monkeypatch, caplog):
+def test_image_retry_logs_error_type_without_message(chat_app_client, monkeypatch, caplog):
     def fail(*args, **kwargs):
         raise llm_service.LLMServiceError(MARKER)
 
@@ -106,7 +115,8 @@ def test_image_retry_retains_logs(chat_app_client, monkeypatch, caplog):
     response = chat_app_client.post("/api/v1/chat/message", json={"text": "hello", "image": "YWJj"})
     assert response.status_code == 503
     assert MARKER.split()[0] not in response.text
-    assert MARKER in caplog.text
+    assert MARKER not in caplog.text
+    assert "LLMServiceError" in caplog.text
 
 
 @pytest.mark.parametrize("path", ["tool-message", "tool-message-stream"])
@@ -124,7 +134,8 @@ def test_tool_route_unexpected_failure(path, chat_app_client, monkeypatch, caplo
     assert response.status_code == 200
     assert "error" in response.text.lower() or "provider_unavailable" in response.text
     assert MARKER.split()[0] not in response.text
-    assert MARKER in caplog.text
+    assert MARKER not in caplog.text
+    assert "RuntimeError" in caplog.text
 
 
 @pytest.mark.parametrize(
@@ -144,4 +155,5 @@ def test_provider_transport_diagnostics(exception, path, chat_app_client, monkey
         response = chat_app_client.post(f"/api/v1/chat/{path}", json={"text": "hello"})
     assert response.status_code == (200 if path in ("stream", "health") else 503)
     assert MARKER.split()[0] not in response.text
-    assert MARKER in caplog.text
+    assert MARKER not in caplog.text
+    assert exception.__name__ in caplog.text

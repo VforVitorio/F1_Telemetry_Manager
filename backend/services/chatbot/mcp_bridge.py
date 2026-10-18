@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import json
 import logging
+from contextlib import nullcontext
 from typing import Any
 
 from backend.models.tool_schemas import is_tool_allowed
@@ -34,6 +35,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Schema helpers — pure functions, no MCP import (kept testable in isolation)
 # ---------------------------------------------------------------------------
+
 
 def _normalize_input_schema(schema: Any) -> dict[str, Any]:
     """Return a JSON-Schema object suitable for OpenAI's ``parameters`` field.
@@ -80,7 +82,9 @@ def coerce_tool_arguments(raw_arguments: Any) -> dict[str, Any]:
     try:
         parsed = json.loads(raw_arguments)
     except (TypeError, json.JSONDecodeError):
-        logger.warning("Could not parse tool arguments JSON: %r", raw_arguments)
+        logger.warning(
+            "Could not parse tool arguments JSON (input type=%s)", type(raw_arguments).__name__
+        )
         return {}
     return parsed if isinstance(parsed, dict) else {}
 
@@ -88,6 +92,7 @@ def coerce_tool_arguments(raw_arguments: Any) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 # FastMCP-backed bridge — async API
 # ---------------------------------------------------------------------------
+
 
 async def list_openai_tools() -> list[dict[str, Any]]:
     """Fetch every tool registered with the FastMCP server in OpenAI format.
@@ -109,7 +114,12 @@ async def list_openai_tools() -> list[dict[str, Any]]:
     ]
 
 
-async def call_mcp_tool(name: str, arguments: dict[str, Any]) -> Any:
+async def call_mcp_tool(
+    name: str,
+    arguments: dict[str, Any],
+    *,
+    request_id: str | None = None,
+) -> Any:
     """Dispatch a tool call by name through the MCP client and return the data.
 
     The MCP client returns a structured ``CallToolResult`` whose ``data``
@@ -120,15 +130,19 @@ async def call_mcp_tool(name: str, arguments: dict[str, Any]) -> Any:
     Errors from the tool propagate up untouched.
     """
     from fastmcp import Client
-    from backend.mcp_tools import mcp, _mount_openapi_tools  # noqa: F401
+
+    from backend.core.mcp_audit import chat_tool_request
+    from backend.mcp_tools import _mount_openapi_tools, mcp  # noqa: F401
 
     # Idempotent: ensures Phase 2 telemetry tools are mounted before the
     # client lists them.  The startup hook in main.py also calls this; the
     # second call is a no-op thanks to the _openapi_mounted flag.
     _mount_openapi_tools()
 
-    async with Client(mcp) as client:
-        result = await client.call_tool(name, arguments or {})
+    audit_context = chat_tool_request(request_id) if request_id is not None else nullcontext()
+    with audit_context:
+        async with Client(mcp) as client:
+            result = await client.call_tool(name, arguments or {})
 
     raw = getattr(result, "data", None)
     if raw is None:
@@ -161,7 +175,8 @@ def _coerce_tool_payload(raw: Any) -> Any:
 async def _fetch_tools() -> list[Any]:
     """Connect once and return the live tool list. Internal helper."""
     from fastmcp import Client
-    from backend.mcp_tools import mcp, _mount_openapi_tools
+
+    from backend.mcp_tools import _mount_openapi_tools, mcp
 
     _mount_openapi_tools()
     async with Client(mcp) as client:

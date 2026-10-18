@@ -14,6 +14,7 @@ import os
 import requests
 from typing import Dict, List, Any, Optional, Generator
 import logging
+from backend.core.config import configured_chat_provider, provider_api_urls
 from backend.core.public_errors import PROVIDER_ERROR
 
 logger = logging.getLogger(__name__)
@@ -21,29 +22,27 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Provider configuration
 # ---------------------------------------------------------------------------
-LLM_PROVIDER = os.getenv("F1_LLM_PROVIDER", os.getenv("LLM_PROVIDER", "lmstudio"))  # "lmstudio" | "openai"
+LLM_PROVIDER = configured_chat_provider()
 
 # LM Studio (local)
-_LM_HOST = os.getenv("LM_STUDIO_HOST", "localhost")
-LM_STUDIO_URL = f"http://{_LM_HOST}:1234/v1/chat/completions"
-LM_STUDIO_MODELS_URL = f"http://{_LM_HOST}:1234/v1/models"
-
-# OpenAI (cloud)
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
-OPENAI_URL = "https://api.openai.com/v1/chat/completions"
-OPENAI_MODELS_URL = "https://api.openai.com/v1/models"
 OPENAI_DEFAULT_MODEL = os.getenv("OPENAI_CHAT_MODEL", "gpt-5.4-mini")
 
-# Derived — which URLs to actually use
+# Resolve provider URLs once at startup, from the same configuration module as
+# the backend's other provider settings. The provider is process-scoped.
 _is_openai = LLM_PROVIDER.lower() == "openai"
-COMPLETIONS_URL = OPENAI_URL if _is_openai else LM_STUDIO_URL
-MODELS_URL = OPENAI_MODELS_URL if _is_openai else LM_STUDIO_MODELS_URL
+COMPLETIONS_URL, MODELS_URL = provider_api_urls(LLM_PROVIDER)
 # Every provider call gets a FINITE timeout so a hung backend (a stuck local
 # model, a dead socket) errors instead of freezing the server forever
 # (Security S-5 / LLM-cost L-1). LM Studio gets a more generous default because
 # a large local model on modest hardware is legitimately slow; both are
 # overridable via F1_LLM_TIMEOUT (seconds).
 DEFAULT_TIMEOUT = float(os.getenv("F1_LLM_TIMEOUT", "60" if _is_openai else "120"))
+
+
+def _log_provider_failure(operation: str, error: BaseException) -> None:
+    """Record provider failure type without logging response or prompt contents."""
+    logger.error("Provider operation %s failed (%s)", operation, type(error).__name__)
 
 
 def _headers() -> dict:
@@ -69,6 +68,7 @@ def _default_model(override: Optional[str] = None) -> Optional[str]:
 
 class LLMServiceError(Exception):
     """Custom exception for LLM service errors (LM Studio or OpenAI)."""
+
     pass
 
 
@@ -92,32 +92,28 @@ def check_health() -> Dict[str, Any]:
                 "status": "healthy",
                 "lm_studio_reachable": True,
                 "models_available": len(models.get("data", [])),
-                "message": f"{provider} is running (provider={LLM_PROVIDER})"
+                "message": f"{provider} is running (provider={LLM_PROVIDER})",
             }
         else:
-            logger.error("Provider health returned HTTP %s: %s", response.status_code, response.text)
+            logger.error("Provider health returned HTTP %s", response.status_code)
             return {
                 "status": "unhealthy",
                 "lm_studio_reachable": False,
-                "message": f"{provider} returned status {response.status_code}"
+                "message": f"{provider} returned status {response.status_code}",
             }
 
-    except requests.exceptions.ConnectionError:
+    except requests.exceptions.ConnectionError as exc:
         provider = "OpenAI" if _is_openai else "LM Studio"
-        logger.exception("Cannot connect to %s", provider)
+        _log_provider_failure(f"{provider} health", exc)
         return {
             "status": "unhealthy",
             "lm_studio_reachable": False,
             "message": f"Cannot connect to {provider}. "
-                       f"{'Check OPENAI_API_KEY' if _is_openai else 'Ensure LM Studio is running on port 1234'}"
+            f"{'Check OPENAI_API_KEY' if _is_openai else 'Ensure LM Studio is running on port 1234'}",
         }
-    except Exception as e:
-        logger.error(f"Error checking LM Studio health: {e}")
-        return {
-            "status": "unhealthy",
-            "lm_studio_reachable": False,
-            "message": PROVIDER_ERROR
-        }
+    except Exception as exc:
+        _log_provider_failure("health check", exc)
+        return {"status": "unhealthy", "lm_studio_reachable": False, "message": PROVIDER_ERROR}
 
 
 def get_available_models() -> List[str]:
@@ -135,20 +131,18 @@ def get_available_models() -> List[str]:
 
         if response.status_code == 200:
             models_data = response.json()
-            models = [model.get("id", "")
-                      for model in models_data.get("data", [])]
+            models = [model.get("id", "") for model in models_data.get("data", [])]
             return models
         else:
-            logger.error("Provider models returned HTTP %s: %s", response.status_code, response.text)
-            raise LLMServiceError(
-                f"Failed to fetch models: HTTP {response.status_code}")
+            logger.error("Provider models returned HTTP %s", response.status_code)
+            raise LLMServiceError(f"Failed to fetch models: HTTP {response.status_code}")
 
-    except requests.exceptions.ConnectionError:
-        logger.exception("Provider model connection failed")
+    except requests.exceptions.ConnectionError as exc:
+        _log_provider_failure("model discovery connection", exc)
         raise LLMServiceError("Cannot connect to LM Studio")
-    except Exception as e:
-        logger.exception("Error fetching provider models")
-        raise LLMServiceError(PROVIDER_ERROR) from e
+    except Exception as exc:
+        _log_provider_failure("model discovery", exc)
+        raise LLMServiceError(PROVIDER_ERROR) from exc
 
 
 def send_message(
@@ -198,7 +192,7 @@ def send_message(
             "messages": messages,
             "temperature": temperature,
             token_key: max_tokens,
-            "stream": stream
+            "stream": stream,
         }
 
         if tools:
@@ -208,65 +202,52 @@ def send_message(
         if resolved_model:
             payload["model"] = resolved_model
 
-        # Log payload structure (without full base64 to avoid log spam)
-        logger.debug(
-            f"Sending request to LM Studio with {len(messages)} messages")
+        # Log request shape only. Message text, image data, headers, and API keys
+        # can all contain private or secret material.
+        logger.debug("Sending provider request with %d messages", len(messages))
         for i, msg in enumerate(messages):
             role = msg.get("role", "unknown")
             content = msg.get("content")
             if isinstance(content, list):
-                logger.debug(
-                    f"  Message {i}: role={role}, multimodal with {len(content)} parts")
-                for j, part in enumerate(content):
-                    part_type = part.get("type", "unknown")
-                    if part_type == "image_url":
-                        url = part.get("image_url", {}).get("url", "")
-                        logger.debug(
-                            f"    Part {j}: type={part_type}, url_prefix={url[:50]}...")
-                    else:
-                        logger.debug(f"    Part {j}: type={part_type}")
+                logger.debug("Message %d: role=%s, multimodal_parts=%d", i, role, len(content))
             else:
-                logger.debug(
-                    f"  Message {i}: role={role}, text={str(content)[:100]}...")
+                logger.debug("Message %d: role=%s, text_content=true", i, role)
 
         response = requests.post(
-            COMPLETIONS_URL,
-            headers=_headers(),
-            json=payload,
-            timeout=DEFAULT_TIMEOUT
+            COMPLETIONS_URL, headers=_headers(), json=payload, timeout=DEFAULT_TIMEOUT
         )
 
         if response.status_code == 200:
             return response.json()
         elif response.status_code == 404:
-            logger.error("Provider returned HTTP 404: %s", response.text)
+            logger.error("Provider returned HTTP 404")
             raise LLMServiceError(
                 "LM Studio endpoint not found. "
                 "Ensure the server is started in LM Studio (Developer → Start Server)"
             )
         else:
-            logger.error("Provider returned HTTP %s: %s", response.status_code, response.text)
+            logger.error("Provider returned HTTP %s", response.status_code)
             raise LLMServiceError(PROVIDER_ERROR)
 
-    except requests.exceptions.ConnectionError:
-        logger.exception("Provider message connection failed")
+    except requests.exceptions.ConnectionError as exc:
+        _log_provider_failure("message connection", exc)
         raise LLMServiceError(
             "Cannot connect to LM Studio. "
             "Ensure LM Studio is running and the server is started on port 1234"
         )
-    except requests.exceptions.Timeout:
-        logger.exception("Provider message timed out")
+    except requests.exceptions.Timeout as exc:
+        _log_provider_failure("message timeout", exc)
         raise LLMServiceError("Request to LM Studio timed out")
-    except Exception as e:
-        logger.exception("Error sending provider message")
-        raise LLMServiceError(PROVIDER_ERROR) from e
+    except Exception as exc:
+        _log_provider_failure("message request", exc)
+        raise LLMServiceError(PROVIDER_ERROR) from exc
 
 
 def stream_message(
     messages: List[Dict[str, str]],
     model: Optional[str] = None,
     temperature: float = 0.7,
-    max_tokens: int = 1000
+    max_tokens: int = 1000,
 ) -> Generator[str, None, None]:
     """
     Send a message to LM Studio and stream the response.
@@ -290,24 +271,20 @@ def stream_message(
             "messages": messages,
             "temperature": temperature,
             "max_completion_tokens" if _is_openai else "max_tokens": max_tokens,
-            "stream": True
+            "stream": True,
         }
 
         if resolved_model:
             payload["model"] = resolved_model
 
         response = requests.post(
-            COMPLETIONS_URL,
-            headers=_headers(),
-            json=payload,
-            stream=True,
-            timeout=DEFAULT_TIMEOUT
+            COMPLETIONS_URL, headers=_headers(), json=payload, stream=True, timeout=DEFAULT_TIMEOUT
         )
 
         if response.status_code == 200:
             for line in response.iter_lines():
                 if line:
-                    line_str = line.decode('utf-8')
+                    line_str = line.decode("utf-8")
                     # SSE format: "data: {...}"
                     if line_str.startswith("data: "):
                         data_str = line_str[6:]  # Remove "data: " prefix
@@ -318,6 +295,7 @@ def stream_message(
 
                         try:
                             import json
+
                             data = json.loads(data_str)
 
                             # Extract content from delta
@@ -329,18 +307,18 @@ def stream_message(
                         except json.JSONDecodeError:
                             continue
         else:
-            logger.error("Provider returned HTTP %s: %s", response.status_code, response.text)
+            logger.error("Provider stream returned HTTP %s", response.status_code)
             raise LLMServiceError(PROVIDER_ERROR)
 
-    except requests.exceptions.ConnectionError:
-        logger.exception("Provider stream connection failed")
+    except requests.exceptions.ConnectionError as exc:
+        _log_provider_failure("stream connection", exc)
         raise LLMServiceError("Cannot connect to LM Studio")
-    except requests.exceptions.Timeout:
-        logger.exception("Provider stream timed out")
+    except requests.exceptions.Timeout as exc:
+        _log_provider_failure("stream timeout", exc)
         raise LLMServiceError("Request to LM Studio timed out")
-    except Exception as e:
-        logger.exception("Error streaming provider message")
-        raise LLMServiceError(PROVIDER_ERROR) from e
+    except Exception as exc:
+        _log_provider_failure("stream request", exc)
+        raise LLMServiceError(PROVIDER_ERROR) from exc
 
 
 def _compress_chat_history(chat_history: List[Dict[str, Any]]) -> str:
@@ -379,28 +357,30 @@ Summary:"""
     # Send compression request to LM Studio
     try:
         compression_messages = [
-            {"role": "system", "content": "You are a helpful assistant that summarizes conversations concisely."},
-            {"role": "user", "content": summary_prompt}
+            {
+                "role": "system",
+                "content": "You are a helpful assistant that summarizes conversations concisely.",
+            },
+            {"role": "user", "content": summary_prompt},
         ]
 
         response = send_message(
             messages=compression_messages,
             temperature=0.3,  # Lower temperature for factual summary
-            max_tokens=300,   # Keep summary short
-            stream=False
+            max_tokens=300,  # Keep summary short
+            stream=False,
         )
 
         if "choices" in response and len(response["choices"]) > 0:
             summary = response["choices"][0]["message"]["content"]
-            logger.info(
-                f"Compressed {len(chat_history)} messages into summary")
+            logger.info(f"Compressed {len(chat_history)} messages into summary")
             return summary
         else:
             # Fallback: simple truncation
             return "Previous conversation context compressed."
 
-    except Exception as e:
-        logger.error(f"Failed to compress history: {e}")
+    except Exception as exc:
+        _log_provider_failure("history compression", exc)
         return "Previous conversation context compressed."
 
 
@@ -409,7 +389,7 @@ def build_messages(
     image_base64: Optional[str] = None,
     system_prompt: Optional[str] = None,
     chat_history: Optional[List[Dict[str, Any]]] = None,
-    context: Optional[Dict[str, Any]] = None
+    context: Optional[Dict[str, Any]] = None,
 ) -> List[Dict[str, Any]]:
     """
     Build the messages array for LM Studio API with smart history compression.
@@ -455,7 +435,7 @@ def build_messages(
             "   - Grand Prix: e.g. Monaco, Silverstone, Bahrain, Monza, Spa.\n"
             "   - Lap number: an integer between 1 and the race length.\n"
             "   Year is optional (defaults to 2025; valid range 2023-2025).\n"
-            "   Example: \"To analyse tyre degradation I need a driver, a Grand Prix "
+            '   Example: "To analyse tyre degradation I need a driver, a Grand Prix '
             "and a lap number — for example: 'tyre degradation for VER at Monza lap 30'.\"\n\n"
             "HARD RULES\n"
             "- ALWAYS respond in the same language the user wrote in. If the "
@@ -494,16 +474,14 @@ def build_messages(
 
         system_prompt += context_str
 
-    messages.append({
-        "role": "system",
-        "content": system_prompt
-    })
+    messages.append({"role": "system", "content": system_prompt})
 
     # Process chat history with compression
     if chat_history:
         # Filter to only text messages (skip images and tool_result objects)
         text_history = [
-            msg for msg in chat_history
+            msg
+            for msg in chat_history
             if msg.get("role") in ["user", "assistant"]
             and msg.get("content")
             and msg.get("type") != "tool_result"
@@ -523,56 +501,45 @@ def build_messages(
             summary = _compress_chat_history(messages_to_compress)
 
             # Add summary as system message
-            messages.append({
-                "role": "system",
-                "content": f"[Previous conversation summary]: {summary}"
-            })
+            messages.append(
+                {"role": "system", "content": f"[Previous conversation summary]: {summary}"}
+            )
 
             # Add recent messages
             for msg in recent_messages:
-                messages.append({
-                    "role": msg.get("role"),
-                    "content": msg.get("content")
-                })
+                messages.append({"role": msg.get("role"), "content": msg.get("content")})
 
             logger.info(
-                f"Compressed chat history: {len(messages_to_compress)} messages → summary + {len(recent_messages)} recent")
+                f"Compressed chat history: {len(messages_to_compress)} messages → summary + {len(recent_messages)} recent"
+            )
         else:
             # No compression needed, add all history
             for msg in text_history:
-                messages.append({
-                    "role": msg.get("role"),
-                    "content": msg.get("content")
-                })
+                messages.append({"role": msg.get("role"), "content": msg.get("content")})
 
     # Add current user message (with multimodal support for vision models)
     if image_base64:
         # Use OpenAI-compatible multimodal format for vision models
         # Format: https://platform.openai.com/docs/guides/vision
         # Compatible with Qwen2-VL and other vision models
-        messages.append({
-            "role": "user",
-            "content": [
-                {
-                    "type": "text",
-                    "text": user_message
-                },
-                {
-                    "type": "image_url",
-                    "image_url": {
-                        # Should be in format: data:image/jpeg;base64,...
-                        "url": image_base64
-                    }
-                }
-            ]
-        })
-        logger.info(
-            f"Built multimodal message with image (size: {len(image_base64)} chars)")
+        messages.append(
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": user_message},
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            # Should be in format: data:image/jpeg;base64,...
+                            "url": image_base64
+                        },
+                    },
+                ],
+            }
+        )
+        logger.info(f"Built multimodal message with image (size: {len(image_base64)} chars)")
     else:
         # Text-only message
-        messages.append({
-            "role": "user",
-            "content": user_message
-        })
+        messages.append({"role": "user", "content": user_message})
 
     return messages

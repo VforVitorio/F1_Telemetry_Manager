@@ -21,7 +21,7 @@ def get_circuit_domination(
     year: int = Query(..., ge=2018, le=2030, description="Racing season year"),
     gp: str = Query(..., min_length=1, description="Grand Prix name (e.g., 'Spain', 'Belgium')"),
     session: str = Query(..., pattern="^(FP1|FP2|FP3|Q|R|S|SQ)$", description="Session type"),
-    drivers: str = Query(..., description="Comma-separated driver codes (e.g., 'VER,LEC,HAM')")
+    drivers: str = Query(..., description="Comma-separated driver codes (e.g., 'VER,LEC,HAM')"),
 ):
     """
     Get circuit domination visualization data.
@@ -54,26 +54,20 @@ def get_circuit_domination(
     ```
     """
     # Parse and validate drivers
-    driver_list = [d.strip().upper() for d in drivers.split(',')]
+    driver_list = [d.strip().upper() for d in drivers.split(",")]
 
     if len(driver_list) == 0:
-        raise HTTPException(
-            status_code=400,
-            detail="At least one driver must be specified"
-        )
+        raise HTTPException(status_code=400, detail="At least one driver must be specified")
 
     if len(driver_list) > 3:
-        raise HTTPException(
-            status_code=400,
-            detail="Maximum 3 drivers allowed"
-        )
+        raise HTTPException(status_code=400, detail="Maximum 3 drivers allowed")
 
     # Validate driver code format (3 uppercase letters)
     for driver in driver_list:
         if len(driver) != 3 or not driver.isalpha():
             raise HTTPException(
                 status_code=400,
-                detail=f"Invalid driver code: {driver}. Must be 3 letters (e.g., 'VER', 'HAM')"
+                detail=f"Invalid driver code: {driver}. Must be 3 letters (e.g., 'VER', 'HAM')",
             )
 
     try:
@@ -81,23 +75,17 @@ def get_circuit_domination(
 
         # Call service to get data
         data = get_circuit_domination_data(
-            year=year,
-            gp=gp,
-            session_type=session,
-            drivers=driver_list
+            year=year, gp=gp, session_type=session, drivers=driver_list
         )
 
         return data
 
-    except ValueError as e:
+    except ValueError as exc:
         # Handle expected errors (session not found, no laps, etc.)
-        logger.warning(f"ValueError: {e}")
-        raise HTTPException(status_code=404, detail=DATA_ERROR) from e
+        logger.warning("Circuit domination request rejected (%s)", type(exc).__name__)
+        raise HTTPException(status_code=404, detail=DATA_ERROR) from exc
 
-    except Exception as e:
+    except Exception as exc:
         # Handle unexpected errors
-        logger.error(f"Unexpected error: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail=INTERNAL_ERROR
-        )
+        logger.error("Circuit domination request failed (%s)", type(exc).__name__)
+        raise HTTPException(status_code=500, detail=INTERNAL_ERROR)

@@ -23,7 +23,7 @@ from backend.services.chatbot.llm_service import (
     send_message as lm_send_message,
     stream_message as lm_stream_message,
     build_messages,
-    LLMServiceError
+    LLMServiceError,
 )
 from backend.services.chatbot.stage_tracker import (
     clear_stage,
@@ -52,9 +52,9 @@ async def health_check():
     try:
         health_info = check_health()
         return health_info
-    except Exception as e:
-        logger.error(f"Error checking health: {e}")
-        raise HTTPException(status_code=500, detail=INTERNAL_ERROR) from e
+    except Exception as exc:
+        logger.error("Chat health check failed (%s)", type(exc).__name__)
+        raise HTTPException(status_code=500, detail=INTERNAL_ERROR) from exc
 
 
 @router.get("/models")
@@ -68,15 +68,19 @@ async def get_models():
     try:
         models = get_available_models()
         return {"models": models}
-    except LLMServiceError as e:
-        logger.error(f"LM Studio error: {e}")
-        raise HTTPException(status_code=503, detail=PROVIDER_ERROR) from e
-    except Exception as e:
-        logger.error(f"Error fetching models: {e}")
-        raise HTTPException(status_code=500, detail=INTERNAL_ERROR) from e
+    except LLMServiceError as exc:
+        logger.error("Provider model discovery failed (%s)", type(exc).__name__)
+        raise HTTPException(status_code=503, detail=PROVIDER_ERROR) from exc
+    except Exception as exc:
+        logger.error("Chat model listing failed (%s)", type(exc).__name__)
+        raise HTTPException(status_code=500, detail=INTERNAL_ERROR) from exc
 
 
-@router.post("/message", response_model=ChatResponse, dependencies=[Depends(rate_limit("chat-message", capacity=10, per_minute=20))])
+@router.post(
+    "/message",
+    response_model=ChatResponse,
+    dependencies=[Depends(rate_limit("chat-message", capacity=10, per_minute=20))],
+)
 async def send_chat_message(request: ChatRequest):
     """
     Send a message to LM Studio and get the complete response (non-streaming).
@@ -93,7 +97,7 @@ async def send_chat_message(request: ChatRequest):
             user_message=request.text,
             image_base64=request.image,
             chat_history=request.chat_history,
-            context=request.context
+            context=request.context,
         )
 
         # Send to LM Studio (cost cap A3 #224: clamp the client budget server-side)
@@ -102,7 +106,7 @@ async def send_chat_message(request: ChatRequest):
             model=request.model,
             temperature=request.temperature,
             max_tokens=clamp_max_tokens(request.max_tokens),
-            stream=False
+            stream=False,
         )
 
         # Extract response content
@@ -111,33 +115,25 @@ async def send_chat_message(request: ChatRequest):
             llm_model = response.get("model")
             tokens_used = response.get("usage", {}).get("total_tokens")
 
-            return ChatResponse(
-                response=content,
-                llm_model=llm_model,
-                tokens_used=tokens_used
-            )
+            return ChatResponse(response=content, llm_model=llm_model, tokens_used=tokens_used)
         else:
-            raise HTTPException(
-                status_code=500,
-                detail="Invalid response from LM Studio"
-            )
+            raise HTTPException(status_code=500, detail="Invalid response from LM Studio")
 
-    except LLMServiceError as e:
-        logger.error(f"LM Studio error: {e}")
+    except LLMServiceError as exc:
+        logger.error("Provider message failed (%s)", type(exc).__name__)
 
         # Always retry without image if an image was attached
         # Many vision errors don't have obvious keywords (e.g., "Channel Error")
         if request.image:
-            logger.warning(
-                f"Image was attached and LM Studio failed - retrying without image. Original error: {e}")
+            logger.warning("Image request failed; retrying without image (%s)", type(exc).__name__)
             try:
                 # Retry with text only
                 messages_text_only = build_messages(
-                    user_message=request.text +
-                    "\n\n[Note: Image was attached but the model couldn't process it]",
+                    user_message=request.text
+                    + "\n\n[Note: Image was attached but the model couldn't process it]",
                     image_base64=None,
                     chat_history=request.chat_history,
-                    context=request.context
+                    context=request.context,
                 )
 
                 response = lm_send_message(
@@ -145,32 +141,31 @@ async def send_chat_message(request: ChatRequest):
                     model=request.model,
                     temperature=request.temperature,
                     max_tokens=clamp_max_tokens(request.max_tokens),
-                    stream=False
+                    stream=False,
                 )
 
                 if "choices" in response and len(response["choices"]) > 0:
                     content = response["choices"][0]["message"]["content"]
                     return ChatResponse(
-                        response=content + "\n\n⚠️ Note: The attached image could not be processed. The model may not support vision, or the image format is incompatible.",
+                        response=content
+                        + "\n\n⚠️ Note: The attached image could not be processed. The model may not support vision, or the image format is incompatible.",
                         llm_model=response.get("model"),
-                        tokens_used=response.get(
-                            "usage", {}).get("total_tokens")
+                        tokens_used=response.get("usage", {}).get("total_tokens"),
                     )
             except Exception as retry_error:
-                logger.error(f"Retry without image also failed: {retry_error}")
-                raise HTTPException(
-                    status_code=503,
-                    detail=PROVIDER_ERROR
-                )
+                logger.error("Text-only provider retry failed (%s)", type(retry_error).__name__)
+                raise HTTPException(status_code=503, detail=PROVIDER_ERROR)
 
         # No image attached, or retry failed
-        raise HTTPException(status_code=503, detail=PROVIDER_ERROR) from e
-    except Exception as e:
-        logger.error(f"Error sending message: {e}")
-        raise HTTPException(status_code=500, detail=INTERNAL_ERROR) from e
+        raise HTTPException(status_code=503, detail=PROVIDER_ERROR) from exc
+    except Exception as exc:
+        logger.error("Chat message failed (%s)", type(exc).__name__)
+        raise HTTPException(status_code=500, detail=INTERNAL_ERROR) from exc
 
 
-@router.post("/stream", dependencies=[Depends(rate_limit("chat-stream", capacity=10, per_minute=20))])
+@router.post(
+    "/stream", dependencies=[Depends(rate_limit("chat-stream", capacity=10, per_minute=20))]
+)
 async def stream_chat_message(request: ChatRequest):
     """
     Send a message to LM Studio and stream the response.
@@ -187,7 +182,7 @@ async def stream_chat_message(request: ChatRequest):
             user_message=request.text,
             image_base64=request.image,
             chat_history=request.chat_history,
-            context=request.context
+            context=request.context,
         )
 
         # Create a generator that yields chunks
@@ -197,24 +192,21 @@ async def stream_chat_message(request: ChatRequest):
                     messages=messages,
                     model=request.model,
                     temperature=request.temperature,
-                    max_tokens=clamp_max_tokens(request.max_tokens)
+                    max_tokens=clamp_max_tokens(request.max_tokens),
                 ):
                     yield chunk
-            except LLMServiceError as e:
-                logger.error(f"LM Studio streaming error: {e}")
+            except LLMServiceError as exc:
+                logger.error("Provider stream failed (%s)", type(exc).__name__)
                 yield f"\n\nError: {PROVIDER_ERROR}"
-            except Exception as e:
-                logger.error(f"Streaming error: {e}")
+            except Exception as exc:
+                logger.error("Chat stream failed (%s)", type(exc).__name__)
                 yield f"\n\nError: {INTERNAL_ERROR}"
 
-        return StreamingResponse(
-            generate(),
-            media_type="text/plain"
-        )
+        return StreamingResponse(generate(), media_type="text/plain")
 
-    except Exception as e:
-        logger.error(f"Error initializing stream: {e}")
-        raise HTTPException(status_code=500, detail=INTERNAL_ERROR) from e
+    except Exception as exc:
+        logger.error("Chat stream initialization failed (%s)", type(exc).__name__)
+        raise HTTPException(status_code=500, detail=INTERNAL_ERROR) from exc
 
 
 # ---------------------------------------------------------------------------
@@ -242,7 +234,11 @@ def chat_status(request_id: str):
     return {"stage": get_stage(request_id)}
 
 
-@router.post("/tool-message", response_model=ToolMessageResponse, dependencies=[Depends(rate_limit("chat-tool-message", capacity=10, per_minute=20))])
+@router.post(
+    "/tool-message",
+    response_model=ToolMessageResponse,
+    dependencies=[Depends(rate_limit("chat-tool-message", capacity=10, per_minute=20))],
+)
 async def tool_message(
     request: ToolMessageRequest,
     x_request_id: str | None = Header(default=None, alias="X-Request-Id"),
@@ -268,7 +264,7 @@ async def tool_message(
             max_tokens=request.max_tokens,
         )
         if result.get("error"):
-            logger.error("Tool chat provider failed: %s", result["error"])
+            logger.error("Tool chat provider failed")
             raise HTTPException(status_code=503, detail=PROVIDER_ERROR)
         return ToolMessageResponse(
             response=result.get("response") or "No response from LLM.",
@@ -278,14 +274,17 @@ async def tool_message(
         )
     except HTTPException:
         raise
-    except Exception:
-        logger.exception("tool_message failed")
+    except Exception as exc:
+        logger.error("Tool chat request failed (%s)", type(exc).__name__)
         return ToolMessageResponse(response=PROVIDER_ERROR)
     finally:
         clear_stage(request_id)
 
 
-@router.post("/tool-message-stream", dependencies=[Depends(rate_limit("chat-tool-stream", capacity=10, per_minute=20))])
+@router.post(
+    "/tool-message-stream",
+    dependencies=[Depends(rate_limit("chat-tool-stream", capacity=10, per_minute=20))],
+)
 async def tool_message_stream(
     request: ToolMessageRequest,
     x_request_id: str | None = Header(default=None, alias="X-Request-Id"),
@@ -315,8 +314,8 @@ async def tool_message_stream(
                 stream_tokens=request.stream_tokens,
             ):
                 yield _sse(event_name, payload)
-        except Exception:
-            logger.exception("tool_message_stream failed")
+        except Exception as exc:
+            logger.error("Tool chat stream failed (%s)", type(exc).__name__)
             yield _sse("token", {"token": f"\n\nError: {INTERNAL_ERROR}"})
             yield _sse("done", {"error": INTERNAL_ERROR})
         finally:

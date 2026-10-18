@@ -6,7 +6,7 @@ Run this after: uv sync --no-dev
 """
 
 import sys
-from importlib.metadata import version
+from importlib.metadata import PackageNotFoundError, version
 
 
 def check_import(package_name, display_name=None):
@@ -18,8 +18,8 @@ def check_import(package_name, display_name=None):
             ver = version(package_name)
             print(f"  OK   {display:20} v{ver}")
             return True
-        except Exception:
-            print(f"  OK   {display:20} (installed)")
+        except PackageNotFoundError:
+            print(f"  OK   {display:20} (importable; version metadata unavailable)")
             return True
     except ImportError as e:
         print(f"  FAIL {display:20} NOT FOUND - {e}")
@@ -37,9 +37,7 @@ def main():
     print(" F1 Telemetry Manager - Dependency Check")
     print("=" * 60)
 
-    results = {
-        "Core Dependencies": []
-    }
+    results = {"Core Dependencies": []}
 
     # Core Dependencies
     print("\nCore Dependencies:")

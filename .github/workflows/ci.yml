@@ -80,3 +80,21 @@ jobs:
         run: |
           uv run --frozen --no-sync pytest tests/test_security_gp_boundaries.py tests/test_security_public_errors.py -v --junitxml=boundary-results.xml
           uv run --frozen --no-sync python -c "import xml.etree.ElementTree as ET; suites = ET.parse('boundary-results.xml').getroot(); assert sum(int(s.get('skipped', 0)) for s in suites.iter('testsuite')) == 0"
+
+  pip-audit:
+    name: pip-audit (advisory)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.9.13"
+          python-version: "3.11"
+      - name: Export locked Python dependencies
+        run: |
+          uv export --frozen --no-emit-project --all-extras --no-hashes \
+            --no-emit-package torch --no-emit-package torchvision \
+            --format requirements-txt -o requirements.audit.txt
+      - name: Audit pinned Python dependencies
+        continue-on-error: true
+        run: uvx pip-audit@2.10.1 --disable-pip --no-deps -r requirements.audit.txt

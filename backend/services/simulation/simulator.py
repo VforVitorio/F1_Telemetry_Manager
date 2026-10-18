@@ -291,7 +291,10 @@ def _build_rcm_feed(year: int, gp: str, laps_df: pd.DataFrame):
         from src.nlp.radio_runner import RadioPipelineRunner
         from src.nlp.rcm_state import RaceControlStateTracker
     except Exception as exc:  # noqa: BLE001 - radio deps optional; degrade to no RCM
-        logger.warning("Radio/RCM deps unavailable (%s): SSE runs without the SC override", exc)
+        logger.warning(
+            "Radio/RCM deps unavailable (%s): SSE runs without the SC override",
+            type(exc).__name__,
+        )
         return None, None
     try:
         runner = RadioPipelineRunner(
@@ -302,7 +305,7 @@ def _build_rcm_feed(year: int, gp: str, laps_df: pd.DataFrame):
             disable_transcription=True,
         )
     except Exception as exc:  # noqa: BLE001 - corpus optional; degrade to no RCM
-        logger.warning("Radio/RCM corpus unavailable for %s %d: %s", gp, year, exc)
+        logger.warning("Radio/RCM corpus unavailable for %s %d (%s)", gp, year, type(exc).__name__)
         return None, None
     return runner, RaceControlStateTracker()
 
@@ -319,7 +322,7 @@ def _rcm_events_for_lap(runner, tracker, lap: int) -> list[dict]:
     try:
         _radios, rcm = runner.radios_for_lap(lap)
     except Exception as exc:  # noqa: BLE001 - a bad lap just means no RCM this lap
-        logger.debug("radios_for_lap(%d) failed: %s", lap, exc)
+        logger.warning("radios_for_lap(%d) failed (%s)", lap, type(exc).__name__)
         return []
     tracker.ingest(lap, rcm)
     events = list(rcm)
@@ -752,9 +755,7 @@ def simulate_race(config: SimConfig) -> Generator[dict[str, Any], None, None]:
     return _simulate_race(config, provider)
 
 
-def _simulate_race(
-    config: SimConfig, provider: str
-) -> Generator[dict[str, Any], None, None]:
+def _simulate_race(config: SimConfig, provider: str) -> Generator[dict[str, Any], None, None]:
     """Yield a ``start`` event, one ``lap`` per lap, and a closing ``summary``.
 
     The generator is exception-safe at the lap level: a per-lap failure emits
@@ -882,8 +883,8 @@ def _simulate_race(
             if lap_time_s:
                 prev_lap_time = float(lap_time_s)
             laps_processed += 1
-        except Exception:
-            logger.exception("Simulation error on lap %s", lap_num)
+        except Exception as exc:
+            logger.error("Simulation failed on lap %s (%s)", lap_num, type(exc).__name__)
             state.error_laps += 1
             yield {
                 "type": "error",

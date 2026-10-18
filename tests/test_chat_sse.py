@@ -37,13 +37,14 @@ async def _one_tool():
     return [{"type": "function", "function": {"name": "predict_pace", "parameters": {}}}]
 
 
-async def _fake_dispatch(name, args):
+async def _fake_dispatch(name, args, *, request_id=None):
     return {"driver": args.get("driver"), "lap_time_pred": 91.2, "delta_vs_median": -0.31}
 
 
 # ---------------------------------------------------------------------------
 # Recorded-transcript grammar (read-only, no stub)
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.parametrize("path", [PLAIN, TOOL], ids=["plain", "tool_call"])
 def test_recorded_transcript_is_well_formed(path):
@@ -80,6 +81,7 @@ def test_tool_transcript_grammar():
 # ---------------------------------------------------------------------------
 # Live-output-matches-recorded-grammar (needs the stub)
 # ---------------------------------------------------------------------------
+
 
 def test_live_plain_stream_matches_recorded_grammar(fake_openai, chat_app_client, monkeypatch):
     monkeypatch.setattr(chat_engine, "list_openai_tools", _no_tools)

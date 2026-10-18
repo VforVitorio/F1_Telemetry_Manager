@@ -38,7 +38,7 @@ async def _one_tool():
     return [{"type": "function", "function": {"name": "predict_pace", "parameters": {}}}]
 
 
-async def _fake_dispatch(name, args):
+async def _fake_dispatch(name, args, *, request_id=None):
     return {"driver": args.get("driver"), "lap_time_pred": 91.2, "delta_vs_median": -0.31}
 
 
