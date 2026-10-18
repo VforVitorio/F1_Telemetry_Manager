@@ -17,7 +17,12 @@ jobs:
   scan-scheduled:
     if: ${{ github.event_name == 'push' || github.event_name == 'schedule' }}
     uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@v2.6.0
+    with:
+      # Upload the full baseline; the pull-request scan gates newly introduced findings.
+      fail-on-vuln: false
 
   scan-pr:
     if: ${{ github.event_name == 'pull_request' }}
     uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable-pr.yml@v2.6.0
+    with:
+      fail-on-vuln: true
