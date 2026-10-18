@@ -20,8 +20,9 @@ class _ToolFailureTracebackFilter(logging.Filter):
     """Keep FastMCP's generic tool-error line but not exception payloads/arguments."""
 
     def filter(self, record: logging.LogRecord) -> bool:
-        record.exc_info = None
-        record.exc_text = None
+        if record.getMessage().startswith(("Error calling tool", "Error validating tool")):
+            record.exc_info = None
+            record.exc_text = None
         return True
 
 
