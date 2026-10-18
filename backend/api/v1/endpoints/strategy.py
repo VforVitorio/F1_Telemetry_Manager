@@ -43,6 +43,7 @@ if str(_REPO_ROOT) not in sys.path:
 
 logger = logging.getLogger(__name__)
 
+
 async def _validate_gp_boundary(request: Request) -> None:
     """Reject GP paths before route dependencies load data or invoke agents."""
     payload = {}
@@ -56,7 +57,12 @@ async def _validate_gp_boundary(request: Request) -> None:
     lap_state = payload.get("lap_state") or {}
     session_meta = lap_state.get("session_meta") if isinstance(lap_state, dict) else {}
     session_meta = session_meta if isinstance(session_meta, dict) else {}
-    gps = (request.query_params.get("gp"), payload.get("gp"), payload.get("gp_name"), session_meta.get("gp_name"))
+    gps = (
+        request.query_params.get("gp"),
+        payload.get("gp"),
+        payload.get("gp_name"),
+        session_meta.get("gp_name"),
+    )
     supplied_gps = [gp for gp in gps if gp is not None and gp != ""]
     if not supplied_gps:
         return
@@ -69,7 +75,9 @@ async def _validate_gp_boundary(request: Request) -> None:
         raise HTTPException(400, detail="Unknown GP or unavailable race path.") from exc
 
 
-router = APIRouter(prefix="/strategy", tags=["strategy"], dependencies=[Depends(_validate_gp_boundary)])
+router = APIRouter(
+    prefix="/strategy", tags=["strategy"], dependencies=[Depends(_validate_gp_boundary)]
+)
 
 
 # ---------------------------------------------------------------------------
@@ -279,7 +287,7 @@ class StrategyError(BaseModel):
 
 def _agent_error(agent: str, exc: Exception, status: int = 500) -> HTTPException:
     """Build a structured error response."""
-    logger.error("%s failed", agent, exc_info=(type(exc), exc, exc.__traceback__))
+    logger.error("%s failed (%s)", agent, type(exc).__name__)
     return HTTPException(
         status_code=status,
         detail=StrategyError(
@@ -724,10 +732,8 @@ def predict_pace(request: PaceRequest):
         result = run_pace_agent_from_state(request.lap_state)
         return StrategyResponse(agent="pace", result=_to_dict(result))
     except (KeyError, TypeError, ValueError) as exc:
-        logger.warning("Pace agent validation error: %s", exc)
         raise _agent_error("pace", exc, status=422)
     except Exception as exc:
-        logger.error("Pace agent error: %s", exc, exc_info=True)
         raise _agent_error("pace", exc)
 
 
@@ -805,7 +811,8 @@ def predict_pace_range(request: PaceRangeRequest):
                     "stint": int(row.get("Stint", 1)),
                 }
             )
-        except Exception:
+        except Exception as exc:
+            logger.warning("Pace range skipped lap %s (%s)", lap_num, type(exc).__name__)
             results.append(
                 {
                     "lap": lap_num,
@@ -1184,7 +1191,7 @@ def predict_tire_range(
                     model.eval()
                     pred = float(model(tensor).item())
         except Exception as exc:  # noqa: BLE001 — a bad lap just leaves a gap, never a 500
-            logger.debug("tire-range: skipping lap %s (%s)", lap, exc)
+            logger.warning("Tire range skipped lap %s (%s)", lap, type(exc).__name__)
             pred = None
 
         results.append(
@@ -1223,12 +1230,10 @@ def predict_tire(
         )
         return StrategyResponse(agent="tire", result=_to_dict(result))
     except (KeyError, TypeError, ValueError) as exc:
-        logger.warning("Tire agent validation error: %s", exc)
         raise _agent_error("tire", exc, status=422)
     except HTTPException:
         raise
     except Exception as exc:
-        logger.error("Tire agent error: %s", exc, exc_info=True)
         raise _agent_error("tire", exc)
 
 
@@ -1255,12 +1260,10 @@ def predict_situation(
         )
         return StrategyResponse(agent="situation", result=_to_dict(result))
     except (KeyError, TypeError, ValueError) as exc:
-        logger.warning("Situation agent validation error: %s", exc)
         raise _agent_error("situation", exc, status=422)
     except HTTPException:
         raise
     except Exception as exc:
-        logger.error("Situation agent error: %s", exc, exc_info=True)
         raise _agent_error("situation", exc)
 
 
@@ -1287,12 +1290,10 @@ def predict_pit(
         )
         return StrategyResponse(agent="pit", result=_to_dict(result))
     except (KeyError, TypeError, ValueError) as exc:
-        logger.warning("Pit agent validation error: %s", exc)
         raise _agent_error("pit", exc, status=422)
     except HTTPException:
         raise
     except Exception as exc:
-        logger.error("Pit strategy agent error: %s", exc, exc_info=True)
         raise _agent_error("pit", exc)
 
 
@@ -1331,12 +1332,10 @@ def analyze_radio(
         result = run_radio_agent_from_state(lap_state, _scope_to_race(laps_df, lap_state))
         return StrategyResponse(agent="radio", result=_to_dict(result))
     except (KeyError, TypeError, ValueError) as exc:
-        logger.warning("Radio agent validation error: %s", exc)
         raise _agent_error("radio", exc, status=422)
     except HTTPException:
         raise
     except Exception as exc:
-        logger.error("Radio agent error: %s", exc, exc_info=True)
         raise _agent_error("radio", exc)
 
 
@@ -1361,10 +1360,8 @@ def query_rag(request: RagRequest):
         result = run_rag_agent(request.question, year=year)
         return StrategyResponse(agent="rag", result=_to_dict(result))
     except (KeyError, TypeError, ValueError) as exc:
-        logger.warning("RAG agent validation error: %s", exc)
         raise _agent_error("rag", exc, status=422)
     except Exception as exc:
-        logger.error("RAG agent error: %s", exc, exc_info=True)
         raise _agent_error("rag", exc)
 
 
@@ -1409,7 +1406,7 @@ def _get_radio_runner(year: int, gp: str, laps_df: pd.DataFrame):
             disable_transcription=True,
         )
     except Exception as exc:  # noqa: BLE001 - corpus is optional; degrade to no RCM
-        logger.warning("Radio/RCM corpus unavailable for %s %d: %s", gp, year, exc)
+        logger.warning("Radio/RCM corpus unavailable for %s %d (%s)", gp, year, type(exc).__name__)
     _RADIO_RUNNER_CACHE[key] = runner
     return runner
 
@@ -1509,12 +1506,10 @@ def recommend_strategy(
         )
         return StrategyResponse(agent="orchestrator", result=_to_dict(result))
     except (KeyError, TypeError, ValueError) as exc:
-        logger.warning("Orchestrator validation error: %s", exc)
         raise _agent_error("orchestrator", exc, status=422)
     except HTTPException:
         raise
     except Exception as exc:
-        logger.error("Orchestrator error: %s", exc, exc_info=True)
         raise _agent_error("orchestrator", exc)
 
 
@@ -1734,9 +1729,7 @@ class SimulateRequest(BaseModel):
     "/simulate",
     dependencies=[Depends(rate_limit("simulate", capacity=3, per_minute=3))],
     responses={
-        409: {
-            "description": "The requested provider differs from the backend process provider."
-        }
+        409: {"description": "The requested provider differs from the backend process provider."}
     },
 )
 def simulate(req: SimulateRequest):
@@ -1776,7 +1769,7 @@ def simulate(req: SimulateRequest):
                     if lap_count % 15 == 0:
                         yield ":\n\n"
         except Exception as exc:
-            logger.error("Simulation stream failed: %s", exc, exc_info=True)
+            logger.error("Simulation stream failed (%s)", type(exc).__name__)
             err = {"type": "error", "data": {"lap": 0, "message": INTERNAL_ERROR}}
             yield f"data: {json.dumps(err)}\n\n"
 

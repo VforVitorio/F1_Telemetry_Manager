@@ -13,15 +13,28 @@ load_dotenv(Path(__file__).resolve().parent.parent.parent / ".env", override=Tru
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:8501")
 
 
+def _normalize_llm_provider(value: str) -> str:
+    return "openai" if value == "openai" else "lmstudio"
+
+
+def configured_chat_provider() -> str:
+    """Read the chat provider, retaining its legacy ``LLM_PROVIDER`` alias."""
+    configured = os.getenv("F1_LLM_PROVIDER", os.getenv("LLM_PROVIDER", "lmstudio"))
+    return _normalize_llm_provider(configured)
+
+
+def configured_strategy_provider() -> str:
+    """Read the strategy provider; only ``F1_LLM_PROVIDER`` controls agents."""
+    return _normalize_llm_provider(os.getenv("F1_LLM_PROVIDER", "lmstudio"))
+
+
 def resolve_simulation_provider(requested: str | None = None) -> str:
     """Return the process provider and reject per-request provider switching.
 
-    The strategy agents read ``F1_LLM_PROVIDER`` and cache their clients. Match
-    the orchestrator's existing fallback: only the exact value ``openai``
-    selects OpenAI; every other value uses LM Studio.
+    The strategy agents read ``F1_LLM_PROVIDER`` and cache their clients. The
+    legacy ``LLM_PROVIDER`` alias remains chat-only and cannot switch agents.
     """
-    configured = os.getenv("F1_LLM_PROVIDER", "lmstudio")
-    process_provider = "openai" if configured == "openai" else "lmstudio"
+    process_provider = configured_strategy_provider()
     if requested is not None and requested != process_provider:
         raise ValueError(
             f"Requested provider '{requested}' conflicts with backend process provider "
@@ -29,6 +42,22 @@ def resolve_simulation_provider(requested: str | None = None) -> str:
             "provider switching per request is unsupported."
         )
     return process_provider
+
+
+def provider_api_urls(provider: str) -> tuple[str, str]:
+    """Return the completions and models endpoints for the configured provider.
+
+    ``LM_STUDIO_HOST`` is the shared local-provider setting used by the backend
+    and strategy clients. Request data never selects or overrides either URL.
+    """
+    if provider == "openai":
+        base_url = "https://api.openai.com/v1"
+    else:
+        host = os.getenv("LM_STUDIO_HOST") or "localhost"
+        base_url = f"http://{host}:1234/v1"
+
+    base_url = base_url.rstrip("/")
+    return f"{base_url}/chat/completions", f"{base_url}/models"
 
 
 def _env_flag(name: str, *, default: bool) -> bool:

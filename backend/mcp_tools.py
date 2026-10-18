@@ -21,14 +21,21 @@ import sys
 from typing import Any
 
 from fastmcp import FastMCP
+from fastmcp.exceptions import ToolError
+
+from backend.core.gp_paths import (
+    InvalidGPError,
+    resolve_race_dir,
+    validate_gp_name,
+    validate_radio_paths,
+)
+from backend.core.mcp_audit import ToolDispatchAudit
 
 # ---------------------------------------------------------------------------
 # Repo-root injection (same pattern as strategy.py)
 # ---------------------------------------------------------------------------
 from backend.core.paths import get_repo_root
-from backend.core.gp_paths import InvalidGPError, resolve_race_dir, validate_gp_name, validate_radio_paths
 from backend.core.public_errors import TOOL_ERROR
-from fastmcp.exceptions import ToolError
 
 _REPO = get_repo_root()
 if str(_REPO) not in sys.path:
@@ -48,6 +55,7 @@ mcp = FastMCP(
         "Pass a Grand Prix name, driver code, and lap number to get predictions."
     ),
 )
+mcp.add_middleware(ToolDispatchAudit())
 
 
 # ---------------------------------------------------------------------------
@@ -402,9 +410,8 @@ def _catch_tool_input_error(fn):
             return str(exc)
         except InvalidGPError:
             return "Unknown GP or unavailable race path."
-        except Exception as exc:
-            logger.exception("MCP tool %s failed", fn.__name__)
-            raise ToolError(TOOL_ERROR) from exc
+        except Exception:
+            raise ToolError(TOOL_ERROR) from None
 
     return wrapper
 
@@ -703,7 +710,7 @@ def get_lap_range(gp: str, driver: str, year: int = 2025) -> str:
 # The auto-generated sub-server is mounted on the main `mcp` instance so
 # all tools (Phase 1 manual + Phase 2 auto) are available under one server.
 
-import httpx as _httpx
+import httpx as _httpx  # noqa: E402
 
 
 def _mount_openapi_tools(app: Any | None = None) -> None:
@@ -749,8 +756,8 @@ def _mount_openapi_tools(app: Any | None = None) -> None:
         _openapi_mounted = True
     except Exception as exc:
         logger.warning(
-            "Failed to mount OpenAPI tools: %s — will retry on the next request",
-            exc,
+            "Failed to mount OpenAPI tools (%s); will retry on the next request",
+            type(exc).__name__,
         )
         # Intentionally do NOT set _openapi_mounted: the next call will retry
         # so a transient bootstrap race does not strand the Phase 2 tools.
@@ -762,7 +769,7 @@ def _read_openapi_spec(app: Any | None) -> dict[str, Any] | None:
         try:
             return app.openapi()
         except Exception as exc:
-            logger.warning("app.openapi() failed (%s); falling back to HTTP", exc)
+            logger.warning("app.openapi() failed (%s); falling back to HTTP", type(exc).__name__)
     return _fetch_openapi_spec_http()
 
 

@@ -15,7 +15,7 @@ from backend.services.telemetry_service import (
     get_highest_common_q_phase,
     get_fastest_lap_in_q_phase,
     extract_telemetry_from_lap,
-    get_driver_qualifying_phases
+    get_driver_qualifying_phases,
 )
 from backend.core.driver_colors import get_driver_color
 from backend.services.telemetry.session_cache import get_loaded_session
@@ -44,13 +44,20 @@ router = APIRouter(prefix="/comparison", tags=["comparison"])
 )
 async def compare_drivers(
     year: int = Query(..., description="Season year (2023, 2024 or 2025)."),
-    gp: str = Query(..., description="Grand Prix name (city/circuit form, e.g. 'Monaco', 'Monza', 'Spa-Francorchamps').  Country names like 'Italy' or 'Belgium' also accepted."),
+    gp: str = Query(
+        ...,
+        description="Grand Prix name (city/circuit form, e.g. 'Monaco', 'Monza', 'Spa-Francorchamps').  Country names like 'Italy' or 'Belgium' also accepted.",
+    ),
     session: str = Query(
         ...,
         description="Session code: FP1 / FP2 / FP3 (free practice), SQ (sprint qualifying), Q (qualifying), S (sprint race), R (race).  Use 'Q' for qualifying-lap comparisons, 'R' for race fastest-lap comparisons.",
     ),
-    driver1: str = Query(..., description="First driver — 3-letter code (VER, HAM, LEC, NOR, PIA, ALO, …)."),
-    driver2: str = Query(..., description="Second driver — 3-letter code (VER, HAM, LEC, NOR, PIA, ALO, …)."),
+    driver1: str = Query(
+        ..., description="First driver — 3-letter code (VER, HAM, LEC, NOR, PIA, ALO, …)."
+    ),
+    driver2: str = Query(
+        ..., description="Second driver — 3-letter code (VER, HAM, LEC, NOR, PIA, ALO, …)."
+    ),
 ) -> Dict:
     """
     Compare telemetry between two drivers using their fastest laps.
@@ -77,15 +84,14 @@ async def compare_drivers(
         HTTPException: If session/driver data not found or no valid fastest lap available
     """
     try:
-        logger.info(
-            f"Comparing fastest laps: {driver1} vs {driver2} - {year} {gp} {session}")
+        logger.info(f"Comparing fastest laps: {driver1} vs {driver2} - {year} {gp} {session}")
 
         # Initialize metadata
         qualifying_phase = None
         warning_message = None
 
         # Special handling for Qualifying sessions
-        if session == 'Q':
+        if session == "Q":
             logger.info("Qualifying session detected - using phase-specific logic")
 
             # Load session to access phase data — via the shared in-process
@@ -96,32 +102,26 @@ async def compare_drivers(
             fastf1_session = get_loaded_session(year, gp, session)
 
             # Get highest common qualifying phase
-            highest_phase = get_highest_common_q_phase(
-                driver1, driver2, fastf1_session)
+            highest_phase = get_highest_common_q_phase(driver1, driver2, fastf1_session)
 
             if highest_phase:
                 # Both drivers share a common phase - use fastest lap from that phase
-                logger.info(
-                    f"Using fastest laps from {highest_phase} for both drivers")
+                logger.info(f"Using fastest laps from {highest_phase} for both drivers")
                 qualifying_phase = highest_phase
 
-                lap1 = get_fastest_lap_in_q_phase(
-                    driver1, highest_phase, fastf1_session)
-                lap2 = get_fastest_lap_in_q_phase(
-                    driver2, highest_phase, fastf1_session)
+                lap1 = get_fastest_lap_in_q_phase(driver1, highest_phase, fastf1_session)
+                lap2 = get_fastest_lap_in_q_phase(driver2, highest_phase, fastf1_session)
 
                 driver1_data = extract_telemetry_from_lap(lap1, driver1)
                 driver2_data = extract_telemetry_from_lap(lap2, driver2)
 
                 # Get phases for info message
-                driver1_phases = get_driver_qualifying_phases(
-                    driver1, fastf1_session)
-                driver2_phases = get_driver_qualifying_phases(
-                    driver2, fastf1_session)
+                driver1_phases = get_driver_qualifying_phases(driver1, fastf1_session)
+                driver2_phases = get_driver_qualifying_phases(driver2, fastf1_session)
 
                 # Add info message if there's a performance difference
-                driver1_best = driver1_phases[0] if driver1_phases else 'Q1'
-                driver2_best = driver2_phases[0] if driver2_phases else 'Q1'
+                driver1_best = driver1_phases[0] if driver1_phases else "Q1"
+                driver2_best = driver2_phases[0] if driver2_phases else "Q1"
 
                 if driver1_best != driver2_best:
                     # There's a performance gap
@@ -132,18 +132,13 @@ async def compare_drivers(
 
             else:
                 # No common phase - use overall fastest laps with warning
-                logger.warning(
-                    f"No common qualifying phase for {driver1} and {driver2}")
+                logger.warning(f"No common qualifying phase for {driver1} and {driver2}")
 
-                driver1_phases = get_driver_qualifying_phases(
-                    driver1, fastf1_session)
-                driver2_phases = get_driver_qualifying_phases(
-                    driver2, fastf1_session)
+                driver1_phases = get_driver_qualifying_phases(driver1, fastf1_session)
+                driver2_phases = get_driver_qualifying_phases(driver2, fastf1_session)
 
-                driver1_data = fetch_lap_telemetry(
-                    year, gp, session, driver1, use_fastest_lap=True)
-                driver2_data = fetch_lap_telemetry(
-                    year, gp, session, driver2, use_fastest_lap=True)
+                driver1_data = fetch_lap_telemetry(year, gp, session, driver1, use_fastest_lap=True)
+                driver2_data = fetch_lap_telemetry(year, gp, session, driver2, use_fastest_lap=True)
 
                 warning_message = (
                     f"Drivers competed in different qualifying phases: "
@@ -154,13 +149,12 @@ async def compare_drivers(
 
         else:
             # Non-qualifying sessions: use standard fastest lap logic
-            driver1_data = fetch_lap_telemetry(
-                year, gp, session, driver1, use_fastest_lap=True)
-            driver2_data = fetch_lap_telemetry(
-                year, gp, session, driver2, use_fastest_lap=True)
+            driver1_data = fetch_lap_telemetry(year, gp, session, driver1, use_fastest_lap=True)
+            driver2_data = fetch_lap_telemetry(year, gp, session, driver2, use_fastest_lap=True)
 
         logger.info(
-            f"Fetched telemetry: {driver1} ({len(driver1_data['x'])} points), {driver2} ({len(driver2_data['x'])} points)")
+            f"Fetched telemetry: {driver1} ({len(driver1_data['x'])} points), {driver2} ({len(driver2_data['x'])} points)"
+        )
 
         # Assign colors based on driver's team (F1 2024 official colors)
         driver1_color = get_driver_color(driver1)
@@ -171,26 +165,23 @@ async def compare_drivers(
             driver1_data=driver1_data,
             driver2_data=driver2_data,
             driver1_color=driver1_color,
-            driver2_color=driver2_color
+            driver2_color=driver2_color,
         )
 
         # Add qualifying-specific metadata
-        if session == 'Q':
-            comparison_data['metadata']['qualifying_phase'] = qualifying_phase
-            comparison_data['metadata']['warning'] = warning_message
+        if session == "Q":
+            comparison_data["metadata"]["qualifying_phase"] = qualifying_phase
+            comparison_data["metadata"]["warning"] = warning_message
 
         logger.info(f"Comparison data prepared successfully")
         return comparison_data
 
-    except ValueError as e:
+    except ValueError as exc:
         # Handle expected errors from telemetry service (session/driver/lap not found)
-        logger.warning(f"ValueError: {e}")
-        raise HTTPException(status_code=404, detail=DATA_ERROR) from e
+        logger.warning("Comparison request rejected (%s)", type(exc).__name__)
+        raise HTTPException(status_code=404, detail=DATA_ERROR) from exc
     except HTTPException:
         raise
-    except Exception as e:
-        logger.error(f"Error comparing drivers: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail=INTERNAL_ERROR
-        )
+    except Exception as exc:
+        logger.error("Driver comparison failed (%s)", type(exc).__name__)
+        raise HTTPException(status_code=500, detail=INTERNAL_ERROR)

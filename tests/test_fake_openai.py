@@ -26,6 +26,7 @@ from tests.sse_utils import parse_sse as _parse_sse
 # Stub self-tests (talk to the stub directly, no backend)
 # ---------------------------------------------------------------------------
 
+
 def test_models_endpoint_lists_the_fake_model(fake_openai):
     resp = requests.get(f"{fake_openai.url}/models", timeout=5)
     assert resp.status_code == 200
@@ -63,7 +64,11 @@ def test_tool_call_completion_encodes_arguments_as_json_string(fake_openai):
 
 
 def test_requests_are_recorded_for_inspection(fake_openai):
-    requests.post(f"{fake_openai.url}/chat/completions", json={"messages": [{"role": "user"}], "tools": [1]}, timeout=5)
+    requests.post(
+        f"{fake_openai.url}/chat/completions",
+        json={"messages": [{"role": "user"}], "tools": [1]},
+        timeout=5,
+    )
 
     assert len(fake_openai.requests) == 1
     assert fake_openai.requests[0]["tools"] == [1]
@@ -72,6 +77,7 @@ def test_requests_are_recorded_for_inspection(fake_openai):
 # ---------------------------------------------------------------------------
 # Chat integration (drive the real endpoint through the stub)
 # ---------------------------------------------------------------------------
+
 
 async def _no_tools():
     return []
@@ -104,7 +110,7 @@ def test_tool_call_chat_streams_tool_result_then_summary(fake_openai, chat_app_c
     """A tool turn makes two round-trips: tool-choice, then a no-tools summary."""
     monkeypatch.setattr(chat_engine, "list_openai_tools", _one_fake_tool)
 
-    async def _fake_dispatch(name, args):
+    async def _fake_dispatch(name, args, *, request_id=None):
         return {"driver": args.get("driver"), "lap_time_pred": 91.2}
 
     monkeypatch.setattr(chat_engine, "call_mcp_tool", _fake_dispatch)
@@ -113,7 +119,9 @@ def test_tool_call_chat_streams_tool_result_then_summary(fake_openai, chat_app_c
     fake_openai.push_tool_call("predict_pace", {"driver": "VER"})
     fake_openai.push_text("VER is projected around 91.2s next lap.")
 
-    resp = chat_app_client.post("/api/v1/chat/tool-message-stream", json={"text": "pace for VER at Monza lap 30"})
+    resp = chat_app_client.post(
+        "/api/v1/chat/tool-message-stream", json={"text": "pace for VER at Monza lap 30"}
+    )
     assert resp.status_code == 200
 
     events = _parse_sse(resp.text)

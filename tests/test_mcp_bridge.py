@@ -72,9 +72,10 @@ class TestCoerceToolArguments:
     def test_none_yields_empty_dict(self):
         assert coerce_tool_arguments(None) == {}
 
-    def test_malformed_json_yields_empty_dict(self):
-        # Logs a warning internally but never raises — the chat must keep going.
-        assert coerce_tool_arguments("not json") == {}
+    def test_malformed_json_yields_empty_dict_without_logging_arguments(self, caplog):
+        arguments = '"private-argument-canary": not json'
+        assert coerce_tool_arguments(arguments) == {}
+        assert "private-argument-canary" not in caplog.text
 
     def test_json_array_is_rejected(self):
         # Tool kwargs must be a dict; arrays come back as empty kwargs.

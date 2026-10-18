@@ -1,11 +1,12 @@
 """Mounted backend GP and exception boundaries, requiring the parent source tier."""
 
 import json
+import logging
 import os
 import subprocess
 import sys
-from types import ModuleType
 from pathlib import Path
+from types import ModuleType
 
 import pandas as pd
 import pytest
@@ -181,7 +182,8 @@ def test_telemetry_exceptions_sanitized(
     )
     assert response.status_code == status
     assert MARKER.split()[0] not in response.text
-    assert MARKER in caplog.text
+    assert MARKER not in caplog.text
+    assert exception.__name__ in caplog.text
 
 
 @pytest.mark.parametrize(
@@ -201,10 +203,16 @@ def test_mounted_chat_provider_failure(
     response = mounted_client.post(f"/api/v1/chat/{path}", json={"text": "hello"})
     assert response.status_code == status
     assert MARKER.split()[0] not in response.text
-    assert MARKER.split()[0] in caplog.text
+    assert MARKER not in caplog.text
+    expected = (
+        "Provider stream returned HTTP 500" if path == "stream" else "Provider returned HTTP 500"
+    )
+    assert expected in caplog.text
 
 
 def test_mounted_mcp_errors(mounted_client, monkeypatch, caplog):
+    caplog.set_level(logging.INFO, logger="backend.core.mcp_audit")
+
     def fail(*args, **kwargs):
         raise FileNotFoundError(MARKER)
 
@@ -245,7 +253,13 @@ def test_mounted_mcp_errors(mounted_client, monkeypatch, caplog):
     assert response.status_code == 200
     assert '"isError":true' in response.text.replace(" ", "")
     assert MARKER.split()[0] not in response.text
-    assert MARKER in caplog.text
+    assert MARKER not in caplog.text
+    events = [
+        json.loads(record.getMessage())
+        for record in caplog.records
+        if record.name == "backend.core.mcp_audit"
+    ]
+    assert any(event["tool"] == "predict_pace" and event["outcome"] == "error" for event in events)
 
 
 def test_simulation_setup_failure_safe(mounted_client, monkeypatch, caplog):
@@ -260,7 +274,8 @@ def test_simulation_setup_failure_safe(mounted_client, monkeypatch, caplog):
     assert response.status_code == 200
     assert '"type": "error"' in response.text
     assert MARKER.split()[0] not in response.text
-    assert MARKER in caplog.text
+    assert MARKER not in caplog.text
+    assert "FileNotFoundError" in caplog.text
 
 
 def test_agent_validation_failure_safe(mounted_client, monkeypatch, caplog):
@@ -274,7 +289,8 @@ def test_agent_validation_failure_safe(mounted_client, monkeypatch, caplog):
     assert response.status_code == 422
     assert response.json()["detail"]["error"] == "invalid_request"
     assert MARKER.split()[0] not in response.text
-    assert MARKER in caplog.text
+    assert MARKER not in caplog.text
+    assert "ValueError" in caplog.text
 
 
 def test_per_lap_failure_on_real_replay(mounted_client, tmp_path, monkeypatch, caplog):
@@ -332,7 +348,8 @@ def test_per_lap_failure_on_real_replay(mounted_client, tmp_path, monkeypatch, c
     assert [event["data"]["lap"] for event in events if event["type"] == "error"] == [1, 2]
     assert events[-1]["data"]["status"]["error_laps"] == 2
     assert MARKER.split()[0] not in response.text
-    assert MARKER in caplog.text
+    assert MARKER not in caplog.text
+    assert "RuntimeError" in caplog.text
 
 
 @pytest.mark.parametrize("gp", BAD_GPS)
