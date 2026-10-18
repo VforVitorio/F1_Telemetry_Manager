@@ -199,7 +199,7 @@ function preflightCompactStruct(
       const type = fieldHeader & 0x0f
       if (type === 0) return
       countItem()
-      if ((fieldHeader >>> 4) === 0) readVarInt()
+      if (fieldHeader >>> 4 === 0) readVarInt()
       skipValue(type, depth)
     }
   }
