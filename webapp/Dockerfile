@@ -4,7 +4,7 @@
 # Bun as installer + task runner; vite does the actual bundling (never `bun build`).
 FROM oven/bun:1-alpine AS build
 WORKDIR /app
-COPY package.json bun.lock ./
+COPY package.json bun.lock patch-hyparquet-rle.mjs ./
 RUN bun install --frozen-lockfile
 COPY . .
 RUN bun run build

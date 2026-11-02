@@ -71,3 +71,7 @@ jobs:
       - name: Build (vite)
         if: steps.changes.outputs.webapp == 'true'
         run: bun run build
+
+      - name: Build webapp container
+        if: steps.changes.outputs.webapp == 'true'
+        run: docker build --tag f1-telemetry-webapp:ci .

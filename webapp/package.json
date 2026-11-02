@@ -14,7 +14,8 @@
     "test:watch": "vitest",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "gen:api": "openapi-typescript http://localhost:8000/openapi.json -o src/lib/api/schema.ts"
+    "gen:api": "openapi-typescript http://localhost:8000/openapi.json -o src/lib/api/schema.ts",
+    "postinstall": "node ./patch-hyparquet-rle.mjs"
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.2.8",
