@@ -19,9 +19,16 @@ afterEach(() => useRaceStore.getState().clearUpload())
 
 const ONE_ROW_PARQUET_BASE64 =
   'UEFSMRUEFQ4VEkwVAhUAEgAABxgDAAAATk9SFQAVEhUWLBUCFRAVBhUGHDYAKANOT1IYA05PUhERAAAACSACAAAAAgEBAgAVBBUQFRRMFQIVABIAAAgcAAAAAACgVEAVABUSFRYsFQIVEBUGFQYcGAgAAAAAAKBUQBgIAAAAAACgVEAWACgIAAAAAACgVEAYCAAAAAAAoFRAEREAAAAJIAIAAAACAQECABUEFRIVFkwVAhUAEgAACSAFAAAATW9uemEVABUSFRYsFQIVEBUGFQYcNgAoBU1vbnphGAVNb256YRERAAAACSACAAAAAgEBAgAVBBlMNQAYBnNjaGVtYRUGABUMJQIYBkRyaXZlciUATBwAAAAVCiUCGAlMYXBUaW1lX3MAFQwlAhgHR1BfTmFtZSUATBwAAAAWAhkcGTwmABwVDBk1AAYQGRgGRHJpdmVyFQIWAhZ+FoYBJjYmCBw2ACgDTk9SGANOT1IREQAZLBUEFQAVAgAVABUQFQIAPBYGGQYZJgACAAAAJgAcFQoZNQAGEBkYCUxhcFRpbWVfcxUCFgIWvAEWxAEmvgEmjgEcGAgAAAAAAKBUQBgIAAAAAACgVEAWACgIAAAAAACgVEAYCAAAAAAAoFRAEREAGSwVBBUAFQIAFQAVEBUCADwpBhkmAAIAAAAmABwVDBk1AAYQGRgHR1BfTmFtZRUCFgIWigEWkgEmhAMm0gIcNgAoBU1vbnphGAVNb256YRERABksFQQVABUCABUAFRAVAgA8FgoZBhkmAAIAAAAWxAMWAiYIFtwDABkcGAxBUlJPVzpzY2hlbWEYrAIvLy8vLzlnQUFBQVFBQUFBQUFBS0FBd0FCZ0FGQUFnQUNnQUFBQUFCQkFBTUFBQUFDQUFJQUFBQUJBQUlBQUFBQkFBQUFBTUFBQUI0QUFBQU1BQUFBQVFBQUFDay8vLy9BQUFCQlJBQUFBQVlBQUFBQkFBQUFBQUFBQUFIQUFBQVJIQnBUbUZ0WlFDVS8vLy96UC8vL3dBQUFRTVFBQUFBSUFBQUFBUUFBQUFBQUFBQUNRQUFBRXhoY0ZScGJXVmZjd0FHQUFnQUJnQUdBQUFBQUFBQ0FCQUFGQUFJQUFZQUJ3QU1BQUFBRUFBUUFBQUFBQUFCQlJBQUFBQWNBQUFBQkFBQUFBQUFBQUFHQUFBQVJISnBkbVZ5QUFBRUFBUUFCQUFBQUFBQUFBQT0AGCBwYXJxdWV0LWNwcC1hcnJvdyB2ZXJzaW9uIDIzLjAuMRk8HAAAHAAAHAAAANUCAABQQVIx'
+const RLE_BOMB_PARQUET_BASE64 =
+  'UEFSMRUEFQ4VDkwVAhUAEgAAAwAAAE5PUhUAFRIVEiwVAhUQFQYVBhwAAAAFAAAAgNrECQEVBBksNQAYBnNjaGVtYRUCABUMJQIYBkRyaXZlciUATBwAAAAWAhkcGRwmABwVDBk1AAYQGRgGRHJpdmVyFQAWAhZiFmImMiYIKSwVBBUAFQIAFQAVEBUCADwWBhkGGSYAAgAAABZiFgImCBZiABkcGAxBUlJPVzpzY2hlbWEYoAEvLy8vLzNBQUFBQVFBQUFBQUFBS0FBd0FCZ0FGQUFnQUNnQUFBQUFCQkFBTUFBQUFDQUFJQUFBQUJBQUlBQUFBQkFBQUFBRUFBQUFVQUFBQUVBQVVBQWdBQmdBSEFBd0FBQUFRQUJBQUFBQUFBQUVGRUFBQUFCd0FBQUFFQUFBQUFBQUFBQVlBQUFCRWNtbDJaWElBQUFRQUJBQUVBQUFBABggcGFycXVldC1jcHAtYXJyb3cgdmVyc2lvbiAyMy4wLjEZHBwAAABKAQAAUEFSMQ=='
 
 function csvFile(contents: string, name = 'race.csv'): File {
   return new File([contents], name, { type: 'text/csv' })
+}
+
+function parquetFile(contents: string, name = 'race.parquet'): File {
+  const bytes = Uint8Array.from(atob(contents), (char) => char.charCodeAt(0))
+  return new File([bytes], name)
 }
 
 function encodeVarInt(value: bigint): number[] {
@@ -48,13 +55,30 @@ describe('parseUploadedFile', () => {
   })
 
   it('reads a small real parquet file and projects supported race columns', async () => {
-    const bytes = Uint8Array.from(atob(ONE_ROW_PARQUET_BASE64), (char) => char.charCodeAt(0))
-    const file = new File([bytes], 'race.parquet')
-
-    const rows = await parseUploadedFile(file)
+    const rows = await parseUploadedFile(parquetFile(ONE_ROW_PARQUET_BASE64))
 
     expect(rows).toHaveLength(1)
     expect(rows[0]).toMatchObject({ Driver: 'NOR', LapTime_s: 82.5, GP_Name: 'Monza' })
+  })
+
+  it('rejects an RLE run that exceeds the declared output count', async () => {
+    const { readRleBitPackedHybrid } = await import('hyparquet/src/encoding.js')
+    const encoded = Uint8Array.from([2, 0, 0, 0, 4, 1])
+    const output = [0]
+
+    expect(() =>
+      readRleBitPackedHybrid({ view: new DataView(encoded.buffer), offset: 0 }, 1, output),
+    ).toThrow('RLE run count exceeds declared value count')
+    expect(output).toEqual([0])
+  })
+
+  it('rejects a small parquet file whose definition-level RLE expands past one row', async () => {
+    const file = parquetFile(RLE_BOMB_PARQUET_BASE64, 'rle-bomb.parquet')
+
+    expect(file.size).toBe(391)
+    await expect(parseUploadedFile(file)).rejects.toThrow(
+      'RLE run count exceeds declared value count',
+    )
   })
 
   it('rejects an oversized file before parsing it', async () => {
@@ -175,6 +199,25 @@ describe('parseUploadedFile', () => {
     )
     fireEvent.change(screen.getByLabelText(/Drop a CSV or parquet file/), {
       target: { files: [oversized] },
+    })
+
+    expect(await screen.findByText('Could not parse file')).toBeInTheDocument()
+    expect(useRaceStore.getState().upload).toEqual({ name: 'previous.csv', rows: previousRows })
+  })
+
+  it('keeps the existing dataset when a parquet RLE expansion is rejected', async () => {
+    const previousRows = await parseUploadedFile(
+      csvFile('Driver,LapTime_s,GP_Name\nNOR,82.5,Monza\n'),
+    )
+    useRaceStore.getState().setUpload({ name: 'previous.csv', rows: previousRows })
+
+    render(
+      <ToastProvider>
+        <RaceContextExtras loaded={null} />
+      </ToastProvider>,
+    )
+    fireEvent.change(screen.getByLabelText(/Drop a CSV or parquet file/), {
+      target: { files: [parquetFile(RLE_BOMB_PARQUET_BASE64, 'rle-bomb.parquet')] },
     })
 
     expect(await screen.findByText('Could not parse file')).toBeInTheDocument()
