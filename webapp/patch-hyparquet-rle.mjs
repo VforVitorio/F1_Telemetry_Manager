@@ -20,11 +20,11 @@ const patched = [
   '      readRle(reader, count, width, output, seen)',
 ].join('\n')
 const source = readFileSync(sourceUrl, 'utf8')
+const originalCount = source.split(original).length - 1
+const patchedCount = source.split(patched).length - 1
 
-if (!source.includes(patched)) {
-  if (source.split(original).length !== 2) {
-    throw new Error('Could not locate the expected Hyparquet RLE decoder code.')
-  }
-
+if (originalCount === 1 && patchedCount === 0) {
   writeFileSync(sourceUrl, source.replace(original, patched))
+} else if (originalCount !== 0 || patchedCount !== 1) {
+  throw new Error('Could not validate the expected Hyparquet RLE decoder state.')
 }
