@@ -69,7 +69,7 @@ dev = [
 # the full runtime project and mirrors the deps-lite contract of the current
 # workflow while making every version come from uv.lock.
 ci = [
-    "pytest>=8.4.2,<9.0.0",
+    "pytest>=8.4.2,<10.0.0",
     "pytest-asyncio>=1.0.0,<2.0.0",
     "fastf1>=3.4.0",
     "requests>=2.31.0",
